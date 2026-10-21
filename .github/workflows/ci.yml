@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-platform:
+    name: API, database, web, admin
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['55432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      TEST_ADMIN_DATABASE_URL: postgres://postgres@localhost:55432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+  match-server:
+    name: Match server (.NET)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: game/dedicated-server/global.json
+      - run: dotnet test game/dedicated-server/RWBR.MatchServer.slnx -c Release
+
+  # Unity builds need a Unity license secret (UNITY_LICENSE / UNITY_EMAIL / UNITY_PASSWORD)
+  # and run on game-ci/unity-builder; added once the license and device matrix are decided.

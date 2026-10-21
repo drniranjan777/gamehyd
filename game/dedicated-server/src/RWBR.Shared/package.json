@@ -1,0 +1,7 @@
+{
+  "name": "com.rwbr.shared",
+  "version": "0.1.0",
+  "displayName": "RWBR Shared Rules",
+  "description": "Game rules, map layout and network protocol shared by the Unity client and the authoritative match server.",
+  "unity": "6000.0"
+}

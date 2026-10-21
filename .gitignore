@@ -1,0 +1,38 @@
+node_modules/
+dist/
+.next/
+out/
+coverage/
+*.log
+*.tsbuildinfo
+next-env.d.ts
+.env
+.env.*
+!.env.example
+*.local
+.local/
+.pnpm-store/
+
+# .NET
+game/dedicated-server/artifacts/
+TestResults/
+
+# Unity
+game/unity-client/[Ll]ibrary/
+game/unity-client/[Tt]emp/
+game/unity-client/[Oo]bj/
+game/unity-client/[Bb]uild*/
+game/unity-client/[Ll]ogs/
+game/unity-client/[Uu]ser[Ss]ettings/
+game/unity-client/*.csproj
+game/unity-client/*.sln
+game/unity-client/*.slnx
+game/unity-client/.vs/
+game/unity-client/.idea/
+
+# IDE / OS
+.vs/
+.idea/
+.DS_Store
+Thumbs.db
+game/unity-client/.vscode/

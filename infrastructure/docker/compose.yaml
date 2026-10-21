@@ -1,0 +1,26 @@
+# Local development dependencies. Usage (from the repo root):
+#   docker compose -f infrastructure/docker/compose.yaml up -d
+#   MIGRATOR_DATABASE_URL=postgres://rwbr_migrator@localhost:55432/rwbr_dev pnpm db:migrate
+# Trust auth is for local development only and the port is bound to 127.0.0.1.
+name: rwbr
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - '127.0.0.1:55432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql
+      # Runs once, on first start with an empty volume: creates roles and rwbr_dev.
+      - ../../database/bootstrap/roles.sql:/docker-entrypoint-initdb.d/01-roles.sql:ro
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'postgres']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

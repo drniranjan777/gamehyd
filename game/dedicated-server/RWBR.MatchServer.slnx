@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RWBR.Bots/RWBR.Bots.csproj" />
+    <Project Path="src/RWBR.MatchServer/RWBR.MatchServer.csproj" />
+    <Project Path="src/RWBR.Shared/RWBR.Shared.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RWBR.MatchServer.Tests/RWBR.MatchServer.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,17 @@
+{
+    "name": "RWBR.Client",
+    "rootNamespace": "RWBR.Client",
+    "references": [
+        "RWBR.Shared",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

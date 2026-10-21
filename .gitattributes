@@ -1,0 +1,10 @@
+* text=auto eol=lf
+*.docx binary
+*.png binary
+*.jpg binary
+*.fbx binary
+*.wav binary
+*.ogg binary
+*.mp3 binary
+*.tga binary
+*.psd binary
