@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Shared by the match server and the Unity client: keep it netstandard2.1 / C# 9 and free of Unity and server APIs. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <RootNamespace>RWBR.Shared</RootNamespace>
+  </PropertyGroup>
+</Project>

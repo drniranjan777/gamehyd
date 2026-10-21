@@ -1,0 +1,19 @@
+{
+    "name": "RWBR.Editor",
+    "rootNamespace": "RWBR.EditorTools",
+    "references": [
+        "RWBR.Client",
+        "RWBR.Shared"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
