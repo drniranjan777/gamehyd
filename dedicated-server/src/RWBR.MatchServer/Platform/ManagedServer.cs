@@ -88,7 +88,7 @@ public sealed class ManagedServer
         while (!run.IsCompleted)
         {
             (MatchPhase phase, int connected) = match.PublicStatus;
-            await Heartbeat("HOSTING", a.MatchId, PhaseName(phase), connected, ct);
+            await Heartbeat("HOSTING", a.MatchId, PhaseName(phase), connected, ct, host.RecentTickMsP99());
             await Task.WhenAny(run, Task.Delay(_o.HeartbeatInterval, ct));
         }
         HostReport report = await run;
@@ -148,12 +148,12 @@ public sealed class ManagedServer
         }
     }
 
-    private async Task<HeartbeatResponse?> Heartbeat(string state, Guid? matchId, string? phase, int connected, CancellationToken ct)
+    private async Task<HeartbeatResponse?> Heartbeat(string state, Guid? matchId, string? phase, int connected, CancellationToken ct, double? tickMsP99 = null)
     {
         try
         {
             return await _api.HeartbeatAsync(
-                new HeartbeatRequest(_o.Address, _o.Region, _o.BuildVersion, MapVersions, state, matchId, phase, connected), ct);
+                new HeartbeatRequest(_o.Address, _o.Region, _o.BuildVersion, MapVersions, state, matchId, phase, connected, tickMsP99), ct);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {

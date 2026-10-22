@@ -21,7 +21,8 @@ public sealed record HeartbeatRequest(
     string State,
     Guid? MatchId,
     string? MatchPhase,
-    int ConnectedPlayers);
+    int ConnectedPlayers,
+    double? TickMsP99 = null);
 
 public sealed record MatchAssignment(Guid MatchId, string MapVersion, int Capacity, int MinPlayers, int FillWaitSeconds, string[]? DisabledWeapons = null);
 

@@ -28,6 +28,7 @@ namespace RWBR.Client.Menu
             Profile,
             Loadout,
             Store,
+            Season,
             Account,
             Settings,
             Accessibility,
@@ -43,6 +44,7 @@ namespace RWBR.Client.Menu
         private MatchHistoryPageDto _history;
         private InventoryDto _inventory;
         private CatalogDto _catalog;
+        private SeasonPassDto _season;
         private DeletionStatusDto _deletion;
         private bool _confirmDelete;
         private string _platformUrl;
@@ -114,6 +116,10 @@ namespace RWBR.Client.Menu
                         _catalog = await _api.CatalogAsync();
                         _inventory = await _api.InventoryAsync();
                         break;
+                    case Screen.Season:
+                        _season = await _api.SeasonAsync();
+                        _catalog = await _api.CatalogAsync();
+                        break;
                     case Screen.Account:
                         _deletion = await _api.DeletionStatusAsync();
                         _confirmDelete = false;
@@ -179,6 +185,27 @@ namespace RWBR.Client.Menu
             }
         }
 
+        private async void Claim(SeasonRewardStateDto r)
+        {
+            Busy = true;
+            try
+            {
+                _season = await _api.ClaimSeasonRewardAsync(r.tier, r.track);
+                _status = $"Claimed {RewardText(r.reward)}.";
+            }
+            catch (ApiException e)
+            {
+                _status = $"{e.Code}: {e.Message}";
+            }
+            finally
+            {
+                Busy = false;
+            }
+        }
+
+        private static string RewardText(SeasonRewardDto r) =>
+            r.type == "COSMETIC" ? r.cosmeticKey.Replace('_', ' ') : $"{r.amount} {(r.currency == "COIN" ? "coins" : "gems")}";
+
         private async void ChangeDeletion(bool delete)
         {
             Busy = true;
@@ -227,6 +254,7 @@ namespace RWBR.Client.Menu
                 case Screen.Profile: DrawProfile(); break;
                 case Screen.Loadout: DrawLoadout(); break;
                 case Screen.Store: DrawStore(); break;
+                case Screen.Season: DrawSeason(); break;
                 case Screen.Account: DrawAccount(); break;
                 case Screen.Settings: DrawSettings(); break;
                 case Screen.Accessibility: DrawAccessibility(); break;
@@ -240,12 +268,13 @@ namespace RWBR.Client.Menu
         {
             float y = 170;
             if (Button(y, TutorialDirector.Done ? "Training ground" : "Training ground (tutorial)")) PlayTrainingGround();
-            if (Button(y += 62, "City practice: Hyderabad-inspired map")) PlayCityPractice();
-            if (Button(y += 62, "Play online")) PlayOnline();
-            if (Button(y += 74, "Profile & match history")) OpenPlatformScreen(Screen.Profile);
-            if (Button(y += 62, "Loadout")) OpenPlatformScreen(Screen.Loadout);
-            if (Button(y += 62, "Store")) OpenPlatformScreen(Screen.Store);
-            if (Button(y += 62, "Settings")) _screen = Screen.Settings;
+            if (Button(y += 56, "City practice: Hyderabad-inspired map")) PlayCityPractice();
+            if (Button(y += 56, "Play online")) PlayOnline();
+            if (Button(y += 66, "Profile & match history")) OpenPlatformScreen(Screen.Profile);
+            if (Button(y += 56, "Loadout")) OpenPlatformScreen(Screen.Loadout);
+            if (Button(y += 56, "Store")) OpenPlatformScreen(Screen.Store);
+            if (Button(y += 56, "Season pass")) OpenPlatformScreen(Screen.Season);
+            if (Button(y += 56, "Settings")) _screen = Screen.Settings;
         }
 
         private void Back()
@@ -316,6 +345,76 @@ namespace RWBR.Client.Menu
                 GUI.Label(new Rect(r.x + 24, y + 10, r.width - 48, 50), "Cosmetics never change weapon stats. Get more in the Store.", _small);
             }
             Back();
+        }
+
+        private void DrawSeason()
+        {
+            Panel(out Rect r);
+            if (_season != null)
+            {
+                if (!_season.Active)
+                {
+                    GUI.Label(new Rect(r.x + 24, r.y + 20, r.width - 48, 60), "No season is running right now. The next one starts soon.", _label);
+                }
+                else
+                {
+                    SeasonInfoDto s = _season.season;
+                    SeasonProgressDto p = _season.progress;
+                    DateTime ends = DateTime.TryParse(s.endsAt, out DateTime d) ? d.ToLocalTime() : DateTime.MinValue;
+                    GUI.Label(new Rect(r.x + 24, r.y + 16, r.width - 48, 30), $"{s.title}   ·   tier {p.tier} of {s.maxTier}   ·   ends {ends:dd MMM}", _label);
+                    Bar(new Rect(r.x + 24, r.y + 54, 360, 14), 1f - p.xpToNextTier / (float)s.xpPerTier, new Color(1f, 0.75f, 0.2f));
+                    GUI.Label(new Rect(r.x + 396, r.y + 48, 360, 26), $"{p.xpToNextTier} XP to the next tier (earn XP in matches)", _small);
+
+                    CatalogItemDto passItem = Array.Find(_catalog?.items ?? Array.Empty<CatalogItemDto>(), i => i.productKey == s.premiumProductKey);
+                    if (!p.premium && passItem != null)
+                    {
+                        bool canPay = StoreFlow.IsInGameCurrency(passItem) || DevStorePurchaser.FromEnvironment() != null;
+                        GUI.enabled = !Busy && canPay;
+                        if (GUI.Button(new Rect(r.xMax - 300, r.y + 12, 276, 40), canPay ? $"Season pass {StoreFlow.Price(passItem.price)}" : "Season pass (soon)", _button))
+                            BuySeasonPass(passItem);
+                        GUI.enabled = true;
+                    }
+                    else if (p.premium)
+                    {
+                        GUI.Label(new Rect(r.xMax - 300, r.y + 18, 276, 30), "★ Season pass active", _label);
+                    }
+
+                    SeasonRewardStateDto[] rewards = _season.rewards ?? Array.Empty<SeasonRewardStateDto>();
+                    _scroll = GUI.BeginScrollView(new Rect(r.x + 16, r.y + 84, r.width - 32, r.height - 170), _scroll, new Rect(0, 0, r.width - 56, rewards.Length * 40));
+                    float y = 0;
+                    foreach (SeasonRewardStateDto reward in rewards)
+                    {
+                        string track = reward.track == "PREMIUM" ? "★ " : "";
+                        GUI.Label(new Rect(8, y + 6, r.width - 320, 28), $"Tier {reward.tier}   {track}{RewardText(reward.reward)}", _small);
+                        string label = reward.claimed ? "Claimed" : reward.unlocked ? "Claim" : reward.track == "PREMIUM" && !p.premium ? "Pass needed" : "Locked";
+                        GUI.enabled = !Busy && reward.unlocked && !reward.claimed;
+                        if (GUI.Button(new Rect(r.width - 260, y + 2, 200, 32), label)) Claim(reward);
+                        GUI.enabled = true;
+                        y += 40;
+                    }
+                    GUI.EndScrollView();
+                }
+            }
+            Back();
+        }
+
+        private async void BuySeasonPass(CatalogItemDto item)
+        {
+            Busy = true;
+            try
+            {
+                await new StoreFlow(_api, DevStorePurchaser.FromEnvironment()).BuyAsync(item);
+                _season = await _api.SeasonAsync();
+                _status = "Season pass unlocked: premium rewards are ready to claim.";
+            }
+            catch (ApiException e)
+            {
+                _status = $"{e.Code}: {e.Message}";
+            }
+            finally
+            {
+                Busy = false;
+            }
         }
 
         private void DrawAccessibility()
