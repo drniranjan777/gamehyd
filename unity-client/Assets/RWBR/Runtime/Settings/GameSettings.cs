@@ -18,6 +18,11 @@ namespace RWBR.Client.Settings
         private const string MasterKey = "rwbr.volume.master";
         private const string SfxKey = "rwbr.volume.sfx";
         private const string UiKey = "rwbr.volume.ui";
+        private const string UiScaleKey = "rwbr.a11y.uiScale";
+        private const string SoundCuesKey = "rwbr.a11y.soundCues";
+        private const string ReduceFlashKey = "rwbr.a11y.reduceFlashing";
+        public const float MinUiScale = 0.8f;
+        public const float MaxUiScale = 1.5f;
 
         public const float MinSensitivity = 0.2f;
         public const float MaxSensitivity = 3f;
@@ -29,6 +34,14 @@ namespace RWBR.Client.Settings
         public static float SfxVolume { get; private set; } = 1f;
         public static float UiVolume { get; private set; } = 0.8f;
 
+        // Accessibility (Phase 6)
+        /// <summary>Multiplies the size of every HUD and menu element.</summary>
+        public static float UiScale { get; private set; } = 1f;
+        /// <summary>Shows the direction of gunshots on screen, for players who can't hear or locate them.</summary>
+        public static bool VisualSoundCues { get; private set; }
+        /// <summary>Turns off full-screen damage flashes.</summary>
+        public static bool ReduceFlashing { get; private set; }
+
         public static void Load()
         {
             try
@@ -39,6 +52,9 @@ namespace RWBR.Client.Settings
                 MasterVolume = Mathf.Clamp01(PlayerPrefs.GetFloat(MasterKey, 0.8f));
                 SfxVolume = Mathf.Clamp01(PlayerPrefs.GetFloat(SfxKey, 1f));
                 UiVolume = Mathf.Clamp01(PlayerPrefs.GetFloat(UiKey, 0.8f));
+                UiScale = Mathf.Clamp(PlayerPrefs.GetFloat(UiScaleKey, 1f), MinUiScale, MaxUiScale);
+                VisualSoundCues = PlayerPrefs.GetInt(SoundCuesKey, 0) == 1;
+                ReduceFlashing = PlayerPrefs.GetInt(ReduceFlashKey, 0) == 1;
             }
             catch (System.Exception)
             {
@@ -65,6 +81,14 @@ namespace RWBR.Client.Settings
             MasterVolume = Mathf.Clamp01(master);
             SfxVolume = Mathf.Clamp01(sfx);
             UiVolume = Mathf.Clamp01(ui);
+            Save();
+        }
+
+        public static void SetAccessibility(float uiScale, bool visualSoundCues, bool reduceFlashing)
+        {
+            UiScale = Mathf.Clamp(uiScale, MinUiScale, MaxUiScale);
+            VisualSoundCues = visualSoundCues;
+            ReduceFlashing = reduceFlashing;
             Save();
         }
 
@@ -128,6 +152,9 @@ namespace RWBR.Client.Settings
                 PlayerPrefs.SetFloat(MasterKey, MasterVolume);
                 PlayerPrefs.SetFloat(SfxKey, SfxVolume);
                 PlayerPrefs.SetFloat(UiKey, UiVolume);
+                PlayerPrefs.SetFloat(UiScaleKey, UiScale);
+                PlayerPrefs.SetInt(SoundCuesKey, VisualSoundCues ? 1 : 0);
+                PlayerPrefs.SetInt(ReduceFlashKey, ReduceFlashing ? 1 : 0);
                 PlayerPrefs.Save();
             }
             catch (System.Exception)

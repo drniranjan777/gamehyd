@@ -23,7 +23,7 @@ public sealed record HeartbeatRequest(
     string? MatchPhase,
     int ConnectedPlayers);
 
-public sealed record MatchAssignment(Guid MatchId, string MapVersion, int Capacity, int MinPlayers, int FillWaitSeconds);
+public sealed record MatchAssignment(Guid MatchId, string MapVersion, int Capacity, int MinPlayers, int FillWaitSeconds, string[]? DisabledWeapons = null);
 
 public sealed record HeartbeatResponse(Guid ServerId, MatchAssignment? Assignment);
 

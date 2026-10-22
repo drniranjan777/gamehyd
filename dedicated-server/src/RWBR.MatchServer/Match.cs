@@ -68,6 +68,16 @@ public sealed class Match
         _dt = 1f / config.TickRate;
         _historyLength = config.Ticks(config.MaxRewindSeconds) + 2;
         _lootTaken = new bool[config.Map.Loot.Count];
+        WithdrawDisabledLoot();
+    }
+
+    /// <summary>Loot of disabled weapons counts as already taken, so it never spawns for anyone (clients hide it too).</summary>
+    private void WithdrawDisabledLoot()
+    {
+        if (_cfg.DisabledWeapons.Count == 0) return;
+        IReadOnlyList<LootSpawn> loot = _cfg.Map.Loot;
+        for (int i = 0; i < loot.Count; i++)
+            if (loot[i].WeaponIndex >= 0 && _cfg.DisabledWeapons.Contains(loot[i].WeaponIndex)) _lootTaken[i] = true;
     }
 
     public long Tick { get; private set; }
@@ -77,6 +87,8 @@ public sealed class Match
     public List<(IPEndPoint To, byte[] Data)> Outbox { get; } = new();
     public IReadOnlyList<PlayerState> Players => _players;
     public MatchConfig Config => _cfg;
+    /// <summary>Whether loot spawn <paramref name="index"/> can still be picked up.</summary>
+    public bool LootAvailable(int index) => !_lootTaken[index];
     public bool IsFinished => Phase == MatchPhase.Completed && Tick >= _finishTick;
     public Vector2 ZoneCenter => Vector2.Zero;
     public float ZoneRadius => CurrentZoneRadius();
@@ -373,6 +385,7 @@ public sealed class Match
         _activeStartTick = Tick;
         _zoneStartRadius = _cfg.Map.HalfSize * 1.4143f; // covers the map corners
         Array.Clear(_lootTaken);
+        WithdrawDisabledLoot();
         for (int i = 0; i < _players.Count; i++)
         {
             PlayerState p = _players[i];

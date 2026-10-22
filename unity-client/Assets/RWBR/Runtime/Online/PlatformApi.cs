@@ -101,6 +101,7 @@ namespace RWBR.Client.Online
             }
             _accessToken = auth.accessToken;
             UserId = auth.userId;
+            RWBR.Client.Diagnostics.Telemetry.SetAccessToken(auth.accessToken);
         }
 
         private async Task<AuthResponse> CreateGuest(string displayName)
