@@ -1,6 +1,7 @@
 using System.Linq;
 using RWBR.Client.Diagnostics;
 using RWBR.Client.Player;
+using RWBR.Client.Accessibility;
 using RWBR.Client.Settings;
 using RWBR.Shared;
 using UnityEngine;
@@ -14,7 +15,9 @@ namespace RWBR.Client.Practice
     [RequireComponent(typeof(PracticeGame))]
     public sealed class PracticeHud : MonoBehaviour
     {
-        private const float VirtualHeight = 720f;
+        private const float BaseHeight = 720f;
+        /// <summary>Layout height in virtual units; smaller when the player enlarges the UI.</summary>
+        private static float VirtualHeight => BaseHeight / GameSettings.UiScale;
 
         private PracticeGame _game;
         private PerformanceMonitor _perf;
@@ -54,6 +57,7 @@ namespace RWBR.Client.Practice
             DrawEnemyBars(sim);
             DrawDamageFlash();
             if (sim.Outcome == PracticeOutcome.InProgress && !_game.Paused) DrawCrosshair(p);
+            SoundCues.Draw(_w, VirtualHeight, Camera.main);
             DrawVitals(p);
             DrawWeapon(sim, p);
             DrawObjective(sim);
@@ -108,6 +112,7 @@ namespace RWBR.Client.Practice
 
         private void DrawDamageFlash()
         {
+            if (GameSettings.ReduceFlashing) return;
             float t = Time.time - _game.LastDamagedTime;
             if (t < 0.3f) Fill(new Rect(0, 0, _w, VirtualHeight), new Color(0.8f, 0f, 0f, 0.28f * (1 - t / 0.3f)));
         }

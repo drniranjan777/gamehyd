@@ -1,5 +1,6 @@
 using RWBR.Client.Diagnostics;
 using RWBR.Client.Player;
+using RWBR.Client.Accessibility;
 using RWBR.Client.Settings;
 using RWBR.Shared;
 using RWBR.Shared.Protocol;
@@ -14,7 +15,9 @@ namespace RWBR.Client.Online
     [RequireComponent(typeof(OnlineGame))]
     public sealed class OnlineHud : MonoBehaviour
     {
-        private const float VirtualHeight = 720f;
+        private const float BaseHeight = 720f;
+        /// <summary>Layout height in virtual units; smaller when the player enlarges the UI.</summary>
+        private static float VirtualHeight => BaseHeight / GameSettings.UiScale;
 
         private OnlineGame _game;
         private PerformanceMonitor _perf;
@@ -63,6 +66,7 @@ namespace RWBR.Client.Online
                 DrawZone(s, self.Value);
                 DrawPhase(s);
                 if (_game.SelfAlive && !_game.Paused) DrawCrosshair();
+            SoundCues.Draw(_w, VirtualHeight, Camera.main);
                 DrawVitals(s, self.Value);
                 DrawPrompt();
             }
@@ -186,6 +190,7 @@ namespace RWBR.Client.Online
 
         private void DrawDamageFlash()
         {
+            if (GameSettings.ReduceFlashing) return;
             float t = Time.time - _game.LastDamagedTime;
             if (t < 0.3f) Fill(new Rect(0, 0, _w, VirtualHeight), new Color(0.8f, 0f, 0f, 0.28f * (1 - t / 0.3f)));
         }

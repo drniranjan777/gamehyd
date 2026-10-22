@@ -168,6 +168,7 @@ export class InternalController {
   constructor(
     private readonly db: Db,
     private readonly results: ResultsService,
+    private readonly gameConfig: GameConfigService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -239,6 +240,8 @@ export class InternalController {
               capacity: m.capacity,
               minPlayers: Math.min(this.config.MATCH_MIN_PLAYERS, m.capacity),
               fillWaitSeconds: this.config.MATCH_FILL_WAIT_SECONDS,
+              // Kill switch: weapons removed from this match's loot and starting kit.
+              disabledWeapons: (await this.gameConfig.current()).config.disabledWeapons,
             }
           : null,
       };

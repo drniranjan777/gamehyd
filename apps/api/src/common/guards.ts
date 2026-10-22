@@ -11,7 +11,8 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
 import { TokenService } from '../auth/token.service';
 import { APP_CONFIG, AppConfig } from '../config';
-import { ApiError, Unauthorized } from './api-error';
+import { Db } from '../database/database.module';
+import { ApiError, Forbidden, Unauthorized } from './api-error';
 
 export interface AuthedRequest extends Request {
   requestId?: string;
@@ -20,18 +21,50 @@ export interface AuthedRequest extends Request {
   rawBody?: Buffer;
 }
 
-/** Requires a valid access token; sets req.userId. */
+const STATUS_CACHE_MS = 5_000;
+/** Shared by every AuthGuard instance (Nest creates one per controller), so a sanction can drop the entry. */
+const statusCache = new Map<string, { status: string; at: number }>();
+
+/** Drops a cached account status, e.g. right after a sanction handled by this instance. */
+export function forgetAccountStatus(userId: string): void {
+  statusCache.delete(userId);
+}
+
+/**
+ * Requires a valid access token for an account that may play; sets req.userId. Account status is re-checked (cached
+ * for 5 s), so a suspension, ban or completed deletion takes effect on tokens already issued, not only at refresh.
+ */
 @Injectable()
 export class AuthGuard implements CanActivate {
-  constructor(private readonly tokens: TokenService) {}
+  constructor(
+    private readonly tokens: TokenService,
+    private readonly db: Db,
+  ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest<AuthedRequest>();
     const header = req.header('authorization') ?? '';
     const match = /^Bearer ([A-Za-z0-9._-]+)$/.exec(header);
     if (!match) throw Unauthorized();
-    req.userId = await this.tokens.verifyAccess(match[1]!);
+    const userId = await this.tokens.verifyAccess(match[1]!);
+    const status = await this.status(userId);
+    if (status !== 'ACTIVE' && status !== 'PENDING_DELETION')
+      throw Forbidden('ACCOUNT_RESTRICTED', 'This account cannot play right now');
+    req.userId = userId;
     return true;
+  }
+
+  private async status(userId: string): Promise<string> {
+    const now = Date.now();
+    const hit = statusCache.get(userId);
+    if (hit && now - hit.at < STATUS_CACHE_MS) return hit.status;
+    const row = await this.db.one<{ status: string }>('SELECT status FROM users WHERE id = $1', [
+      userId,
+    ]);
+    const status = row?.status ?? 'DELETED';
+    if (statusCache.size > 50_000) statusCache.clear();
+    statusCache.set(userId, { status, at: now });
+    return status;
   }
 }
 

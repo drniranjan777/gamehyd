@@ -3,19 +3,19 @@
 Commercial free-to-play mobile battle royale (Unity 6 client, fictional Hyderabad-inspired map). Requirements:
 [BRD v1.2](Real_World_Battle_Royale_Detailed_BRD_Technical_Plan_v1.2.docx) · [Phase-wise delivery plan](PHASE-PLAN.md)
 
-**Status: Phase 5 engineering done (store, verified purchases, refunds, admin portal with MFA/RBAC/audit, public website); real store billing waits on Google Play / App Store accounts.** Phases 0–5 are built and tested locally. Status: [Phase 0](docs/PHASE-0-STATUS.md) · [Phase 1](docs/PHASE-1-STATUS.md) · [Phase 2](docs/PHASE-2-STATUS.md) · [Phase 3](docs/PHASE-3-STATUS.md) · [Phase 4](docs/PHASE-4-STATUS.md) · [Phase 5](docs/PHASE-5-STATUS.md).
+**Status: Phase 6 engineering done (telemetry and release-gate metrics, security hardening, load and backup-restore tests, runbooks, accessibility settings); the closed beta itself needs cloud, store builds and test cohorts.** Phases 0–6 are built and tested locally. Status: [Phase 0](docs/PHASE-0-STATUS.md) · [Phase 1](docs/PHASE-1-STATUS.md) · [Phase 2](docs/PHASE-2-STATUS.md) · [Phase 3](docs/PHASE-3-STATUS.md) · [Phase 4](docs/PHASE-4-STATUS.md) · [Phase 5](docs/PHASE-5-STATUS.md) · [Phase 6](docs/PHASE-6-STATUS.md) · [Runbooks](docs/runbooks/README.md).
 
-| Folder                    | What                                                                                                                                                            | Status                                                                                    |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `apps/api/`               | Platform API (Node.js + TypeScript, NestJS)                                                                                                                     | Phase 5: + store, purchase verification, webhooks, refunds, admin API, kill switches      |
-| `apps/web/`               | Next.js public website                                                                                                                                          | Phase 5: landing, news/events, player profiles, support, privacy/terms (drafts), deletion |
-| `apps/admin/`             | Next.js operations portal                                                                                                                                       | Phase 5: MFA sign-in, RBAC, players, reports, catalogue approval, orders, audit, live ops |
-| `database/`               | PostgreSQL migrations, runner, roles                                                                                                                            | Phase 5: migrations 0001–0007, ledger, orders, payments, admin RBAC, audit                |
-| `game/dedicated-server/`  | Authoritative C# match server, shared rules, headless bots                                                                                                      | Phase 3: managed mode (heartbeat, assigned matches, signed results); 30-bot soak          |
-| `game/unity-client/`      | Unity 6 client                                                                                                                                                  | Phase 5: city, tutorial, online + Quick play, menus, store and account screens            |
-| `infrastructure/`         | Docker Compose (local PostgreSQL)                                                                                                                               | Written, not yet run (no Docker on the dev machine)                                       |
-| `packages/shared-config/` | Shared TypeScript config                                                                                                                                        | In use                                                                                    |
-| `docs/`                   | [Architecture](docs/ARCHITECTURE.md), [ADRs](docs/adr), [risk register](docs/RISK-REGISTER.md), [device & network test plan](docs/TEST-PLAN-DEVICES-NETWORK.md) |                                                                                           |
+| Folder                    | What                                                                                                                                                            | Status                                                                                     |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `apps/api/`               | Platform API (Node.js + TypeScript, NestJS)                                                                                                                     | Phase 6: + telemetry, beta KPIs and release gates, bans on live tokens, security headers   |
+| `apps/web/`               | Next.js public website                                                                                                                                          | Phase 5: landing, news/events, player profiles, support, privacy/terms (drafts), deletion  |
+| `apps/admin/`             | Next.js operations portal                                                                                                                                       | Phase 5: MFA sign-in, RBAC, players, reports, catalogue approval, orders, audit, live ops  |
+| `database/`               | PostgreSQL migrations, runner, roles                                                                                                                            | Phase 6: migrations 0001–0008, ledger, orders, admin RBAC, telemetry; backup-restore drill |
+| `game/dedicated-server/`  | Authoritative C# match server, shared rules, headless bots                                                                                                      | Phase 3: managed mode (heartbeat, assigned matches, signed results); 30-bot soak           |
+| `game/unity-client/`      | Unity 6 client                                                                                                                                                  | Phase 5: city, tutorial, online + Quick play, menus, store and account screens             |
+| `infrastructure/`         | Docker Compose (local PostgreSQL)                                                                                                                               | Written, not yet run (no Docker on the dev machine)                                        |
+| `packages/shared-config/` | Shared TypeScript config                                                                                                                                        | In use                                                                                     |
+| `docs/`                   | [Architecture](docs/ARCHITECTURE.md), [ADRs](docs/adr), [risk register](docs/RISK-REGISTER.md), [device & network test plan](docs/TEST-PLAN-DEVICES-NETWORK.md) |                                                                                            |
 
 The React Native companion in the BRD is deferred; its features move to the Next.js website.
 
@@ -54,6 +54,13 @@ dotnet test game/dedicated-server/RWBR.MatchServer.slnx
 ```bash
 dotnet run --project game/dedicated-server/src/RWBR.MatchServer -c Release -- --players 8 --fast
 dotnet run --project game/dedicated-server/src/RWBR.Bots -c Release -- --count 8
+```
+
+**Load and backup drills** — 200 simulated players against a production build of the API, and a dump/restore check:
+
+```bash
+TEST_ADMIN_DATABASE_URL=postgres://postgres@localhost:55432/postgres USERS=200 SECONDS_=60 infrastructure/scripts/load-test.sh
+TEST_ADMIN_DATABASE_URL=postgres://postgres@localhost:55432/postgres infrastructure/scripts/backup-restore-test.sh
 ```
 
 **Whole platform locally** — API + managed match server + bots, then check XP/history in the database:

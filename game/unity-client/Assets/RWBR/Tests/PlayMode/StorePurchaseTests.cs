@@ -125,6 +125,19 @@ namespace RWBR.Tests
             Task<DeletionStatusDto> keep = api.CancelDeletionAsync();
             yield return Await(keep);
             Assert.AreEqual("ACTIVE", keep.Result.status);
+
+            // The game's telemetry batches are accepted by the API's strict schema.
+            string fps = "{\"type\":\"FPS_SAMPLE\",\"at\":\"" + DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ") +
+                         "\",\"data\":{\"avgFps\":57.5,\"p5Fps\":41.0,\"seconds\":60,\"scene\":\"MENU\",\"quality\":\"MEDIUM\"}}";
+            string body = RWBR.Client.Diagnostics.Telemetry.BatchJson(Guid.NewGuid().ToString(), "EDITOR", SystemInfo.deviceModel, new[] { fps });
+            using var post = new UnityEngine.Networking.UnityWebRequest($"http://127.0.0.1:{port}/api/v1/telemetry/events", "POST")
+            {
+                uploadHandler = new UnityEngine.Networking.UploadHandlerRaw(System.Text.Encoding.UTF8.GetBytes(body)),
+                downloadHandler = new UnityEngine.Networking.DownloadHandlerBuffer(),
+            };
+            post.SetRequestHeader("Content-Type", "application/json");
+            yield return post.SendWebRequest();
+            Assert.AreEqual(202, post.responseCode, post.downloadHandler.text);
         }
 
         [Serializable]

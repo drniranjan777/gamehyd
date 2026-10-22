@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Real-World Battle Royale Platform API
-  version: 0.5.0
+  version: 0.6.0
   description: |
     Player-facing and game-server-facing API (BRD v1.2 §10). Source of truth for request/response shapes:
     TypeScript types are generated from this file and every API test validates responses against it.
@@ -26,6 +26,7 @@ tags:
   - name: Webhooks
   - name: Public
   - name: Admin
+  - name: Telemetry
 
 paths:
   /health:
@@ -1248,6 +1249,46 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /telemetry/events:
+    post:
+      tags: [Telemetry]
+      description: |
+        Batched client events for the beta KPIs. Works without sign-in (crashes before sign-in still count); a valid
+        bearer token attaches the account. Events older than 7 days are dropped and future timestamps clamped.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/TelemetryBatch' } } }
+      responses:
+        '202':
+          description: Stored
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [accepted, dropped]
+                properties:
+                  accepted: { type: integer, minimum: 0 }
+                  dropped: { type: integer, minimum: 0 }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /admin/metrics:
+    get:
+      tags: [Admin]
+      security: [{ admin: [] }]
+      description: Needs `metrics.read`. Beta KPIs and the BRD §14 release gates over the last `days` days.
+      parameters:
+        - { name: days, in: query, schema: { type: integer, minimum: 1, maximum: 90 } }
+      responses:
+        '200':
+          {
+            description: KPIs,
+            content: { application/json: { schema: { $ref: '#/components/schemas/Metrics' } } },
+          }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
 components:
   securitySchemes:
     bearer:
@@ -1584,13 +1625,18 @@ components:
             - type: 'null'
             - type: object
               additionalProperties: false
-              required: [matchId, mapVersion, capacity, minPlayers, fillWaitSeconds]
+              required:
+                [matchId, mapVersion, capacity, minPlayers, fillWaitSeconds, disabledWeapons]
               properties:
                 matchId: { type: string, format: uuid }
                 mapVersion: { type: string }
                 capacity: { type: integer, minimum: 2, maximum: 100 }
                 minPlayers: { type: integer, minimum: 2 }
                 fillWaitSeconds: { type: integer, minimum: 0 }
+                disabledWeapons:
+                  type: array
+                  items: { type: string }
+                  description: Weapon catalog ids switched off by live ops; no loot of them spawns in this match.
     ResultSubmission:
       type: object
       additionalProperties: false
@@ -2332,6 +2378,8 @@ components:
           unmatchedPurchaseEvents,
           accountsDeleted,
           suspensionsLifted,
+          unhostedMatchesCancelled,
+          telemetryEventsPurged,
         ]
       properties:
         cancelledPendingOrders: { type: integer }
@@ -2339,6 +2387,8 @@ components:
         unmatchedPurchaseEvents: { type: integer }
         accountsDeleted: { type: integer }
         suspensionsLifted: { type: integer }
+        unhostedMatchesCancelled: { type: integer }
+        telemetryEventsPurged: { type: integer }
     AuditPage:
       type: object
       additionalProperties: false
@@ -2414,3 +2464,140 @@ components:
       required: [items]
       properties:
         items: { type: array, items: { $ref: '#/components/schemas/AdminEvent' } }
+
+    # ---- Phase 6: telemetry and metrics ----
+    TelemetryEvent:
+      type: object
+      required: [type, at, data]
+      properties:
+        type: { enum: [SESSION_START, SESSION_END, CRASH, FPS_SAMPLE, DISCONNECT] }
+        at: { type: string, format: date-time }
+        data:
+          type: object
+          description: |
+            SESSION_START {os?, quality?}; SESSION_END {durationSeconds}; CRASH {message, where?, stack?};
+            FPS_SAMPLE {avgFps, p5Fps, seconds, scene?, quality?}; DISCONNECT {reason, matchId?, reconnected?}.
+    TelemetryBatch:
+      type: object
+      additionalProperties: false
+      required: [sessionId, appVersion, platform, deviceModel, events]
+      properties:
+        sessionId: { type: string, format: uuid }
+        appVersion: { type: string, pattern: '^\d+\.\d+\.\d+$' }
+        platform: { enum: [ANDROID, IOS, WINDOWS, MACOS, LINUX, EDITOR] }
+        deviceModel: { type: string, minLength: 1, maxLength: 100 }
+        events:
+          {
+            type: array,
+            minItems: 1,
+            maxItems: 100,
+            items: { $ref: '#/components/schemas/TelemetryEvent' },
+          }
+    Rate: { type: [number, 'null'], minimum: 0, maximum: 1 }
+    Retention:
+      type: object
+      additionalProperties: false
+      required: [cohort, retained, rate]
+      properties:
+        cohort: { type: integer }
+        retained: { type: integer }
+        rate: { $ref: '#/components/schemas/Rate' }
+    Metrics:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          days,
+          generatedAt,
+          sessions,
+          fpsByDevice,
+          matches,
+          disconnects,
+          queueSeconds,
+          retention,
+          economy,
+          purchaseIntegrity,
+          releaseGates,
+        ]
+      properties:
+        days: { type: integer }
+        generatedAt: { type: string, format: date-time }
+        sessions:
+          type: object
+          additionalProperties: false
+          required: [total, crashed, crashFreeRate]
+          properties:
+            total: { type: integer }
+            crashed: { type: integer }
+            crashFreeRate: { $ref: '#/components/schemas/Rate' }
+        fpsByDevice:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [platform, deviceModel, samples, avgFps, p5Fps]
+            properties:
+              platform: { type: string }
+              deviceModel: { type: string }
+              samples: { type: integer }
+              avgFps: { type: number }
+              p5Fps: { type: number }
+        matches:
+          type: object
+          additionalProperties: false
+          required: [hosted, completed, completionRate]
+          properties:
+            hosted: { type: integer }
+            completed: { type: integer }
+            completionRate: { $ref: '#/components/schemas/Rate' }
+        disconnects:
+          type: object
+          additionalProperties: false
+          required: [total, reconnected, per100Participations]
+          properties:
+            total: { type: integer }
+            reconnected: { type: integer }
+            per100Participations: { type: [number, 'null'] }
+        queueSeconds:
+          type: object
+          additionalProperties: false
+          required: [samples, p50, p95]
+          properties:
+            samples: { type: integer }
+            p50: { type: [number, 'null'] }
+            p95: { type: [number, 'null'] }
+        retention:
+          type: object
+          additionalProperties: false
+          required: [d1, d7]
+          properties:
+            d1: { $ref: '#/components/schemas/Retention' }
+            d7: { $ref: '#/components/schemas/Retention' }
+        economy:
+          type: object
+          additionalProperties: false
+          required: [activePlayers, payers, payerConversion, inGameSpenders]
+          properties:
+            activePlayers: { type: integer }
+            payers: { type: integer }
+            payerConversion: { $ref: '#/components/schemas/Rate' }
+            inGameSpenders: { type: integer }
+        purchaseIntegrity:
+          type: object
+          additionalProperties: false
+          required: [duplicateTransactions, paidOrdersWithoutPayment, walletsWithLedgerDrift]
+          properties:
+            duplicateTransactions: { type: integer }
+            paidOrdersWithoutPayment: { type: integer }
+            walletsWithLedgerDrift: { type: integer }
+        releaseGates:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [key, target, value, status]
+            properties:
+              key: { type: string }
+              target: { type: string }
+              value: { type: [number, 'null'] }
+              status: { enum: [PASS, FAIL, NO_DATA, MANUAL] }

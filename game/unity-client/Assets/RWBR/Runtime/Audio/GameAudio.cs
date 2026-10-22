@@ -109,6 +109,7 @@ namespace RWBR.Client.Audio
                 _ => 220f,
             };
             Play(GunshotClip(weapon.Class), position, local ? 0.8f : 1f, audible, local);
+            if (!local) RWBR.Client.Accessibility.SoundCues.Add(position, audible);
         }
 
         public void PlayAt(Sfx sfx, Vector3 position, float volume = 1f, float audible = 30f) =>

@@ -74,6 +74,11 @@ public sealed class ManagedServer
         cfg.SnapshotEveryTicks = _o.SnapshotEveryTicks;
         cfg.TicketSecret = _o.TicketSecret;
         cfg.MatchId = a.MatchId;
+        if (a.DisabledWeapons is { Length: > 0 } off)
+        {
+            var unknown = cfg.DisableWeapons(off);
+            if (unknown.Count > 0) Log("unknown weapons in kill switch ignored", new { a.MatchId, unknown });
+        }
 
         var match = new Match(cfg);
         using var host = new UdpMatchHost(match, _o.Port);

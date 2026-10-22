@@ -34,6 +34,8 @@ import {
 } from './store/store.controller';
 import { StoreService } from './store/store.service';
 import { WebhooksService } from './store/webhooks.service';
+import { MetricsService } from './telemetry/metrics.service';
+import { TelemetryController } from './telemetry/telemetry.controller';
 
 @Module({})
 export class AppModule {
@@ -66,6 +68,7 @@ export class AppModule {
         AdminPlayersController,
         AdminEconomyController,
         AdminOpsController,
+        TelemetryController,
       ],
       providers: [
         TokenService,
@@ -78,6 +81,7 @@ export class AppModule {
         JobsService,
         AdminAuthService,
         AdminGuard,
+        MetricsService,
         AuthGuard,
         RateLimitGuard,
         ServerSignatureGuard,

@@ -93,7 +93,32 @@ export class MatchmakingService {
   }
 
   /** Current state; tries to place a queued player. Called by clients every 1-2 s while queued. */
+  private lastSweep = 0;
+
+  /**
+   * Cancels FORMING matches whose assigned server never confirmed hosting (it died or lost the network) and puts
+   * their players back in the queue (risk 16). Cheap and idempotent; runs at most every 5 s per API instance.
+   */
+  async sweepUnhosted(force = false): Promise<number> {
+    if (!force && Date.now() - this.lastSweep < 5_000) return 0;
+    this.lastSweep = Date.now();
+    const rows = await this.db.query<{ id: string }>(
+      `WITH stale AS (
+         UPDATE matches SET status = 'CANCELLED', completion_reason = 'CANCELLED', ended_at = now()
+          WHERE status = 'FORMING' AND hosted_at IS NULL
+            AND created_at < now() - make_interval(secs => $1::int)
+          RETURNING id),
+       requeued AS (
+         UPDATE matchmaking_queue SET match_id = NULL, matched_at = NULL
+          WHERE match_id IN (SELECT id FROM stale) RETURNING user_id)
+       SELECT id FROM stale`,
+      [this.config.UNHOSTED_MATCH_TIMEOUT_SECONDS],
+    );
+    return rows.length;
+  }
+
   async status(userId: string): Promise<QueueStatus> {
+    await this.sweepUnhosted();
     await this.tryAssign(userId);
     const row = await this.db.one<QueueRow & { status: string | null; hosted_at: Date | null }>(
       `SELECT q.*, m.status, m.hosted_at FROM matchmaking_queue q LEFT JOIN matches m ON m.id = q.match_id
@@ -152,10 +177,10 @@ export class MatchmakingService {
 
       const matchId = (await this.findFormingMatch(c, q)) ?? (await this.createMatch(c, q));
       if (!matchId) return; // no server free: stay queued
-      await c.query('INSERT INTO match_participants (match_id, user_id) VALUES ($1, $2)', [
-        matchId,
-        userId,
-      ]);
+      await c.query(
+        'INSERT INTO match_participants (match_id, user_id, enqueued_at) VALUES ($1, $2, $3)',
+        [matchId, userId, q.enqueued_at],
+      );
       await c.query(
         'UPDATE matchmaking_queue SET match_id = $2, matched_at = now() WHERE user_id = $1',
         [userId, matchId],

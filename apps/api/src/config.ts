@@ -48,6 +48,11 @@ const schema = z.object({
   /** AES-256-GCM key for admin TOTP secrets, hex. */
   ADMIN_TOTP_KEY_HEX: z.string().regex(/^[0-9a-fA-F]{64}$/, '32 bytes of hex'),
   ADMIN_SESSION_HOURS: z.coerce.number().int().min(1).max(24).default(8),
+  // ---- Phase 6 ----
+  /** FORMING matches the assigned server never confirmed are cancelled and their players requeued after this. */
+  UNHOSTED_MATCH_TIMEOUT_SECONDS: z.coerce.number().int().min(10).max(600).default(45),
+  /** Raw client telemetry is deleted after this many days. */
+  TELEMETRY_RETENTION_DAYS: z.coerce.number().int().min(7).max(400).default(90),
   RATE_LIMIT_ENABLED: bool.default('true'),
   LOG_REQUESTS: bool.default('true'),
   TRUST_PROXY: bool.default('false'),

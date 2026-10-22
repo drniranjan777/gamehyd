@@ -18,7 +18,8 @@ namespace RWBR.Client.Menu
     {
         public const string PracticeScene = "Greybox";
         public const string OnlineScene = "Online";
-        private const float VirtualHeight = 720f;
+        private const float BaseHeight = 720f;
+        private static float VirtualHeight => BaseHeight / GameSettings.UiScale;
         private static readonly string[] Slots = { "WEAPON_SKIN", "OUTFIT", "EMOTE", "PARACHUTE", "BANNER" };
 
         private enum Screen
@@ -29,6 +30,7 @@ namespace RWBR.Client.Menu
             Store,
             Account,
             Settings,
+            Accessibility,
         }
 
         private Screen _screen;
@@ -227,6 +229,7 @@ namespace RWBR.Client.Menu
                 case Screen.Store: DrawStore(); break;
                 case Screen.Account: DrawAccount(); break;
                 case Screen.Settings: DrawSettings(); break;
+                case Screen.Accessibility: DrawAccessibility(); break;
             }
             if (_status != null) GUI.Label(new Rect(40, VirtualHeight - 60, 460, 50), _status, _small);
         }
@@ -313,6 +316,21 @@ namespace RWBR.Client.Menu
                 GUI.Label(new Rect(r.x + 24, y + 10, r.width - 48, 50), "Cosmetics never change weapon stats. Get more in the Store.", _small);
             }
             Back();
+        }
+
+        private void DrawAccessibility()
+        {
+            float y = 170;
+            GUI.Label(new Rect(40, y, 440, 30), $"Interface size {GameSettings.UiScale:0.0}×", _label);
+            float scale = GUI.HorizontalSlider(new Rect(40, y += 36, 440, 20), GameSettings.UiScale, GameSettings.MinUiScale, GameSettings.MaxUiScale);
+            scale = Mathf.Round(scale * 10f) / 10f;
+            bool cues = GUI.Toggle(new Rect(40, y += 40, 440, 30), GameSettings.VisualSoundCues, " Show gunshot directions on screen", _label);
+            GUI.Label(new Rect(64, y += 30, 420, 50), "Arrows around the crosshair point to shots you would hear.", _small);
+            bool calm = GUI.Toggle(new Rect(40, y += 56, 440, 30), GameSettings.ReduceFlashing, " Reduce flashing", _label);
+            GUI.Label(new Rect(64, y += 30, 420, 50), "Turns off the red screen flash when you take damage.", _small);
+            if (!Mathf.Approximately(scale, GameSettings.UiScale) || cues != GameSettings.VisualSoundCues || calm != GameSettings.ReduceFlashing)
+                GameSettings.SetAccessibility(scale, cues, calm);
+            if (GUI.Button(new Rect(40, VirtualHeight - 120, 200, 46), "Back", _button)) _screen = Screen.Settings;
         }
 
         private void DrawStore()
@@ -402,6 +420,7 @@ namespace RWBR.Client.Menu
             float ui = GUI.HorizontalSlider(new Rect(340, y, 140, 20), GameSettings.UiVolume, 0, 1);
             if (!Mathf.Approximately(m, GameSettings.MasterVolume) || !Mathf.Approximately(fx, GameSettings.SfxVolume) || !Mathf.Approximately(ui, GameSettings.UiVolume))
                 GameSettings.SetVolumes(m, fx, ui);
+            if (GUI.Button(new Rect(40, y + 40, 440, 46), "Accessibility", _button)) _screen = Screen.Accessibility;
             if (GUI.Button(new Rect(260, VirtualHeight - 120, 220, 46), "Account & data", _button))
             {
                 Save("rwbr.name", _name);

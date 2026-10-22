@@ -91,6 +91,8 @@ namespace RWBR.Client.Online
         public bool LastHitWasKill { get; private set; }
         public float LastDamagedTime { get; private set; } = -10f;
         public int Reconnects { get; private set; }
+        /// <summary>Platform match id when joined through Quick play (null for direct connects).</summary>
+        public string MatchId { get; private set; }
         public List<FeedEntry> Feed { get; } = new List<FeedEntry>();
         public OnlineViews Views => _views;
 
@@ -188,6 +190,7 @@ namespace RWBR.Client.Online
                 if (Platform != api) return;
 
                 QuickPlayStatus = $"Joining {status.seat.server}…";
+                MatchId = status.seat.matchId;
                 ConnectTo(status.seat.server, Convert.FromBase64String(status.seat.ticket), Convert.FromBase64String(status.seat.sessionKey));
             }
             catch (ApiException e)
@@ -273,6 +276,7 @@ namespace RWBR.Client.Online
             {
                 _lastReconnectAttempt = now;
                 Reconnects++;
+                RWBR.Client.Diagnostics.Telemetry.Disconnect("silence", MatchId);
                 Net.Reconnect();
             }
 

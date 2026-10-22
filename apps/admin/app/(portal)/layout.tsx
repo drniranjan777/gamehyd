@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic';
 /** Navigation shows only what the admin's roles allow; the API enforces the same permissions. */
 const NAV: { href: string; label: string; permission?: string }[] = [
   { href: '/', label: 'Overview' },
+  { href: '/metrics', label: 'Beta metrics', permission: 'metrics.read' },
   { href: '/players', label: 'Players', permission: 'players.read' },
   { href: '/reports', label: 'Reports', permission: 'reports.read' },
   { href: '/matches', label: 'Matches', permission: 'matches.read' },

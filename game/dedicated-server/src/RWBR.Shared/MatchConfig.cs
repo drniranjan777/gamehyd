@@ -52,6 +52,35 @@ namespace RWBR.Shared
         public MapLayout Map { get; set; } = MapLayout.GreyboxBlock(100f);
         /// <summary>Prototype loadout: players spawn armed until the drop/loot design is signed off (Appendix A).</summary>
         public bool StartWithWeapon { get; set; } = true;
+
+        /// <summary>Weapons switched off by the live-ops kill switch: no loot of them spawns and nobody starts with one.</summary>
+        public HashSet<int> DisabledWeapons { get; } = new HashSet<int>();
+
+        /// <summary>Disables weapons by catalog id; unknown ids are returned and ignored. Picks another starting weapon if needed.</summary>
+        public List<string> DisableWeapons(IEnumerable<string> ids)
+        {
+            var unknown = new List<string>();
+            foreach (string id in ids)
+            {
+                int index = WeaponCatalog.IndexOf(id);
+                if (index < 0) unknown.Add(id);
+                else DisabledWeapons.Add(index);
+            }
+            if (StartWithWeapon && DisabledWeapons.Contains(StartingWeaponIndex))
+            {
+                int[] preference = { WeaponCatalog.Rifle, WeaponCatalog.Smg, WeaponCatalog.Pistol, WeaponCatalog.Marksman, WeaponCatalog.Shotgun, WeaponCatalog.Sniper };
+                int next = -1;
+                foreach (int w in preference)
+                    if (!DisabledWeapons.Contains(w)) { next = w; break; }
+                if (next < 0) StartWithWeapon = false;
+                else
+                {
+                    StartingWeaponIndex = next;
+                    Weapon = WeaponCatalog.Get(next);
+                }
+            }
+            return unknown;
+        }
         public int StartingReserveAmmo { get; set; } = 90;
         /// <summary>Send a snapshot every N ticks (1 = every tick). Clients interpolate between them.</summary>
         public int SnapshotEveryTicks { get; set; } = 1;

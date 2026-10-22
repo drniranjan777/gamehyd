@@ -2833,6 +2833,95 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/telemetry/events': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * @description Batched client events for the beta KPIs. Works without sign-in (crashes before sign-in still count); a valid
+     *     bearer token attaches the account. Events older than 7 days are dropped and future timestamps clamped.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['TelemetryBatch'];
+        };
+      };
+      responses: {
+        /** @description Stored */
+        202: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              accepted: number;
+              dropped: number;
+            };
+          };
+        };
+        422: components['responses']['Error'];
+        429: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/metrics': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Needs `metrics.read`. Beta KPIs and the BRD §14 release gates over the last `days` days. */
+    get: {
+      parameters: {
+        query?: {
+          days?: number;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description KPIs */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Metrics'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3068,6 +3157,8 @@ export interface components {
         capacity: number;
         minPlayers: number;
         fillWaitSeconds: number;
+        /** @description Weapon catalog ids switched off by live ops; no loot of them spawns in this match. */
+        disabledWeapons: string[];
       };
     };
     ResultSubmission: {
@@ -3564,6 +3655,8 @@ export interface components {
       unmatchedPurchaseEvents: number;
       accountsDeleted: number;
       suspensionsLifted: number;
+      unhostedMatchesCancelled: number;
+      telemetryEventsPurged: number;
     };
     AuditPage: {
       items: {
@@ -3617,6 +3710,86 @@ export interface components {
     };
     AdminEventList: {
       items: components['schemas']['AdminEvent'][];
+    };
+    TelemetryEvent: {
+      /** @enum {unknown} */
+      type: 'SESSION_START' | 'SESSION_END' | 'CRASH' | 'FPS_SAMPLE' | 'DISCONNECT';
+      /** Format: date-time */
+      at: string;
+      /**
+       * @description SESSION_START {os?, quality?}; SESSION_END {durationSeconds}; CRASH {message, where?, stack?};
+       *     FPS_SAMPLE {avgFps, p5Fps, seconds, scene?, quality?}; DISCONNECT {reason, matchId?, reconnected?}.
+       */
+      data: Record<string, never>;
+    };
+    TelemetryBatch: {
+      /** Format: uuid */
+      sessionId: string;
+      appVersion: string;
+      /** @enum {unknown} */
+      platform: 'ANDROID' | 'IOS' | 'WINDOWS' | 'MACOS' | 'LINUX' | 'EDITOR';
+      deviceModel: string;
+      events: components['schemas']['TelemetryEvent'][];
+    };
+    Rate: number | null;
+    Retention: {
+      cohort: number;
+      retained: number;
+      rate: components['schemas']['Rate'];
+    };
+    Metrics: {
+      days: number;
+      /** Format: date-time */
+      generatedAt: string;
+      sessions: {
+        total: number;
+        crashed: number;
+        crashFreeRate: components['schemas']['Rate'];
+      };
+      fpsByDevice: {
+        platform: string;
+        deviceModel: string;
+        samples: number;
+        avgFps: number;
+        p5Fps: number;
+      }[];
+      matches: {
+        hosted: number;
+        completed: number;
+        completionRate: components['schemas']['Rate'];
+      };
+      disconnects: {
+        total: number;
+        reconnected: number;
+        per100Participations: number | null;
+      };
+      queueSeconds: {
+        samples: number;
+        p50: number | null;
+        p95: number | null;
+      };
+      retention: {
+        d1: components['schemas']['Retention'];
+        d7: components['schemas']['Retention'];
+      };
+      economy: {
+        activePlayers: number;
+        payers: number;
+        payerConversion: components['schemas']['Rate'];
+        inGameSpenders: number;
+      };
+      purchaseIntegrity: {
+        duplicateTransactions: number;
+        paidOrdersWithoutPayment: number;
+        walletsWithLedgerDrift: number;
+      };
+      releaseGates: {
+        key: string;
+        target: string;
+        value: number | null;
+        /** @enum {unknown} */
+        status: 'PASS' | 'FAIL' | 'NO_DATA' | 'MANUAL';
+      }[];
     };
   };
   responses: {
