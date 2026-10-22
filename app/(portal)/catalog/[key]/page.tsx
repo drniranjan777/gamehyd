@@ -3,7 +3,7 @@ import { ActionForm } from '../../../../components/ActionForm';
 import { ProductFields } from '../../../../components/ProductFields';
 import { productTransition, updateProduct } from '../../../../lib/actions';
 import { api, can, me, qs, type Schemas } from '../../../../lib/api';
-import { money, when } from '../../../../lib/format';
+import { grantText, money, when } from '../../../../lib/format';
 
 export default async function ProductPage({ params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
@@ -42,11 +42,7 @@ export default async function ProductPage({ params }: { params: Promise<{ key: s
             <dt>Price</dt>
             <dd>{money(p.price)}</dd>
             <dt>Grants</dt>
-            <dd>
-              {p.grants
-                .map((g) => (g.type === 'COSMETIC' ? g.cosmeticKey : `${g.amount} ${g.currency}`))
-                .join(', ')}
-            </dd>
+            <dd>{p.grants.map(grantText).join(', ')}</dd>
             <dt>Store ids</dt>
             <dd className="mono">
               {Object.entries(p.skus)

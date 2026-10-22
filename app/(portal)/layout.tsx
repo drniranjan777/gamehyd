@@ -9,6 +9,10 @@ export const dynamic = 'force-dynamic';
 const NAV: { href: string; label: string; permission?: string }[] = [
   { href: '/', label: 'Overview' },
   { href: '/metrics', label: 'Beta metrics', permission: 'metrics.read' },
+  { href: '/ops', label: 'Operations', permission: 'ops.read' },
+  { href: '/releases', label: 'Releases', permission: 'ops.read' },
+  { href: '/economy', label: 'Economy', permission: 'economy.read' },
+  { href: '/seasons', label: 'Seasons', permission: 'catalog.read' },
   { href: '/players', label: 'Players', permission: 'players.read' },
   { href: '/reports', label: 'Reports', permission: 'reports.read' },
   { href: '/matches', label: 'Matches', permission: 'matches.read' },
