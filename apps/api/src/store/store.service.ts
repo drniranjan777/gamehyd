@@ -29,8 +29,10 @@ interface ProductRow {
 
 interface GrantRow {
   id: string;
-  grant_type: 'COSMETIC' | 'CURRENCY';
+  grant_type: 'COSMETIC' | 'CURRENCY' | 'SEASON_PASS';
   cosmetic_id: string | null;
+  season_id: string | null;
+  season_key: string | null;
   cosmetic_key: string | null;
   cosmetic_kind: string | null;
   currency_code: 'COIN' | 'GEM' | null;
@@ -124,10 +126,13 @@ export class StoreService {
     if (!config.storeEnabled) return { storeEnabled: false, items: [] };
     const products = await this.db.query<ProductRow & { owned: boolean }>(
       `SELECT p.id, p.key, p.display_name, p.description, p.price_currency, p.price_minor,
-              (EXISTS (SELECT 1 FROM store_product_grants g WHERE g.product_id = p.id AND g.grant_type = 'COSMETIC')
+              (EXISTS (SELECT 1 FROM store_product_grants g WHERE g.product_id = p.id AND g.grant_type <> 'CURRENCY')
                AND NOT EXISTS (SELECT 1 FROM store_product_grants g
-                                WHERE g.product_id = p.id AND (g.grant_type = 'CURRENCY' OR NOT EXISTS (
-                                  SELECT 1 FROM player_inventory i WHERE i.user_id = $1 AND i.cosmetic_id = g.cosmetic_id))))
+                                WHERE g.product_id = p.id AND (g.grant_type = 'CURRENCY'
+                                  OR (g.grant_type = 'COSMETIC' AND NOT EXISTS (
+                                    SELECT 1 FROM player_inventory i WHERE i.user_id = $1 AND i.cosmetic_id = g.cosmetic_id))
+                                  OR (g.grant_type = 'SEASON_PASS' AND NOT EXISTS (
+                                    SELECT 1 FROM season_progress sp WHERE sp.user_id = $1 AND sp.season_id = g.season_id AND sp.premium)))))
                 AS owned
          FROM store_products p
         WHERE ${AVAILABLE} AND NOT (p.key = ANY($2))
@@ -137,8 +142,8 @@ export class StoreService {
     const ids = products.map((p) => p.id);
     const grants = await this.db.query<GrantRow & { product_id: string }>(
       `SELECT g.product_id, g.id, g.grant_type, g.cosmetic_id, c.key AS cosmetic_key, c.kind AS cosmetic_kind,
-              g.currency_code, g.amount
-         FROM store_product_grants g LEFT JOIN cosmetics c ON c.id = g.cosmetic_id
+              g.currency_code, g.amount, g.season_id, se.key AS season_key
+         FROM store_product_grants g LEFT JOIN cosmetics c ON c.id = g.cosmetic_id LEFT JOIN seasons se ON se.id = g.season_id
         WHERE g.product_id = ANY($1) ORDER BY g.grant_type, c.key`,
       [ids],
     );
@@ -337,6 +342,8 @@ export class StoreService {
              ON CONFLICT (user_id, slot) DO NOTHING`,
             [o.user_id, g.cosmetic_kind],
           );
+        } else if (g.grant_type === 'SEASON_PASS') {
+          shortfall += await this.revokeSeasonPass(c, o.user_id, g.season_id!, o.id);
         } else {
           const amount = Number(g.amount);
           const taken = await debit(
@@ -480,6 +487,13 @@ export class StoreService {
            VALUES ($1, $2, 'PURCHASE', $3) ON CONFLICT (user_id, cosmetic_id) DO NOTHING`,
           [o.user_id, g.cosmetic_id, `order:${o.id}`],
         );
+      } else if (g.grant_type === 'SEASON_PASS') {
+        await c.query(
+          `INSERT INTO season_progress (season_id, user_id, premium, premium_order_id) VALUES ($1, $2, true, $3)
+           ON CONFLICT (season_id, user_id) DO UPDATE
+             SET premium = true, premium_order_id = COALESCE(season_progress.premium_order_id, EXCLUDED.premium_order_id)`,
+          [g.season_id, o.user_id, o.id],
+        );
       } else {
         await credit(
           c,
@@ -555,16 +569,27 @@ export class StoreService {
   }
 
   private grantsOf(productId: string, q: Db | PoolClient = this.db): Promise<GrantRow[]> {
-    const sql = `SELECT g.id, g.grant_type, g.cosmetic_id, c.key AS cosmetic_key, c.kind AS cosmetic_kind, g.currency_code, g.amount
-                   FROM store_product_grants g LEFT JOIN cosmetics c ON c.id = g.cosmetic_id WHERE g.product_id = $1`;
+    const sql = `SELECT g.id, g.grant_type, g.cosmetic_id, c.key AS cosmetic_key, c.kind AS cosmetic_kind, g.currency_code, g.amount, g.season_id, se.key AS season_key
+                   FROM store_product_grants g LEFT JOIN cosmetics c ON c.id = g.cosmetic_id LEFT JOIN seasons se ON se.id = g.season_id WHERE g.product_id = $1`;
     return q instanceof Db
       ? q.query<GrantRow>(sql, [productId])
       : q.query<GrantRow>(sql, [productId]).then((r) => r.rows);
   }
 
-  /** True when every grant is a cosmetic the player already has (a currency pack can always be bought again). */
-  private async ownsAll(q: Db | PoolClient, userId: string, grants: GrantRow[]): Promise<boolean> {
-    if (grants.length === 0 || grants.some((g) => g.grant_type !== 'COSMETIC')) return false;
+  /** True when the player already has everything the product grants (a currency pack can always be bought again). */
+  private async ownsAll(q: Db | PoolClient, userId: string, all: GrantRow[]): Promise<boolean> {
+    let grants = all;
+    if (grants.length === 0 || grants.some((g) => g.grant_type === 'CURRENCY')) return false;
+    for (const pass of grants.filter((g) => g.grant_type === 'SEASON_PASS')) {
+      const sql = 'SELECT premium FROM season_progress WHERE user_id = $1 AND season_id = $2';
+      const row =
+        q instanceof Db
+          ? await q.one<{ premium: boolean }>(sql, [userId, pass.season_id])
+          : (await q.query<{ premium: boolean }>(sql, [userId, pass.season_id])).rows[0];
+      if (!row?.premium) return false;
+    }
+    grants = grants.filter((g) => g.grant_type === 'COSMETIC');
+    if (grants.length === 0) return true;
     const sql =
       'SELECT count(*)::int AS n FROM player_inventory WHERE user_id = $1 AND cosmetic_id = ANY($2)';
     const params = [userId, grants.map((g) => g.cosmetic_id)];
@@ -573,6 +598,41 @@ export class StoreService {
         ? (await q.one<{ n: number }>(sql, params))!.n
         : (await q.query<{ n: number }>(sql, params)).rows[0]!.n;
     return n === grants.length;
+  }
+
+  /**
+   * Refunding a season pass removes premium access and what was claimed with it: premium cosmetics are revoked and
+   * premium currency is clawed back (any amount already spent is returned as shortfall). Claims stay recorded.
+   */
+  private async revokeSeasonPass(
+    c: PoolClient,
+    userId: string,
+    seasonId: string,
+    orderId: string,
+  ): Promise<number> {
+    await c.query(
+      `UPDATE season_progress SET premium = false WHERE season_id = $1 AND user_id = $2 AND premium_order_id = $3`,
+      [seasonId, userId, orderId],
+    );
+    await c.query(
+      `DELETE FROM player_inventory WHERE user_id = $1 AND source = 'SEASON_REWARD' AND source_reference LIKE $2`,
+      [userId, `season:${seasonId}:%:PREMIUM`],
+    );
+    const { rows } = await c.query<{ tier: number; currency_code: 'COIN' | 'GEM'; amount: string }>(
+      `SELECT cl.tier, r.currency_code, r.amount FROM season_claims cl
+         JOIN season_rewards r ON r.season_id = cl.season_id AND r.tier = cl.tier AND r.track = cl.track
+        WHERE cl.season_id = $1 AND cl.user_id = $2 AND cl.track = 'PREMIUM' AND r.currency_code IS NOT NULL`,
+      [seasonId, userId],
+    );
+    let shortfall = 0;
+    for (const r of rows) {
+      const ref = `season:${seasonId}:${r.tier}:PREMIUM`;
+      const amount = Number(r.amount);
+      shortfall +=
+        amount -
+        (await debit(c, userId, r.currency_code, amount, 'REFUND', ref, `${ref}:refund`, true));
+    }
+    return shortfall;
   }
 
   private async skuFor(
@@ -596,7 +656,9 @@ export class StoreService {
 }
 
 function grantView(g: GrantRow) {
-  return g.grant_type === 'COSMETIC'
-    ? { type: 'COSMETIC' as const, cosmeticKey: g.cosmetic_key!, kind: g.cosmetic_kind! }
-    : { type: 'CURRENCY' as const, currency: g.currency_code!, amount: Number(g.amount) };
+  if (g.grant_type === 'COSMETIC')
+    return { type: 'COSMETIC' as const, cosmeticKey: g.cosmetic_key!, kind: g.cosmetic_kind! };
+  if (g.grant_type === 'SEASON_PASS')
+    return { type: 'SEASON_PASS' as const, seasonKey: g.season_key! };
+  return { type: 'CURRENCY' as const, currency: g.currency_code!, amount: Number(g.amount) };
 }

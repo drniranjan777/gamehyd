@@ -35,6 +35,8 @@ public sealed class UdpMatchHost : IDisposable
     private readonly Match _match;
     private readonly Socket _socket;
     private readonly ConcurrentQueue<(IPEndPoint From, byte[] Data)> _inbox = new();
+    private readonly double[] _recentTicks = new double[300]; // ~10 s at 30 Hz, for live tick health
+    private int _recentCount, _recentNext;
 
     public UdpMatchHost(Match match, int port)
     {
@@ -90,6 +92,20 @@ public sealed class UdpMatchHost : IDisposable
         }
     }
 
+    /// <summary>99th-percentile tick time over the last ~10 s (null before the first tick). Thread-safe.</summary>
+    public double? RecentTickMsP99()
+    {
+        double[] copy;
+        lock (_recentTicks)
+        {
+            if (_recentCount == 0) return null;
+            copy = new double[_recentCount];
+            Array.Copy(_recentTicks, copy, _recentCount);
+        }
+        Array.Sort(copy);
+        return Math.Round(copy[Math.Min(copy.Length - 1, (int)(copy.Length * 0.99))], 3);
+    }
+
     private HostReport TickLoop(CancellationToken ct)
     {
         using var timer = HighResolutionTimer.Begin();
@@ -123,7 +139,14 @@ public sealed class UdpMatchHost : IDisposable
                 catch (SocketException) { }
             }
             _match.Outbox.Clear();
-            tickMs.Add(Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+            double ms = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+            tickMs.Add(ms);
+            lock (_recentTicks)
+            {
+                _recentTicks[_recentNext] = ms;
+                _recentNext = (_recentNext + 1) % _recentTicks.Length;
+                _recentCount = Math.Min(_recentCount + 1, _recentTicks.Length);
+            }
         }
 
         tickMs.Sort();

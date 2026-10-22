@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { accessLog } from './common/access-log.middleware';
+import { LatencyRecorder } from './ops/latency.recorder';
 import { ErrorEnvelopeFilter } from './common/error-envelope.filter';
 import { requestId } from './common/request-id.middleware';
 import type { AppConfig } from './config';
@@ -29,6 +30,12 @@ export function configureApp(
   if (config?.TRUST_PROXY) (app as NestExpressApplication).set('trust proxy', 1);
   (app as NestExpressApplication).disable('x-powered-by');
   app.use(securityHeaders);
+  // Latency histograms per route for the ops dashboard (absent in unit setups without the full module).
+  try {
+    app.use(app.get(LatencyRecorder).middleware);
+  } catch {
+    // LatencyRecorder not provided
+  }
   app.use(requestId);
   app.use(accessLog(config?.LOG_REQUESTS ?? false));
   app.useGlobalFilters(new ErrorEnvelopeFilter());

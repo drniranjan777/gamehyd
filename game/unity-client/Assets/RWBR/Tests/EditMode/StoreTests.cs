@@ -38,6 +38,22 @@ namespace RWBR.Tests
         }
 
         [Test]
+        public void Reads_the_season_pass_and_the_gap_between_seasons()
+        {
+            const string json = "{\"season\":{\"key\":\"monsoon-1\",\"title\":\"Monsoon\",\"startsAt\":\"2026-10-01T00:00:00.000Z\"," +
+                                "\"endsAt\":\"2026-11-01T00:00:00.000Z\",\"xpPerTier\":100,\"maxTier\":2,\"premiumProductKey\":\"season_pass_monsoon\"}," +
+                                "\"progress\":{\"xp\":150,\"tier\":1,\"premium\":false,\"xpToNextTier\":50}," +
+                                "\"rewards\":[{\"tier\":1,\"track\":\"FREE\",\"reward\":{\"type\":\"CURRENCY\",\"currency\":\"COIN\",\"amount\":50},\"unlocked\":true,\"claimed\":false}," +
+                                "{\"tier\":1,\"track\":\"PREMIUM\",\"reward\":{\"type\":\"COSMETIC\",\"cosmeticKey\":\"skin_rifle_neon_01\"},\"unlocked\":false,\"claimed\":false}]}";
+            SeasonPassDto pass = JsonUtility.FromJson<SeasonPassDto>(json);
+            Assert.IsTrue(pass.Active);
+            Assert.AreEqual(1, pass.progress.tier);
+            Assert.AreEqual(50, pass.rewards[0].reward.amount);
+            Assert.AreEqual("skin_rifle_neon_01", pass.rewards[1].reward.cosmeticKey);
+            Assert.IsFalse(JsonUtility.FromJson<SeasonPassDto>("{\"season\":null}").Active);
+        }
+
+        [Test]
         public void Real_money_products_need_a_store_in_this_build()
         {
             var flow = new StoreFlow(new PlatformApi("http://127.0.0.1:1/api/v1"), null);

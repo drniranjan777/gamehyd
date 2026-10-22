@@ -262,3 +262,71 @@ export async function disableAdmin(
     api(`/admin/admins/${adminId}/disable`, 'POST', { reason: text(d, 'reason') }),
   );
 }
+
+// ---- Releases and seasons (Phase 7) ----
+
+export async function createRelease(_: ActionState, d: FormData): Promise<ActionState> {
+  return run('/releases', 'Rollout recorded', () =>
+    api('/admin/releases', 'POST', {
+      platform: text(d, 'platform'),
+      appVersion: text(d, 'appVersion'),
+      rolloutPercent: Number(text(d, 'rolloutPercent')),
+      regions: text(d, 'regions')
+        .split(/[\s,]+/)
+        .filter(Boolean)
+        .map((r) => r.toUpperCase()),
+      minCrashFree: Number(text(d, 'minCrashFree') || '99.5') / 100,
+      minSessions: Number(text(d, 'minSessions') || '500'),
+    }),
+  );
+}
+
+export async function updateRelease(id: string, _: ActionState, d: FormData): Promise<ActionState> {
+  return run('/releases', 'Release updated', () =>
+    api(`/admin/releases/${id}`, 'PATCH', {
+      status: optional(d, 'status'),
+      rolloutPercent: optional(d, 'rolloutPercent') ? Number(text(d, 'rolloutPercent')) : undefined,
+      reason: text(d, 'reason'),
+    }),
+  );
+}
+
+/** Reward lines: "<tier> FREE|PREMIUM COSMETIC <key>" or "<tier> FREE|PREMIUM COIN|GEM <amount>". */
+function parseRewards(src: string) {
+  return src
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [tier, track, kind, value] = line.split(/\s+/);
+      if (!tier || !track || !kind || !value) throw new Error(`Cannot read reward line "${line}"`);
+      const reward =
+        kind.toUpperCase() === 'COSMETIC'
+          ? { type: 'COSMETIC', cosmeticKey: value }
+          : { type: 'CURRENCY', currency: kind.toUpperCase(), amount: Number(value) };
+      return { tier: Number(tier), track: track.toUpperCase(), reward };
+    });
+}
+
+export async function saveSeason(_: ActionState, d: FormData): Promise<ActionState> {
+  let rewards;
+  try {
+    rewards = parseRewards(text(d, 'rewards'));
+  } catch (err) {
+    return { error: (err as Error).message };
+  }
+  return run('/seasons', 'Draft season saved', () =>
+    api('/admin/seasons', 'POST', {
+      key: text(d, 'key'),
+      title: text(d, 'title'),
+      xpPerTier: Number(text(d, 'xpPerTier')),
+      startsAt: utc(d, 'startsAt'),
+      endsAt: utc(d, 'endsAt'),
+      rewards,
+    }),
+  );
+}
+
+export async function publishSeason(key: string): Promise<ActionState> {
+  return run('/seasons', 'Season published', () => api(`/admin/seasons/${key}/publish`, 'POST'));
+}

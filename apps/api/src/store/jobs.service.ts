@@ -3,6 +3,8 @@ import { APP_CONFIG, AppConfig } from '../config';
 import { Db } from '../database/database.module';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
 import { MetricsService } from '../telemetry/metrics.service';
+import { OpsService } from '../ops/ops.service';
+import { ReleasesService } from '../ops/releases.service';
 import { StoreService } from './store.service';
 
 export interface ReconcileReport {
@@ -13,6 +15,8 @@ export interface ReconcileReport {
   suspensionsLifted: number;
   unhostedMatchesCancelled: number;
   telemetryEventsPurged: number;
+  releasesHalted: number;
+  opsSamplesPurged: number;
 }
 
 /**
@@ -31,6 +35,8 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
     private readonly store: StoreService,
     private readonly matchmaking: MatchmakingService,
     private readonly metrics: MetricsService,
+    private readonly ops: OpsService,
+    private readonly releases: ReleasesService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -70,6 +76,8 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
         telemetryEventsPurged: await this.metrics.purgeTelemetry(
           this.config.TELEMETRY_RETENTION_DAYS,
         ),
+        releasesHalted: await this.releases.evaluate(),
+        opsSamplesPurged: await this.ops.purge(this.config.OPS_RETENTION_DAYS),
         cancelledPendingOrders,
         walletsWithLedgerDrift: drift!.n,
         unmatchedPurchaseEvents: unmatched!.n,

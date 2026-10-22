@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Text.Json;
 using RWBR.MatchServer.Platform;
@@ -55,5 +56,35 @@ public class KillSwitchTests
         Assert.Equal(new[] { "longshot_sr" }, hb.Assignment!.DisabledWeapons);
         var old = JsonSerializer.Deserialize<HeartbeatResponse>(json.Replace(",\"disabledWeapons\":[\"longshot_sr\"]", ""), PlatformClient.Json)!;
         Assert.Null(old.Assignment!.DisabledWeapons);
+    }
+}
+
+/// <summary>Phase 7: live tick health in heartbeats.</summary>
+public class TickHealthTests
+{
+    [Fact]
+    public void Heartbeats_carry_the_recent_tick_p99_as_camel_case_json()
+    {
+        var hb = new HeartbeatRequest("127.0.0.1:7777", "IN-SOUTH", "t", new[] { "hyd-city-v1" }, "HOSTING", Guid.NewGuid(), "ACTIVE", 12, 4.25);
+        string json = JsonSerializer.Serialize(hb, PlatformClient.Json);
+        Assert.Contains("\"tickMsP99\":4.25", json);
+        Assert.Contains("\"connectedPlayers\":12", json);
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task Host_reports_tick_p99_while_running()
+    {
+        var cfg = MatchConfig.Fast(2);
+        var match = new Match(cfg);
+        using var host = new UdpMatchHost(match, 0);
+        Assert.Null(host.RecentTickMsP99());
+        using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(1));
+        var run = host.RunAsync(cts.Token);
+        await System.Threading.Tasks.Task.Delay(400);
+        double? p99 = host.RecentTickMsP99();
+        Assert.NotNull(p99);
+        Assert.InRange(p99!.Value, 0, 50);
+        cts.Cancel();
+        try { await run; } catch (OperationCanceledException) { }
     }
 }

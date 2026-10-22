@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Real-World Battle Royale Platform API
-  version: 0.6.0
+  version: 0.7.0
   description: |
     Player-facing and game-server-facing API (BRD v1.2 §10). Source of truth for request/response shapes:
     TypeScript types are generated from this file and every API test validates responses against it.
@@ -27,6 +27,7 @@ tags:
   - name: Public
   - name: Admin
   - name: Telemetry
+  - name: Seasons
 
 paths:
   /health:
@@ -1289,6 +1290,207 @@ paths:
         '403': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
 
+  /seasons/current:
+    get:
+      tags: [Seasons]
+      security: [{ bearer: [] }]
+      description: The running season, the player's progress and every reward with its state. `season` is null between seasons.
+      responses:
+        '200':
+          {
+            description: Season pass,
+            content: { application/json: { schema: { $ref: '#/components/schemas/SeasonPass' } } },
+          }
+        '401': { $ref: '#/components/responses/Error' }
+  /seasons/current/claim:
+    post:
+      tags: [Seasons]
+      security: [{ bearer: [] }]
+      description: Claims an unlocked reward (exactly once). Premium rewards need the season pass.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [tier, track]
+              properties:
+                tier: { type: integer, minimum: 1, maximum: 100 }
+                track: { enum: [FREE, PREMIUM] }
+      responses:
+        '200':
+          {
+            description: Updated season pass,
+            content: { application/json: { schema: { $ref: '#/components/schemas/SeasonPass' } } },
+          }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /admin/ops:
+    get:
+      tags: [Admin]
+      security: [{ admin: [] }]
+      description: Needs `ops.read`. API latency, match-server tick health, capacity and estimated cost over the last `hours`.
+      parameters:
+        - { name: hours, in: query, schema: { type: integer, minimum: 1, maximum: 720 } }
+      responses:
+        '200':
+          {
+            description: Operations dashboard,
+            content:
+              { application/json: { schema: { $ref: '#/components/schemas/OpsDashboard' } } },
+          }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /admin/economy:
+    get:
+      tags: [Admin]
+      security: [{ admin: [] }]
+      description: Needs `economy.read`. Currency sources and sinks, circulation, sales and season participation.
+      parameters:
+        - { name: days, in: query, schema: { type: integer, minimum: 1, maximum: 365 } }
+      responses:
+        '200':
+          {
+            description: Economy review,
+            content:
+              { application/json: { schema: { $ref: '#/components/schemas/EconomyReport' } } },
+          }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /admin/releases:
+    get:
+      tags: [Admin]
+      security: [{ admin: [] }]
+      responses:
+        '200':
+          description: Releases with health
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/AppRelease' } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Admin]
+      security: [{ admin: [] }]
+      description: Needs `releases.write`. Records a store rollout and its rollback threshold.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [platform, appVersion, rolloutPercent]
+              properties:
+                platform: { enum: [ANDROID, IOS] }
+                appVersion: { type: string }
+                rolloutPercent: { type: integer, minimum: 1, maximum: 100 }
+                regions: { type: array, items: { type: string } }
+                minCrashFree: { type: number, minimum: 0.9, maximum: 1 }
+                minSessions: { type: integer, minimum: 10 }
+      responses:
+        '201':
+          {
+            description: Recorded,
+            content: { application/json: { schema: { $ref: '#/components/schemas/AppRelease' } } },
+          }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /admin/releases/{releaseId}:
+    patch:
+      tags: [Admin]
+      security: [{ admin: [] }]
+      parameters:
+        - { name: releaseId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                rolloutPercent: { type: integer, minimum: 1, maximum: 100 }
+                status: { enum: [ROLLING_OUT, COMPLETE, ROLLED_BACK] }
+                reason: { $ref: '#/components/schemas/Reason' }
+      responses:
+        '200':
+          {
+            description: Updated,
+            content: { application/json: { schema: { $ref: '#/components/schemas/AppRelease' } } },
+          }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /admin/seasons:
+    get:
+      tags: [Admin]
+      security: [{ admin: [] }]
+      responses:
+        '200':
+          description: Seasons
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/AdminSeason' } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Admin]
+      security: [{ admin: [] }]
+      description: Needs `liveops.write`. Creates or replaces a DRAFT season and its reward track.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SeasonInput' } } }
+      responses:
+        '201':
+          {
+            description: Saved draft,
+            content: { application/json: { schema: { $ref: '#/components/schemas/AdminSeason' } } },
+          }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /admin/seasons/{key}/publish:
+    post:
+      tags: [Admin]
+      security: [{ admin: [] }]
+      description: Publishes a draft; its dates and rewards are then frozen. Published seasons may not overlap (409 SEASON_OVERLAP).
+      parameters:
+        - { name: key, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          {
+            description: Published,
+            content: { application/json: { schema: { $ref: '#/components/schemas/AdminSeason' } } },
+          }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
 components:
   securitySchemes:
     bearer:
@@ -1613,6 +1815,12 @@ components:
         matchId: { type: [string, 'null'], format: uuid }
         matchPhase: { enum: [WAITING, COUNTDOWN, ACTIVE, COMPLETED, null] }
         connectedPlayers: { type: integer, minimum: 0 }
+        tickMsP99:
+          {
+            type: [number, 'null'],
+            minimum: 0,
+            description: 99th-percentile tick time over the last ~10 s while hosting,
+          }
     HeartbeatResponse:
       type: object
       additionalProperties: false
@@ -1692,6 +1900,12 @@ components:
             type: { const: CURRENCY }
             currency: { enum: [COIN, GEM] }
             amount: { type: integer, minimum: 1 }
+        - type: object
+          additionalProperties: false
+          required: [type, seasonKey]
+          properties:
+            type: { const: SEASON_PASS }
+            seasonKey: { type: string }
     PlatformSkus:
       type: object
       additionalProperties: false
@@ -2380,6 +2594,8 @@ components:
           suspensionsLifted,
           unhostedMatchesCancelled,
           telemetryEventsPurged,
+          releasesHalted,
+          opsSamplesPurged,
         ]
       properties:
         cancelledPendingOrders: { type: integer }
@@ -2389,6 +2605,8 @@ components:
         suspensionsLifted: { type: integer }
         unhostedMatchesCancelled: { type: integer }
         telemetryEventsPurged: { type: integer }
+        releasesHalted: { type: integer }
+        opsSamplesPurged: { type: integer }
     AuditPage:
       type: object
       additionalProperties: false
@@ -2601,3 +2819,288 @@ components:
               target: { type: string }
               value: { type: [number, 'null'] }
               status: { enum: [PASS, FAIL, NO_DATA, MANUAL] }
+
+    # ---- Phase 7: live operations ----
+    SeasonReward:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [type, cosmeticKey]
+          properties:
+            type: { const: COSMETIC }
+            cosmeticKey: { type: string }
+        - type: object
+          additionalProperties: false
+          required: [type, currency, amount]
+          properties:
+            type: { const: CURRENCY }
+            currency: { enum: [COIN, GEM] }
+            amount: { type: integer, minimum: 1 }
+    SeasonPass:
+      type: object
+      additionalProperties: false
+      required: [season]
+      properties:
+        season:
+          oneOf:
+            - type: 'null'
+            - type: object
+              additionalProperties: false
+              required: [key, title, startsAt, endsAt, xpPerTier, maxTier, premiumProductKey]
+              properties:
+                key: { type: string }
+                title: { type: string }
+                startsAt: { type: string, format: date-time }
+                endsAt: { type: string, format: date-time }
+                xpPerTier: { type: integer }
+                maxTier: { type: integer }
+                premiumProductKey: { type: [string, 'null'] }
+        progress:
+          type: object
+          additionalProperties: false
+          required: [xp, tier, premium, xpToNextTier]
+          properties:
+            xp: { type: integer, minimum: 0 }
+            tier: { type: integer, minimum: 0 }
+            premium: { type: boolean }
+            xpToNextTier: { type: integer }
+        rewards:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [tier, track, reward, unlocked, claimed]
+            properties:
+              tier: { type: integer }
+              track: { enum: [FREE, PREMIUM] }
+              reward: { $ref: '#/components/schemas/SeasonReward' }
+              unlocked: { type: boolean }
+              claimed: { type: boolean }
+    SeasonInput:
+      type: object
+      additionalProperties: false
+      required: [key, title, startsAt, endsAt, xpPerTier, rewards]
+      properties:
+        key: { type: string, pattern: '^[a-z0-9_-]{3,40}$' }
+        title: { type: string, minLength: 1, maxLength: 80 }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        xpPerTier: { type: integer, minimum: 100, maximum: 100000 }
+        rewards:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [tier, track, reward]
+            properties:
+              tier: { type: integer, minimum: 1, maximum: 100 }
+              track: { enum: [FREE, PREMIUM] }
+              reward: { $ref: '#/components/schemas/SeasonReward' }
+    AdminSeason:
+      type: object
+      additionalProperties: false
+      required: [key, title, startsAt, endsAt, xpPerTier, status, createdBy, rewards]
+      properties:
+        key: { type: string }
+        title: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        xpPerTier: { type: integer }
+        status: { enum: [DRAFT, PUBLISHED] }
+        createdBy: { type: string }
+        rewards:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [tier, track, reward]
+            properties:
+              tier: { type: integer }
+              track: { enum: [FREE, PREMIUM] }
+              reward: { $ref: '#/components/schemas/SeasonReward' }
+    AppRelease:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          platform,
+          appVersion,
+          status,
+          rolloutPercent,
+          regions,
+          minCrashFree,
+          minSessions,
+          haltReason,
+          health,
+          createdBy,
+          updatedAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        platform: { enum: [ANDROID, IOS] }
+        appVersion: { type: string }
+        status: { enum: [ROLLING_OUT, HALTED, COMPLETE, ROLLED_BACK] }
+        rolloutPercent: { type: integer }
+        regions: { type: array, items: { type: string } }
+        minCrashFree: { type: number }
+        minSessions: { type: integer }
+        haltReason: { type: [string, 'null'] }
+        health:
+          type: object
+          additionalProperties: false
+          required: [sessions, crashed, crashFreeRate]
+          properties:
+            sessions: { type: integer }
+            crashed: { type: integer }
+            crashFreeRate: { $ref: '#/components/schemas/Rate' }
+        createdBy: { type: string }
+        updatedAt: { type: string, format: date-time }
+    LatencyStats:
+      type: object
+      required: [p50Ms, p95Ms, p99Ms]
+      properties:
+        p50Ms: { type: [number, 'null'] }
+        p95Ms: { type: [number, 'null'] }
+        p99Ms: { type: [number, 'null'] }
+    OpsDashboard:
+      type: object
+      additionalProperties: false
+      required: [hours, generatedAt, api, servers, capacity, cost]
+      properties:
+        hours: { type: integer }
+        generatedAt: { type: string, format: date-time }
+        api:
+          type: object
+          additionalProperties: false
+          required: [requests, serverErrorRate, p50Ms, p95Ms, p99Ms, routes]
+          properties:
+            requests: { type: integer }
+            serverErrorRate: { $ref: '#/components/schemas/Rate' }
+            p50Ms: { type: [number, 'null'] }
+            p95Ms: { type: [number, 'null'] }
+            p99Ms: { type: [number, 'null'] }
+            routes:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required: [route, requests, serverErrors, p50Ms, p95Ms, p99Ms]
+                properties:
+                  route: { type: string }
+                  requests: { type: integer }
+                  serverErrors: { type: integer }
+                  p50Ms: { type: [number, 'null'] }
+                  p95Ms: { type: [number, 'null'] }
+                  p99Ms: { type: [number, 'null'] }
+        servers:
+          type: object
+          additionalProperties: false
+          required:
+            [
+              distinctServers,
+              serverHours,
+              hostingShare,
+              tickBudgetMs,
+              tickP99Median,
+              tickP99Worst,
+              minutesOverBudget,
+            ]
+          properties:
+            distinctServers: { type: integer }
+            serverHours: { type: number }
+            hostingShare: { $ref: '#/components/schemas/Rate' }
+            tickBudgetMs: { type: number }
+            tickP99Median: { type: [number, 'null'] }
+            tickP99Worst: { type: [number, 'null'] }
+            minutesOverBudget: { type: integer }
+        capacity:
+          type: object
+          additionalProperties: false
+          required: [peakConcurrentPlayers, peakAt, averageConcurrentPlayers, playerHours]
+          properties:
+            peakConcurrentPlayers: { type: integer }
+            peakAt: { type: [string, 'null'], format: date-time }
+            averageConcurrentPlayers: { type: number }
+            playerHours: { type: number }
+        cost:
+          type: object
+          additionalProperties: false
+          required:
+            [
+              serverCostPerHourInr,
+              estimatedInr,
+              matchesCompleted,
+              perMatchInr,
+              perConcurrentPlayerHourInr,
+            ]
+          properties:
+            serverCostPerHourInr: { type: number }
+            estimatedInr: { type: number }
+            matchesCompleted: { type: integer }
+            perMatchInr: { type: [number, 'null'] }
+            perConcurrentPlayerHourInr: { type: [number, 'null'] }
+    CurrencyFlow:
+      type: object
+      additionalProperties: false
+      required:
+        [issued, removed, net, sinkRatio, circulating, holders, medianBalance, p90Balance, byReason]
+      properties:
+        issued: { type: integer }
+        removed: { type: integer }
+        net: { type: integer }
+        sinkRatio: { type: [number, 'null'] }
+        circulating: { type: integer }
+        holders: { type: integer }
+        medianBalance: { type: number }
+        p90Balance: { type: number }
+        byReason:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [reason, issued, removed, entries]
+            properties:
+              reason: { type: string }
+              issued: { type: integer }
+              removed: { type: integer }
+              entries: { type: integer }
+    EconomyReport:
+      type: object
+      additionalProperties: false
+      required: [days, generatedAt, currencies, sales, seasons]
+      properties:
+        days: { type: integer }
+        generatedAt: { type: string, format: date-time }
+        currencies:
+          type: object
+          additionalProperties: false
+          required: [COIN, GEM]
+          properties:
+            COIN: { $ref: '#/components/schemas/CurrencyFlow' }
+            GEM: { $ref: '#/components/schemas/CurrencyFlow' }
+        sales:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [productKey, currency, channel, orders, refunds, grossMinor]
+            properties:
+              productKey: { type: string }
+              currency: { enum: [INR, COIN, GEM] }
+              channel: { enum: [IN_GAME, STORE, DEV] }
+              orders: { type: integer }
+              refunds: { type: integer }
+              grossMinor: { type: integer }
+        seasons:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [seasonKey, players, premiumPlayers, rewardsClaimed]
+            properties:
+              seasonKey: { type: string }
+              players: { type: integer }
+              premiumPlayers: { type: integer }
+              rewardsClaimed: { type: integer }

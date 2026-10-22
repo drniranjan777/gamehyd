@@ -2,7 +2,7 @@
 
 Source: [BRD v1.2](Real_World_Battle_Royale_Detailed_BRD_Technical_Plan_v1.2.docx) (21 Oct 2026). Prepared 21 Oct 2026.
 
-**Starting point:** fresh build, started 22 Oct 2026. **Current progress:** Phases 0–6 engineering work done and tested locally; art/animation/audio content, store billing accounts, cloud/staging, beta cohorts, device measurements, external pen test, legal review and sign-offs open — see the status docs in [docs/](docs/) (PHASE-0 … PHASE-6-STATUS.md) and the [runbooks](docs/runbooks/README.md).
+**Starting point:** fresh build, started 22 Oct 2026. **Current progress:** Phases 0–7 engineering work done and tested locally; the launch itself waits on content (art, animation, audio), store accounts, cloud/staging, beta cohorts, device measurements, an external pen test, legal review and on-call. See the status docs in [docs/](docs/) (PHASE-0 … PHASE-7-STATUS.md), the [runbooks](docs/runbooks/README.md) and the [launch plan and backlog](docs/launch/LAUNCH-PLAN.md).
 
 **Tech stack (confirmed):**
 

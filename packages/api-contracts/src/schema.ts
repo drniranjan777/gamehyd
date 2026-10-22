@@ -2922,6 +2922,410 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/seasons/current': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description The running season, the player's progress and every reward with its state. `season` is null between seasons. */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Season pass */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['SeasonPass'];
+          };
+        };
+        401: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/seasons/current/claim': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Claims an unlocked reward (exactly once). Premium rewards need the season pass. */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': {
+            tier: number;
+            /** @enum {unknown} */
+            track: 'FREE' | 'PREMIUM';
+          };
+        };
+      };
+      responses: {
+        /** @description Updated season pass */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['SeasonPass'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        404: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+        429: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/ops': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Needs `ops.read`. API latency, match-server tick health, capacity and estimated cost over the last `hours`. */
+    get: {
+      parameters: {
+        query?: {
+          hours?: number;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Operations dashboard */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['OpsDashboard'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/economy': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Needs `economy.read`. Currency sources and sinks, circulation, sales and season participation. */
+    get: {
+      parameters: {
+        query?: {
+          days?: number;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Economy review */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['EconomyReport'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/releases': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Releases with health */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              items: components['schemas']['AppRelease'][];
+            };
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    /** @description Needs `releases.write`. Records a store rollout and its rollback threshold. */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': {
+            /** @enum {unknown} */
+            platform: 'ANDROID' | 'IOS';
+            appVersion: string;
+            rolloutPercent: number;
+            regions?: string[];
+            minCrashFree?: number;
+            minSessions?: number;
+          };
+        };
+      };
+      responses: {
+        /** @description Recorded */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AppRelease'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/releases/{releaseId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          releaseId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': {
+            rolloutPercent?: number;
+            /** @enum {unknown} */
+            status?: 'ROLLING_OUT' | 'COMPLETE' | 'ROLLED_BACK';
+            reason: components['schemas']['Reason'];
+          };
+        };
+      };
+      responses: {
+        /** @description Updated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AppRelease'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        404: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    trace?: never;
+  };
+  '/admin/seasons': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Seasons */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              items: components['schemas']['AdminSeason'][];
+            };
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    /** @description Needs `liveops.write`. Creates or replaces a DRAFT season and its reward track. */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['SeasonInput'];
+        };
+      };
+      responses: {
+        /** @description Saved draft */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminSeason'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/seasons/{key}/publish': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Publishes a draft; its dates and rewards are then frozen. Published seasons may not overlap (409 SEASON_OVERLAP). */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          key: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Published */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminSeason'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        404: components['responses']['Error'];
+        409: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3145,6 +3549,8 @@ export interface components {
       /** @enum {unknown} */
       matchPhase?: 'WAITING' | 'COUNTDOWN' | 'ACTIVE' | 'COMPLETED' | null;
       connectedPlayers?: number;
+      /** @description 99th-percentile tick time over the last ~10 s while hosting */
+      tickMsP99?: number | null;
     };
     HeartbeatResponse: {
       /** Format: uuid */
@@ -3200,6 +3606,11 @@ export interface components {
           /** @enum {unknown} */
           currency: 'COIN' | 'GEM';
           amount: number;
+        }
+      | {
+          /** @constant */
+          type: 'SEASON_PASS';
+          seasonKey: string;
         };
     PlatformSkus: {
       ANDROID?: string;
@@ -3657,6 +4068,8 @@ export interface components {
       suspensionsLifted: number;
       unhostedMatchesCancelled: number;
       telemetryEventsPurged: number;
+      releasesHalted: number;
+      opsSamplesPurged: number;
     };
     AuditPage: {
       items: {
@@ -3789,6 +4202,190 @@ export interface components {
         value: number | null;
         /** @enum {unknown} */
         status: 'PASS' | 'FAIL' | 'NO_DATA' | 'MANUAL';
+      }[];
+    };
+    SeasonReward:
+      | {
+          /** @constant */
+          type: 'COSMETIC';
+          cosmeticKey: string;
+        }
+      | {
+          /** @constant */
+          type: 'CURRENCY';
+          /** @enum {unknown} */
+          currency: 'COIN' | 'GEM';
+          amount: number;
+        };
+    SeasonPass: {
+      season: null | {
+        key: string;
+        title: string;
+        /** Format: date-time */
+        startsAt: string;
+        /** Format: date-time */
+        endsAt: string;
+        xpPerTier: number;
+        maxTier: number;
+        premiumProductKey: string | null;
+      };
+      progress?: {
+        xp: number;
+        tier: number;
+        premium: boolean;
+        xpToNextTier: number;
+      };
+      rewards?: {
+        tier: number;
+        /** @enum {unknown} */
+        track: 'FREE' | 'PREMIUM';
+        reward: components['schemas']['SeasonReward'];
+        unlocked: boolean;
+        claimed: boolean;
+      }[];
+    };
+    SeasonInput: {
+      key: string;
+      title: string;
+      /** Format: date-time */
+      startsAt: string;
+      /** Format: date-time */
+      endsAt: string;
+      xpPerTier: number;
+      rewards: {
+        tier: number;
+        /** @enum {unknown} */
+        track: 'FREE' | 'PREMIUM';
+        reward: components['schemas']['SeasonReward'];
+      }[];
+    };
+    AdminSeason: {
+      key: string;
+      title: string;
+      /** Format: date-time */
+      startsAt: string;
+      /** Format: date-time */
+      endsAt: string;
+      xpPerTier: number;
+      /** @enum {unknown} */
+      status: 'DRAFT' | 'PUBLISHED';
+      createdBy: string;
+      rewards: {
+        tier: number;
+        /** @enum {unknown} */
+        track: 'FREE' | 'PREMIUM';
+        reward: components['schemas']['SeasonReward'];
+      }[];
+    };
+    AppRelease: {
+      /** Format: uuid */
+      id: string;
+      /** @enum {unknown} */
+      platform: 'ANDROID' | 'IOS';
+      appVersion: string;
+      /** @enum {unknown} */
+      status: 'ROLLING_OUT' | 'HALTED' | 'COMPLETE' | 'ROLLED_BACK';
+      rolloutPercent: number;
+      regions: string[];
+      minCrashFree: number;
+      minSessions: number;
+      haltReason: string | null;
+      health: {
+        sessions: number;
+        crashed: number;
+        crashFreeRate: components['schemas']['Rate'];
+      };
+      createdBy: string;
+      /** Format: date-time */
+      updatedAt: string;
+    };
+    LatencyStats: {
+      p50Ms: number | null;
+      p95Ms: number | null;
+      p99Ms: number | null;
+    };
+    OpsDashboard: {
+      hours: number;
+      /** Format: date-time */
+      generatedAt: string;
+      api: {
+        requests: number;
+        serverErrorRate: components['schemas']['Rate'];
+        p50Ms: number | null;
+        p95Ms: number | null;
+        p99Ms: number | null;
+        routes: {
+          route: string;
+          requests: number;
+          serverErrors: number;
+          p50Ms: number | null;
+          p95Ms: number | null;
+          p99Ms: number | null;
+        }[];
+      };
+      servers: {
+        distinctServers: number;
+        serverHours: number;
+        hostingShare: components['schemas']['Rate'];
+        tickBudgetMs: number;
+        tickP99Median: number | null;
+        tickP99Worst: number | null;
+        minutesOverBudget: number;
+      };
+      capacity: {
+        peakConcurrentPlayers: number;
+        /** Format: date-time */
+        peakAt: string | null;
+        averageConcurrentPlayers: number;
+        playerHours: number;
+      };
+      cost: {
+        serverCostPerHourInr: number;
+        estimatedInr: number;
+        matchesCompleted: number;
+        perMatchInr: number | null;
+        perConcurrentPlayerHourInr: number | null;
+      };
+    };
+    CurrencyFlow: {
+      issued: number;
+      removed: number;
+      net: number;
+      sinkRatio: number | null;
+      circulating: number;
+      holders: number;
+      medianBalance: number;
+      p90Balance: number;
+      byReason: {
+        reason: string;
+        issued: number;
+        removed: number;
+        entries: number;
+      }[];
+    };
+    EconomyReport: {
+      days: number;
+      /** Format: date-time */
+      generatedAt: string;
+      currencies: {
+        COIN: components['schemas']['CurrencyFlow'];
+        GEM: components['schemas']['CurrencyFlow'];
+      };
+      sales: {
+        productKey: string;
+        /** @enum {unknown} */
+        currency: 'INR' | 'COIN' | 'GEM';
+        /** @enum {unknown} */
+        channel: 'IN_GAME' | 'STORE' | 'DEV';
+        orders: number;
+        refunds: number;
+        grossMinor: number;
+      }[];
+      seasons: {
+        seasonKey: string;
+        players: number;
+        premiumPlayers: number;
+        rewardsClaimed: number;
       }[];
     };
   };

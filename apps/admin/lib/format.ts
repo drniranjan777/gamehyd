@@ -16,3 +16,15 @@ export function when(iso: string | null | undefined): string {
 }
 
 export const short = (id: string) => id.slice(0, 8);
+
+type GrantLike =
+  | { type: 'COSMETIC'; cosmeticKey: string }
+  | { type: 'CURRENCY'; currency: string; amount: number }
+  | { type: 'SEASON_PASS'; seasonKey: string };
+
+export const grantText = (g: GrantLike) =>
+  g.type === 'COSMETIC'
+    ? g.cosmeticKey
+    : g.type === 'SEASON_PASS'
+      ? `season pass: ${g.seasonKey}`
+      : `${g.amount} ${g.currency}`;

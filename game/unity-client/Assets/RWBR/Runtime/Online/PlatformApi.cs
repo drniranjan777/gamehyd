@@ -48,6 +48,17 @@ namespace RWBR.Client.Online
     [Serializable] public sealed class OrderRequestDto { public string productKey; public string platform; public string idempotencyKey; }
     [Serializable] public sealed class PurchaseProofDto { public string proof; }
     [Serializable] public sealed class DeletionStatusDto { public string status; public string scheduledFor; }
+    [Serializable] public sealed class SeasonInfoDto { public string key; public string title; public string startsAt; public string endsAt; public int xpPerTier; public int maxTier; public string premiumProductKey; }
+    [Serializable] public sealed class SeasonProgressDto { public long xp; public int tier; public bool premium; public int xpToNextTier; }
+    [Serializable] public sealed class SeasonRewardDto { public string type; public string cosmeticKey; public string currency; public long amount; }
+    [Serializable] public sealed class SeasonRewardStateDto { public int tier; public string track; public SeasonRewardDto reward; public bool unlocked; public bool claimed; }
+    /// <summary>JsonUtility never yields null objects: between seasons <c>season.key</c> is empty.</summary>
+    [Serializable] public sealed class SeasonPassDto
+    {
+        public SeasonInfoDto season; public SeasonProgressDto progress; public SeasonRewardStateDto[] rewards;
+        public bool Active => season != null && !string.IsNullOrEmpty(season.key);
+    }
+    [Serializable] public sealed class SeasonClaimDto { public int tier; public string track; }
     [Serializable] public sealed class ErrorDto { public ErrorBody error; }
     [Serializable] public sealed class ErrorBody { public string code; public string message; public string requestId; }
 
@@ -147,6 +158,13 @@ namespace RWBR.Client.Online
         /// <summary>Sends the store's purchase proof; the server verifies it with the platform and grants once.</summary>
         public Task<OrderDto> VerifyAsync(string orderId, string proof) =>
             Send<OrderDto>("POST", $"/store/orders/{orderId}/verify", JsonUtility.ToJson(new PurchaseProofDto { proof = proof }));
+
+        // ---- Season pass (Phase 7) ----
+
+        public Task<SeasonPassDto> SeasonAsync() => Send<SeasonPassDto>("GET", "/seasons/current", null);
+
+        public Task<SeasonPassDto> ClaimSeasonRewardAsync(int tier, string track) =>
+            Send<SeasonPassDto>("POST", "/seasons/current/claim", JsonUtility.ToJson(new SeasonClaimDto { tier = tier, track = track }));
 
         // ---- Account deletion (BRD §13) ----
 

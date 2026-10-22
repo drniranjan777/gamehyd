@@ -4,6 +4,7 @@ import { PoolClient } from 'pg';
 import { ApiError, Conflict, Invalid, NotFound, Unauthorized } from '../common/api-error';
 import { Db } from '../database/database.module';
 import { levelFor, matchReward } from '../player/progression';
+import { addSeasonXp } from '../seasons/seasons.service';
 
 export interface ResultSubmission {
   mapVersion: string;
@@ -146,6 +147,7 @@ export class ResultsService {
           WHERE user_id = $1 RETURNING xp`,
         [p.accountId, reward.xp, won ? 1 : 0, p.kills],
       );
+      await addSeasonXp(c, p.accountId, reward.xp);
       await c.query('UPDATE player_profiles SET level = $2 WHERE user_id = $1', [
         p.accountId,
         levelFor(Number(rows[0]?.xp ?? 0)),
