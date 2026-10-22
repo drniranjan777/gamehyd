@@ -161,6 +161,9 @@ namespace RWBR.Client.Online
             _quickPlayCancelled = false;
             QuickPlayActive = true;
             ProfileBefore = ProfileAfter = null;
+            PlatformResult = null;
+            ReportStatus = null;
+            _reported.Clear();
             _profileRequested = false;
             Save(PlatformKey, PlatformUrl);
             Save(NameKey, PlayerName);
@@ -196,8 +199,40 @@ namespace RWBR.Client.Online
             catch (ApiException e)
             {
                 if (Platform != api) return;
-                Error = e.Code == "NETWORK" ? e.Message : $"Platform error {e.Code}: {e.Message}";
+                Error = FriendlyError(e);
                 QuickPlayActive = false;
+            }
+        }
+
+        /// <summary>Player-facing text for platform errors the player can act on.</summary>
+        public static string FriendlyError(ApiException e) => e.Code switch
+        {
+            "NETWORK" => e.Message,
+            "MATCHMAKING_DISABLED" => "Matchmaking is paused for maintenance. Please try again in a few minutes.",
+            "CLIENT_OUTDATED" => "A new version of the game is available. Update it to keep playing online.",
+            "ACCOUNT_RESTRICTED" => "This account can't play online right now. Contact support if you think this is a mistake.",
+            _ => $"Platform error {e.Code}: {e.Message}",
+        };
+
+        /// <summary>Server-confirmed result of the last Quick play match (null until it arrives).</summary>
+        public MatchResultDto PlatformResult { get; private set; }
+        public string ReportStatus { get; private set; }
+        private readonly System.Collections.Generic.HashSet<string> _reported = new System.Collections.Generic.HashSet<string>();
+        public bool HasReported(string playerId) => _reported.Contains(playerId);
+
+        public async void ReportPlayer(string playerId, string reason)
+        {
+            if (Platform == null || MatchId == null || _reported.Contains(playerId)) return;
+            _reported.Add(playerId);
+            try
+            {
+                await Platform.ReportAsync(playerId, MatchId, reason);
+                ReportStatus = "Thanks. A moderator will review this match.";
+            }
+            catch (ApiException e)
+            {
+                _reported.Remove(playerId);
+                ReportStatus = e.Code == "RATE_LIMITED" ? "You've sent a lot of reports; try again later." : FriendlyError(e);
             }
         }
 
@@ -340,6 +375,11 @@ namespace RWBR.Client.Online
                     if (ProfileBefore == null || p.xp != ProfileBefore.xp)
                     {
                         ProfileAfter = p;
+                        if (MatchId != null)
+                        {
+                            try { PlatformResult = await Platform.MatchResultAsync(MatchId); }
+                            catch (ApiException) { }
+                        }
                         return;
                     }
                 }

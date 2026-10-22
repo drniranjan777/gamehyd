@@ -34,7 +34,7 @@ public static class MatchSimulator
         var match = new Match(cfg);
         int n = cfg.MaxPlayers;
         var bots = new List<SimBot>();
-        for (int i = 0; i < n; i++) bots.Add(new SimBot(new IPEndPoint(IPAddress.Loopback, 10_000 + i), seed * 100 + i));
+        for (int i = 0; i < n; i++) bots.Add(new SimBot(new IPEndPoint(IPAddress.Loopback, 10_000 + i), seed * 100 + i, cfg.Map));
 
         foreach (SimBot b in bots)
         {
@@ -81,10 +81,10 @@ public static class MatchSimulator
         private ushort _id = ProtocolInfo.NoPlayer;
         private uint _seq;
 
-        public SimBot(IPEndPoint endPoint, int seed)
+        public SimBot(IPEndPoint endPoint, int seed, MapLayout map)
         {
             EndPoint = endPoint;
-            _brain = new BotBrain(seed);
+            _brain = new BotBrain(seed, map);
         }
 
         public IPEndPoint EndPoint { get; }

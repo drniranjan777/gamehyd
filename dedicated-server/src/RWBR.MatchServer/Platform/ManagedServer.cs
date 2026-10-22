@@ -45,14 +45,41 @@ public sealed class ManagedServer
 
     public int MatchesHosted { get; private set; }
 
+    /// <summary>Set by <see cref="Drain"/>: take no new matches, finish the current one, then stop.</summary>
+    public bool Draining => _draining.IsCancellationRequested;
+    private readonly CancellationTokenSource _draining = new();
+
+    /// <summary>
+    /// Graceful stop for rolling deploys: tells the platform this server is DRAINING (no new assignments; matches
+    /// assigned but not yet hosted are cancelled and their players requeued), lets a running match finish and submit
+    /// its result, then <see cref="RunAsync"/> returns.
+    /// </summary>
+    public void Drain()
+    {
+        if (Draining) return;
+        Log("draining", new { address = _o.Address });
+        _draining.Cancel();
+    }
+
     public async Task RunAsync(CancellationToken ct)
     {
         Log("managed server started", new { address = _o.Address, region = _o.Region });
         while (!ct.IsCancellationRequested && (_o.MaxMatches == 0 || MatchesHosted < _o.MaxMatches))
         {
             HeartbeatResponse? hb = await Heartbeat("IDLE", null, null, 0, ct);
+            if (Draining) break;
             if (hb?.Assignment is { } a) await HostAsync(a, ct);
-            else await Delay(_o.HeartbeatInterval, ct);
+            else
+            {
+                using var wait = CancellationTokenSource.CreateLinkedTokenSource(ct, _draining.Token);
+                await Delay(_o.HeartbeatInterval, wait.Token);
+            }
+            if (Draining) break;
+        }
+        if (Draining && !ct.IsCancellationRequested)
+        {
+            await Heartbeat("IDLE", null, null, 0, ct); // final heartbeat: DRAINING and idle
+            Log("drained", new { MatchesHosted });
         }
     }
 
@@ -153,7 +180,7 @@ public sealed class ManagedServer
         try
         {
             return await _api.HeartbeatAsync(
-                new HeartbeatRequest(_o.Address, _o.Region, _o.BuildVersion, MapVersions, state, matchId, phase, connected, tickMsP99), ct);
+                new HeartbeatRequest(_o.Address, _o.Region, _o.BuildVersion, MapVersions, state, matchId, phase, connected, tickMsP99, Draining), ct);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {

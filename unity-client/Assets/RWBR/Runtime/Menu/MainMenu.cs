@@ -46,6 +46,7 @@ namespace RWBR.Client.Menu
         private CatalogDto _catalog;
         private SeasonPassDto _season;
         private DeletionStatusDto _deletion;
+        private EventListDto _news;
         private bool _confirmDelete;
         private string _platformUrl;
         private string _name;
@@ -63,6 +64,14 @@ namespace RWBR.Client.Menu
             PracticeGame.TutorialRequested = false;
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
+            LoadNews();
+        }
+
+        /// <summary>News and events for the home screen; quietly absent when the platform is unreachable.</summary>
+        private async void LoadNews()
+        {
+            try { _news = await new PlatformApi(_platformUrl).EventsAsync(); }
+            catch (ApiException) { _news = null; }
         }
 
         private void Update()
@@ -275,6 +284,25 @@ namespace RWBR.Client.Menu
             if (Button(y += 56, "Store")) OpenPlatformScreen(Screen.Store);
             if (Button(y += 56, "Season pass")) OpenPlatformScreen(Screen.Season);
             if (Button(y += 56, "Settings")) _screen = Screen.Settings;
+            DrawNews();
+        }
+
+        private void DrawNews()
+        {
+            EventDto[] items = _news?.items;
+            if (items == null || items.Length == 0) return;
+            Rect r = new Rect(Mathf.Max(560, _w - 460), 40, 420, 60 + Mathf.Min(items.Length, 3) * 92);
+            Fill(r, new Color(0.05f, 0.06f, 0.08f, 0.85f));
+            GUI.Label(new Rect(r.x + 18, r.y + 12, r.width - 36, 30), "News & events", _label);
+            float y = r.y + 50;
+            for (int i = 0; i < items.Length && i < 3; i++)
+            {
+                EventDto e = items[i];
+                GUI.Label(new Rect(r.x + 18, y, r.width - 36, 26), (e.live ? "● LIVE  " : "") + e.title, _label);
+                string body = string.IsNullOrEmpty(e.body) ? "" : e.body.Length > 110 ? e.body.Substring(0, 107) + "…" : e.body;
+                GUI.Label(new Rect(r.x + 18, y + 28, r.width - 36, 56), body, _small);
+                y += 92;
+            }
         }
 
         private void Back()
