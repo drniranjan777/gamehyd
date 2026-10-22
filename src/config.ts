@@ -53,6 +53,14 @@ const schema = z.object({
   UNHOSTED_MATCH_TIMEOUT_SECONDS: z.coerce.number().int().min(10).max(600).default(45),
   /** Raw client telemetry is deleted after this many days. */
   TELEMETRY_RETENTION_DAYS: z.coerce.number().int().min(7).max(400).default(90),
+  // ---- Phase 7 ----
+  /** How often each API instance writes its latency histograms (0 = only on demand / shutdown). */
+  OPS_FLUSH_SECONDS: z.coerce.number().int().min(0).max(3600).default(60),
+  OPS_RETENTION_DAYS: z.coerce.number().int().min(1).max(400).default(30),
+  /** Match-server tick time above which a minute counts as over budget (30 Hz leaves 33 ms; keep half spare). */
+  TICK_BUDGET_MS: z.coerce.number().min(1).max(100).default(16),
+  /** Cloud cost of one match server per hour, for the cost-per-match estimate (set from the chosen instance type). */
+  SERVER_COST_PER_HOUR_INR: z.coerce.number().min(0).max(100_000).default(25),
   RATE_LIMIT_ENABLED: bool.default('true'),
   LOG_REQUESTS: bool.default('true'),
   TRUST_PROXY: bool.default('false'),

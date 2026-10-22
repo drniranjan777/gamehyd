@@ -26,6 +26,7 @@ import { Db } from '../database/database.module';
 import { MatchmakingService } from './matchmaking.service';
 import { ResultsService } from './results.service';
 import { GameConfigService } from '../store/game-config.service';
+import { OpsService } from '../ops/ops.service';
 
 const region = z.string().regex(/^[A-Z]{2}-[A-Z]{2,10}$/);
 const queueBody = z
@@ -136,6 +137,7 @@ const heartbeatBody = z
     matchId: z.string().uuid().nullable().optional(),
     matchPhase: z.enum(['WAITING', 'COUNTDOWN', 'ACTIVE', 'COMPLETED']).nullable().optional(),
     connectedPlayers: z.number().int().min(0).max(1000).optional(),
+    tickMsP99: z.number().min(0).max(10_000).nullable().optional(),
   })
   .strict();
 
@@ -198,6 +200,13 @@ export class InternalController {
         ],
       );
       const serverId = rows[0]!.id;
+      await OpsService.recordServerSample(
+        c,
+        serverId,
+        hb.connectedPlayers ?? 0,
+        hb.state === 'HOSTING',
+        hb.tickMsP99 ?? null,
+      );
 
       if (hb.state === 'HOSTING' && hb.matchId) {
         await c.query(

@@ -30,6 +30,9 @@ const sku = z.string().regex(/^[a-z0-9_.]{3,100}$/);
 const grant = z.discriminatedUnion('type', [
   z.object({ type: z.literal('COSMETIC'), cosmeticKey: productKey }).strict(),
   z
+    .object({ type: z.literal('SEASON_PASS'), seasonKey: z.string().regex(/^[a-z0-9_-]{3,40}$/) })
+    .strict(),
+  z
     .object({
       type: z.literal('CURRENCY'),
       currency: z.enum(['COIN', 'GEM']),
@@ -493,25 +496,28 @@ export class AdminEconomyController {
   }
 
   private async grantsOf(q: Db | PoolClient, productId: string) {
-    const sql = `SELECT g.grant_type AS type, c.key AS "cosmeticKey", g.currency_code AS currency, g.amount
-                   FROM store_product_grants g LEFT JOIN cosmetics c ON c.id = g.cosmetic_id WHERE g.product_id = $1 ORDER BY c.key`;
-    const rows =
+    const sql = `SELECT g.grant_type AS type, c.key AS "cosmeticKey", g.currency_code AS currency, g.amount,
+                        se.key AS "seasonKey"
+                   FROM store_product_grants g LEFT JOIN cosmetics c ON c.id = g.cosmetic_id
+                   LEFT JOIN seasons se ON se.id = g.season_id
+                  WHERE g.product_id = $1 ORDER BY c.key`;
+    type Row = {
+      type: 'COSMETIC' | 'CURRENCY' | 'SEASON_PASS';
+      cosmeticKey: string;
+      currency: 'COIN' | 'GEM';
+      amount: string;
+      seasonKey: string;
+    };
+    const rows: Row[] =
       q instanceof Db
-        ? await q.query<{
-            type: 'COSMETIC' | 'CURRENCY';
-            cosmeticKey: string;
-            currency: 'COIN' | 'GEM';
-            amount: string;
-          }>(sql, [productId])
-        : (await q.query(sql, [productId])).rows;
+        ? await q.query<Row>(sql, [productId])
+        : (await q.query<Row>(sql, [productId])).rows;
     return rows.map((g) =>
       g.type === 'COSMETIC'
-        ? { type: 'COSMETIC' as const, cosmeticKey: g.cosmeticKey as string }
-        : {
-            type: 'CURRENCY' as const,
-            currency: g.currency as 'COIN' | 'GEM',
-            amount: Number(g.amount),
-          },
+        ? { type: 'COSMETIC' as const, cosmeticKey: g.cosmeticKey }
+        : g.type === 'SEASON_PASS'
+          ? { type: 'SEASON_PASS' as const, seasonKey: g.seasonKey }
+          : { type: 'CURRENCY' as const, currency: g.currency, amount: Number(g.amount) },
     );
   }
 
@@ -553,6 +559,18 @@ export class AdminEconomyController {
           ]);
         await c.query(
           `INSERT INTO store_product_grants (product_id, grant_type, cosmetic_id) VALUES ($1, 'COSMETIC', $2)`,
+          [productId, rows[0].id],
+        );
+      } else if (g.type === 'SEASON_PASS') {
+        const { rows } = await c.query<{ id: string }>('SELECT id FROM seasons WHERE key = $1', [
+          g.seasonKey,
+        ]);
+        if (!rows[0])
+          throw Invalid('Unknown season', [
+            { path: 'grants', message: `${g.seasonKey} does not exist` },
+          ]);
+        await c.query(
+          `INSERT INTO store_product_grants (product_id, grant_type, season_id) VALUES ($1, 'SEASON_PASS', $2)`,
           [productId, rows[0].id],
         );
       } else {

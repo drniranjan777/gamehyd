@@ -36,6 +36,12 @@ import { StoreService } from './store/store.service';
 import { WebhooksService } from './store/webhooks.service';
 import { MetricsService } from './telemetry/metrics.service';
 import { TelemetryController } from './telemetry/telemetry.controller';
+import { EconomyService } from './ops/economy.service';
+import { LatencyRecorder } from './ops/latency.recorder';
+import { AdminLiveOpsController, SeasonsController } from './ops/live-ops.controller';
+import { OpsService } from './ops/ops.service';
+import { ReleasesService } from './ops/releases.service';
+import { SeasonsService } from './seasons/seasons.service';
 
 @Module({})
 export class AppModule {
@@ -69,6 +75,8 @@ export class AppModule {
         AdminEconomyController,
         AdminOpsController,
         TelemetryController,
+        SeasonsController,
+        AdminLiveOpsController,
       ],
       providers: [
         TokenService,
@@ -82,6 +90,11 @@ export class AppModule {
         AdminAuthService,
         AdminGuard,
         MetricsService,
+        LatencyRecorder,
+        OpsService,
+        ReleasesService,
+        EconomyService,
+        SeasonsService,
         AuthGuard,
         RateLimitGuard,
         ServerSignatureGuard,
