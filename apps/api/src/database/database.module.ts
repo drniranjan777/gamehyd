@@ -44,13 +44,27 @@ export class Db {
     {
       provide: PG_POOL,
       inject: [APP_CONFIG],
-      useFactory: (config: AppConfig) =>
-        new Pool({
+      useFactory: (config: AppConfig) => {
+        const pool = new Pool({
           connectionString: config.DATABASE_URL,
           max: 10,
           statement_timeout: 5_000,
           connectionTimeoutMillis: 2_000,
-        }),
+          keepAlive: true,
+        });
+        // An idle connection can be reset (database restart, network blip, ECONNRESET). pg drops that client and
+        // opens a new one on the next query; without this listener Node treats the event as fatal and the API exits.
+        pool.on('error', (err) => {
+          console.error(
+            JSON.stringify({
+              level: 'warn',
+              msg: 'idle database connection lost',
+              error: err.message,
+            }),
+          );
+        });
+        return pool;
+      },
     },
     Db,
   ],
