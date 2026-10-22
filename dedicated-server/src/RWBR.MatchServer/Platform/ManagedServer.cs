@@ -33,7 +33,7 @@ public sealed class ManagedOptions
 /// </summary>
 public sealed class ManagedServer
 {
-    private static readonly string[] MapVersions = { "greybox-block-100-v2", "greybox-block-40-v2" };
+    private static readonly string[] MapVersions = { CityMap.Version, "greybox-block-100-v2", "greybox-block-40-v2" };
     private readonly PlatformClient _api;
     private readonly ManagedOptions _o;
 
@@ -69,6 +69,7 @@ public sealed class ManagedServer
         cfg.MinPlayers = Math.Min(a.MinPlayers, a.Capacity);
         cfg.FillWaitSeconds = a.FillWaitSeconds;
         cfg.Map = map;
+        if (!_o.Fast) cfg.ZoneStages = MatchConfig.ZonesFor(map);
         cfg.TickRate = _o.TickRate;
         cfg.SnapshotEveryTicks = _o.SnapshotEveryTicks;
         cfg.TicketSecret = _o.TicketSecret;

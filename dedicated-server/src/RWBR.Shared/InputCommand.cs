@@ -16,6 +16,8 @@ namespace RWBR.Shared
         Interact = 32,
         /// <summary>Start using a medkit.</summary>
         Heal = 64,
+        /// <summary>Swap to the weapon in the other slot.</summary>
+        SwitchWeapon = 128,
     }
 
     /// <summary>One client input sample. Clients send inputs, never positions, damage or results (BRD 7.2).</summary>

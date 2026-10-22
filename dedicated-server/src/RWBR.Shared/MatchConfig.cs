@@ -42,7 +42,13 @@ namespace RWBR.Shared
         public float DisconnectTimeoutSeconds { get; set; } = 3f;
         public float ReconnectGraceSeconds { get; set; } = 20f;
         public float ResultBroadcastSeconds { get; set; } = 1f;
-        public WeaponDefinition Weapon { get; set; } = WeaponDefinition.DefaultRifle();
+        /// <summary>Balance for the starting weapon; every other weapon comes from <see cref="WeaponCatalog"/>.</summary>
+        public WeaponDefinition Weapon { get; set; } = WeaponCatalog.Get(WeaponCatalog.Rifle);
+        public int StartingWeaponIndex { get; set; } = WeaponCatalog.Rifle;
+
+        /// <summary>Balance for a catalog index (the starting weapon may be overridden, e.g. by tests).</summary>
+        public WeaponDefinition WeaponDef(int index) =>
+            index == StartingWeaponIndex ? Weapon : WeaponCatalog.IsValid(index) ? WeaponCatalog.Get(index) : Weapon;
         public MapLayout Map { get; set; } = MapLayout.GreyboxBlock(100f);
         /// <summary>Prototype loadout: players spawn armed until the drop/loot design is signed off (Appendix A).</summary>
         public bool StartWithWeapon { get; set; } = true;
@@ -53,6 +59,23 @@ namespace RWBR.Shared
         public byte[]? TicketSecret { get; set; }
         /// <summary>The match these tickets must name (ticket mode).</summary>
         public System.Guid MatchId { get; set; }
+
+        /// <summary>
+        /// Production zone schedule for a map: the greybox block keeps its original timings; larger maps get
+        /// proportionally sized circles and longer holds (city: about 8 minutes from start to the final circle).
+        /// </summary>
+        public static List<ZoneStage> ZonesFor(MapLayout map)
+        {
+            if (map.HalfSize <= 150) return new MatchConfig().ZoneStages;
+            float h = map.HalfSize;
+            return new List<ZoneStage>
+            {
+                new ZoneStage(90, 75, h * 0.5f),
+                new ZoneStage(60, 60, h * 0.25f),
+                new ZoneStage(45, 45, h * 0.1f),
+                new ZoneStage(30, 30, 0),
+            };
+        }
 
         public int Ticks(float seconds) => (int)System.Math.Ceiling(seconds * TickRate);
 

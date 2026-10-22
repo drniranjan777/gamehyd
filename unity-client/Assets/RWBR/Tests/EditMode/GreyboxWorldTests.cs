@@ -1,4 +1,3 @@
-using System.Linq;
 using NUnit.Framework;
 using RWBR.Client.Greybox;
 using RWBR.Shared;
@@ -9,33 +8,55 @@ namespace RWBR.Tests
 {
     public class GreyboxWorldTests
     {
-        [Test]
-        public void World_has_one_collider_per_server_obstacle_with_matching_bounds()
+        private static GreyboxWorld Build(string version)
         {
             var go = new GameObject("World");
+            var world = go.AddComponent<GreyboxWorld>();
+            world.UseMap(version);
+            world.Build();
+            return world;
+        }
+
+        /// <summary>Every server box is in the rendered mesh, and the physics colliders sit exactly on the box tops.</summary>
+        [TestCase("greybox-block-100-v2")]
+        [TestCase("hyd-city-v1")]
+        public void Rendered_world_matches_the_server_layout(string version)
+        {
+            GreyboxWorld world = Build(version);
             try
             {
-                var world = go.AddComponent<GreyboxWorld>();
-                world.Build();
                 MapLayout layout = world.Layout;
+                Assert.AreEqual(version, layout.Version);
+                Assert.AreEqual(layout.Obstacles.Count * 24, world.VertexCount, "one 24-vertex box per server obstacle");
 
-                BoxCollider[] obstacles = go.GetComponentsInChildren<BoxCollider>()
-                    .Where(c => c.name.StartsWith("Obstacle_"))
-                    .OrderBy(c => c.name)
-                    .ToArray();
-                Assert.AreEqual(layout.Obstacles.Count, obstacles.Length);
-
-                for (int i = 0; i < obstacles.Length; i++)
+                // Probe box tops from above: the collider surface must be at the server's height (water renders flat).
+                var rng = new System.Random(3);
+                int probed = 0;
+                for (int k = 0; k < 400 && probed < 60; k++)
                 {
-                    Bounds b = obstacles[i].bounds;
-                    Aabb a = layout.Obstacles[i];
-                    Assert.That(Vector3.Distance(b.min, new Vector3(a.Min.X, a.Min.Y, a.Min.Z)), Is.LessThan(1e-3f), obstacles[i].name);
-                    Assert.That(Vector3.Distance(b.max, new Vector3(a.Max.X, a.Max.Y, a.Max.Z)), Is.LessThan(1e-3f), obstacles[i].name);
+                    int i = rng.Next(layout.Obstacles.Count);
+                    Aabb b = layout.Obstacles[i];
+                    if (layout.KindOf(i) == BoxKind.Water || b.Max.X - b.Min.X < 0.5f || b.Max.Z - b.Min.Z < 0.5f) continue;
+                    float x = (b.Min.X + b.Max.X) / 2, z = (b.Min.Z + b.Max.Z) / 2;
+                    // Only test tops that nothing else covers at this point.
+                    float expected = 0;
+                    for (int j = 0; j < layout.Obstacles.Count; j++)
+                    {
+                        Aabb o = layout.Obstacles[j];
+                        if (layout.KindOf(j) == BoxKind.Water) continue;
+                        if (x > o.Min.X && x < o.Max.X && z > o.Min.Z && z < o.Max.Z) expected = Mathf.Max(expected, o.Max.Y);
+                    }
+                    if (expected > b.Max.Y + 1e-3f) continue;
+                    Assert.IsTrue(Physics.Raycast(new Vector3(x, 500, z), Vector3.down, out RaycastHit hit, 1000f), $"no collider over box {i}");
+                    Assert.AreEqual(b.Max.Y, hit.point.y, 0.01f, $"box {i} ({layout.KindOf(i)})");
+                    probed++;
                 }
+                Assert.Greater(probed, 20);
+                if (version == CityMap.Version) Assert.Greater(world.ChunkCount, 50);
             }
             finally
             {
-                Object.DestroyImmediate(go);
+                Object.DestroyImmediate(world.gameObject);
             }
         }
 

@@ -21,24 +21,86 @@ namespace RWBR.Shared
             new Aabb(new Vector3(x - sizeX / 2, 0, z - sizeZ / 2), new Vector3(x + sizeX / 2, height, z + sizeZ / 2));
     }
 
+    /// <summary>What a box represents. Gameplay ignores it; the client uses it for colour, LOD and sound.</summary>
+    public enum BoxKind : byte
+    {
+        Generic = 0,
+        Wall,
+        Roof,
+        Stair,
+        Cover,
+        Stall,
+        Shop,
+        House,
+        Office,
+        Landmark,
+        Water,
+        Viaduct,
+        Pillar,
+        Tree,
+        Car,
+        CompoundWall,
+    }
+
+    /// <summary>A named area of a map (HUD location name, loot weighting).</summary>
+    public readonly struct District
+    {
+        public District(string name, float minX, float minZ, float maxX, float maxZ)
+        {
+            Name = name;
+            MinX = minX;
+            MinZ = minZ;
+            MaxX = maxX;
+            MaxZ = maxZ;
+        }
+
+        public string Name { get; }
+        public float MinX { get; }
+        public float MinZ { get; }
+        public float MaxX { get; }
+        public float MaxZ { get; }
+
+        public bool Contains(float x, float z) => x >= MinX && x <= MaxX && z >= MinZ && z <= MaxZ;
+    }
+
     /// <summary>
-    /// Server-side collision and loot view of a map version. The Unity scene for the same map version must
-    /// match these boxes; a mismatch is a release-blocking defect.
+    /// Server-side collision and loot view of a map version. The Unity scene for the same map version is built from
+    /// this same data, so client and server geometry cannot drift. Published versions are immutable.
     /// </summary>
     public sealed class MapLayout
     {
-        public MapLayout(string version, float halfSize, IReadOnlyList<Aabb> obstacles, IReadOnlyList<LootSpawn>? loot = null)
+        public MapLayout(string version, float halfSize, IReadOnlyList<Aabb> obstacles, IReadOnlyList<LootSpawn>? loot = null,
+            IReadOnlyList<BoxKind>? kinds = null, IReadOnlyList<District>? districts = null, IReadOnlyList<Vector3>? spawns = null)
         {
+            if (kinds != null && kinds.Count != obstacles.Count) throw new ArgumentException("one kind per obstacle");
             Version = version;
             HalfSize = halfSize;
             Obstacles = obstacles;
             Loot = loot ?? Array.Empty<LootSpawn>();
+            Kinds = kinds;
+            Districts = districts ?? Array.Empty<District>();
+            Spawns = spawns ?? Array.Empty<Vector3>();
+            Grid = new SpatialGrid(obstacles, halfSize);
         }
 
         public string Version { get; }
         public float HalfSize { get; }
         public IReadOnlyList<Aabb> Obstacles { get; }
         public IReadOnlyList<LootSpawn> Loot { get; }
+        public IReadOnlyList<District> Districts { get; }
+        /// <summary>Hand-placed spawn points (empty: spawn on a ring).</summary>
+        public IReadOnlyList<Vector3> Spawns { get; }
+        public SpatialGrid Grid { get; }
+        private IReadOnlyList<BoxKind>? Kinds { get; }
+
+        public BoxKind KindOf(int obstacle) => Kinds != null ? Kinds[obstacle] : BoxKind.Generic;
+
+        public string DistrictAt(float x, float z)
+        {
+            foreach (District d in Districts)
+                if (d.Contains(x, z)) return d.Name;
+            return "";
+        }
 
         public const float WallThickness = 0.3f;
         public const float StoreyHeight = 3.2f;
@@ -48,6 +110,7 @@ namespace RWBR.Shared
         /// <summary>
         /// Greybox city block scaled to the map size: an enterable building with outside stairs to its roof,
         /// two apartment blocks, market stall rows, low cover and loot spawns.
+        /// Published as greybox-block-{size}-v2: the geometry below must never change.
         /// </summary>
         public static MapLayout GreyboxBlock(float halfSize)
         {
@@ -83,12 +146,17 @@ namespace RWBR.Shared
             Add(LootType.Rifle, -40 * s, 0, 22 * s, 1);         // apartments
             Add(LootType.Ammo, 40 * s, 0, -22 * s, 60);
 
-            return new MapLayout($"greybox-block-{halfSize:0}-v2", halfSize, boxes, loot);
+            var kinds = new List<BoxKind>();
+            for (int i = 0; i < 6; i++) kinds.Add(i == 5 ? BoxKind.Roof : BoxKind.Wall);
+            for (int i = 0; i < StairSteps; i++) kinds.Add(BoxKind.Stair);
+            kinds.AddRange(new[] { BoxKind.House, BoxKind.House, BoxKind.Stall, BoxKind.Stall, BoxKind.Cover, BoxKind.Cover, BoxKind.Cover, BoxKind.Cover });
+
+            return new MapLayout($"greybox-block-{halfSize:0}-v2", halfSize, boxes, loot, kinds);
         }
 
         /// <summary>
         /// Four walls with a doorway centred in the south (-Z) wall, a roof slab, and a stair of solid steps
-        /// along the outside of the east wall leading up to roof level.
+        /// along the outside of the east wall leading up to roof level. (Greybox only; the city uses CityMap.)
         /// </summary>
         private static void AddEnterableBuilding(List<Aabb> boxes, float x, float z, float sizeX, float sizeZ, float doorWidth)
         {
@@ -111,9 +179,14 @@ namespace RWBR.Shared
             }
         }
 
-        /// <summary>Resolves a published map version such as "greybox-block-40-v2"; false when unknown.</summary>
+        /// <summary>Resolves a published map version ("greybox-block-40-v2", "hyd-city-v1"); false when unknown.</summary>
         public static bool TryFromVersion(string version, out MapLayout layout)
         {
+            if (version == CityMap.Version)
+            {
+                layout = CityMap.Build();
+                return true;
+            }
             layout = GreyboxBlock(100f);
             string[] parts = (version ?? "").Split('-');
             if (parts.Length < 3 || parts[0] != "greybox" || parts[1] != "block" ||
@@ -126,6 +199,12 @@ namespace RWBR.Shared
 
         public Vector3 SpawnPoint(int index, int count)
         {
+            if (Spawns.Count > 0)
+            {
+                // Spread players across the hand-placed points.
+                int i = (int)((long)index * Spawns.Count / Math.Max(1, count)) % Spawns.Count;
+                return Spawns[i];
+            }
             double angle = 2 * Math.PI * index / Math.Max(1, count);
             float r = HalfSize * 0.75f;
             return new Vector3((float)(Math.Sin(angle) * r), 0, (float)(Math.Cos(angle) * r));

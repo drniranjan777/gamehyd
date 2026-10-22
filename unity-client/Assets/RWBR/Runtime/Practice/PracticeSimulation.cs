@@ -18,6 +18,7 @@ namespace RWBR.Client.Practice
         Hit,
         Kill,
         Pickup,
+        Switch,
     }
 
     public struct SimEvent
@@ -29,6 +30,7 @@ namespace RWBR.Client.Practice
         public SVector3 To;
         public float Damage;
         public LootType Loot;
+        public bool Headshot;
     }
 
     public sealed class Fighter
@@ -72,7 +74,8 @@ namespace RWBR.Client.Practice
         }
 
         public MapLayout Map { get; }
-        public WeaponDefinition PlayerWeapon { get; } = WeaponDefinition.DefaultRifle();
+        /// <summary>The player's weapon in hand (catalog balance), or the rifle when unarmed (for HUD defaults).</summary>
+        public WeaponDefinition PlayerWeapon => WeaponOf(Player);
         public WeaponDefinition EnemyWeapon { get; } = new WeaponDefinition
         {
             Id = "rifle_enemy_practice",
@@ -92,8 +95,19 @@ namespace RWBR.Client.Practice
         public List<SimEvent> Events { get; } = new List<SimEvent>();
         public int EnemiesAlive => Enemies.FindAll(e => e.Combat.Alive).Count;
 
-        /// <summary>Player spawn: south of the block, facing north towards the building.</summary>
+        /// <summary>Player spawn on the training ground: south of the block, facing north towards the building.</summary>
         public static SVector3 PlayerSpawn => new SVector3(0, 0, -25);
+
+        public bool IsCity => Map.Version == CityMap.Version;
+        /// <summary>While true (tutorial), enemies hold fire.</summary>
+        public bool EnemiesPassive { get; set; }
+
+        public WeaponDefinition WeaponOf(Fighter f)
+        {
+            if (!f.IsPlayer) return EnemyWeapon;
+            int i = f.Combat.ActiveWeaponIndex;
+            return WeaponCatalog.Get(WeaponCatalog.IsValid(i) ? i : WeaponCatalog.Rifle);
+        }
 
         public void Reset()
         {
@@ -102,14 +116,15 @@ namespace RWBR.Client.Practice
             Events.Clear();
             Array.Clear(LootTaken, 0, LootTaken.Length);
 
-            Player.Motor = MotorState.StandingAt(PlayerSpawn);
-            Player.Yaw = 0;
+            SVector3 spawn = IsCity ? Map.Spawns[0] : PlayerSpawn;
+            Player.Motor = MotorState.StandingAt(spawn);
+            Player.Yaw = IsCity ? (float)Math.Atan2(-spawn.X, -spawn.Z) : 0; // city: face the centre
             Player.Pitch = 0;
-            Player.Combat.Reset(PlayerWeapon, withWeapon: false, reserveAmmo: 0);
+            Player.Combat.Reset(WeaponCatalog.Get(WeaponCatalog.Rifle), withWeapon: false, reserveAmmo: 0);
 
             Enemies.Clear();
             _brains.Clear();
-            SVector3[] homes =
+            SVector3[] homes = IsCity ? CityHomes() : new[]
             {
                 new SVector3(0, MapLayout.RoofTop, 3),   // on the roof
                 new SVector3(4, 0, -1),                  // inside the building
@@ -128,6 +143,29 @@ namespace RWBR.Client.Practice
             }
         }
 
+        /// <summary>City practice: 8 enemies near loot in every district (deterministic picks).</summary>
+        private SVector3[] CityHomes()
+        {
+            var homes = new List<SVector3>();
+            string[] order = { "Char Gate Plaza", "Old City Bazaar", "Hi-Tech Towers", "Residential Colony", "Lakeside" };
+            for (int round = 0; homes.Count < 8 && round < 4; round++)
+            {
+                foreach (string district in order)
+                {
+                    int seen = 0;
+                    foreach (LootSpawn l in Map.Loot)
+                    {
+                        if (Map.DistrictAt(l.Position.X, l.Position.Z) != district || l.Position.Y > 0.1f) continue;
+                        if (seen++ != 7 + round * 11) continue;
+                        homes.Add(l.Position);
+                        break;
+                    }
+                    if (homes.Count >= 8) break;
+                }
+            }
+            return homes.ToArray();
+        }
+
         /// <summary>Advances one tick with the player's input. Events from this tick are in <see cref="Events"/>.</summary>
         public void Step(InputCommand playerInput)
         {
@@ -135,26 +173,35 @@ namespace RWBR.Client.Practice
             if (Outcome != PracticeOutcome.InProgress) return;
             Tick++;
 
-            if (Player.Combat.Alive) Act(Player, playerInput, PlayerWeapon);
+            if (Player.Combat.Alive) Act(Player, playerInput);
             for (int i = 0; i < Enemies.Count; i++)
             {
                 Fighter e = Enemies[i];
                 if (!e.Combat.Alive) continue;
-                Act(e, _brains[i].Decide(e, Player, this), EnemyWeapon);
+                InputCommand c = _brains[i].Decide(e, Player, this);
+                if (EnemiesPassive) c.Buttons &= ~InputButtons.Fire;
+                Act(e, c);
             }
 
             if (!Player.Combat.Alive) Outcome = PracticeOutcome.Defeat;
             else if (EnemiesAlive == 0) Outcome = PracticeOutcome.Victory;
         }
 
-        private void Act(Fighter f, InputCommand cmd, WeaponDefinition weapon)
+        private void Act(Fighter f, InputCommand cmd)
         {
             f.Yaw = Simulation.WrapYaw(cmd.Yaw);
             f.Pitch = Simulation.SanitizeAngle(cmd.Pitch, GameRules.MaxPitchRadians);
             Simulation.Step(ref f.Motor, cmd, Dt, Map);
-            f.Combat.Update(Tick, weapon);
+            f.Combat.Update(Tick, WeaponOf(f));
 
             if (cmd.Has(InputButtons.Interact)) TryPickUp(f);
+            if (cmd.Has(InputButtons.SwitchWeapon) && f.IsPlayer)
+            {
+                int other = f.Combat.SlotWeapon(1 - f.Combat.ActiveSlot);
+                if (other >= 0 && f.Combat.TrySwitch(Tick, WeaponCatalog.Get(other), TickRate))
+                    Events.Add(new SimEvent { Type = SimEventType.Switch, Actor = f.Id });
+            }
+            WeaponDefinition weapon = WeaponOf(f);
             if (cmd.Has(InputButtons.Heal)) f.Combat.TryStartHeal(Tick, TickRate);
             if (cmd.Has(InputButtons.Reload)) f.Combat.TryStartReload(Tick, weapon, TickRate);
             if (cmd.Has(InputButtons.Fire) && f.Combat.TryFire(Tick, weapon, TickRate) == FireResult.Fired)
@@ -185,7 +232,8 @@ namespace RWBR.Client.Practice
             int i = NearestPickup(f);
             if (i < 0) return;
             LootTaken[i] = true;
-            f.Combat.PickUp(Map.Loot[i], f.IsPlayer ? PlayerWeapon : EnemyWeapon);
+            int w = Map.Loot[i].WeaponIndex;
+            f.Combat.PickUp(Map.Loot[i], w >= 0 ? WeaponCatalog.Get(w) : WeaponOf(f));
             Events.Add(new SimEvent { Type = SimEventType.Pickup, Actor = f.Id, Loot = Map.Loot[i].Type, To = Map.Loot[i].Position });
         }
 
@@ -195,35 +243,38 @@ namespace RWBR.Client.Practice
             return weapon.SpreadFor(moving, f.Motor.Crouched, !f.Motor.Grounded);
         }
 
+        private readonly List<TargetCapsule> _targets = new List<TargetCapsule>();
+        private readonly List<Fighter> _targetFighters = new List<Fighter>();
+        private readonly List<PelletResult> _pellets = new List<PelletResult>();
+
+        /// <summary>The same ballistics the server runs: pellets, walls, headshots, falloff.</summary>
         private void Shoot(Fighter shooter, InputCommand cmd, WeaponDefinition weapon)
         {
-            SVector3 origin = shooter.Motor.Eye;
-            SVector3 dir = Simulation.SpreadDirection(shooter.Yaw, shooter.Pitch, CurrentSpread(shooter, cmd, weapon),
-                Simulation.ShotSeed(shooter.Id, cmd.Sequence));
-            float wall = Simulation.WallDistance(origin, dir, weapon.Range, Map);
-
-            Fighter hit = null;
-            float bestT = wall;
+            _targets.Clear();
+            _targetFighters.Clear();
             foreach (Fighter target in AllFighters())
             {
                 if (target == shooter || !target.Combat.Alive) continue;
                 if (!shooter.IsPlayer && !target.IsPlayer) continue; // enemies do not shoot each other
-                float? t = Simulation.RayCapsule(origin, dir, target.Motor.Position, target.Motor.Height, weapon.Range);
-                if (t.HasValue && t.Value < bestT)
-                {
-                    bestT = t.Value;
-                    hit = target;
-                }
+                _targets.Add(new TargetCapsule { Feet = target.Motor.Position, Height = target.Motor.Height });
+                _targetFighters.Add(target);
             }
 
-            Events.Add(new SimEvent { Type = SimEventType.Shot, Actor = shooter.Id, From = origin, To = origin + dir * bestT });
-            if (hit == null) return;
-
-            float lost = hit.Combat.ApplyDamage(weapon.Damage);
-            hit.Combat.CancelHeal();
-            Events.Add(new SimEvent { Type = SimEventType.Hit, Actor = shooter.Id, Target = hit.Id, To = origin + dir * bestT, Damage = lost });
-            if (!hit.Combat.Alive)
-                Events.Add(new SimEvent { Type = SimEventType.Kill, Actor = shooter.Id, Target = hit.Id, To = hit.Motor.Position });
+            SVector3 origin = shooter.Motor.Eye;
+            Ballistics.Fire(origin, shooter.Yaw, shooter.Pitch, CurrentSpread(shooter, cmd, weapon),
+                Simulation.ShotSeed(shooter.Id, cmd.Sequence), weapon, Map, _targets, _pellets);
+            foreach (PelletResult p in _pellets)
+            {
+                Events.Add(new SimEvent { Type = SimEventType.Shot, Actor = shooter.Id, From = origin, To = p.End });
+                if (p.Target < 0) continue;
+                Fighter hit = _targetFighters[p.Target];
+                if (!hit.Combat.Alive) continue;
+                float lost = hit.Combat.ApplyDamage(p.Damage);
+                hit.Combat.CancelHeal();
+                Events.Add(new SimEvent { Type = SimEventType.Hit, Actor = shooter.Id, Target = hit.Id, To = p.End, Damage = lost, Headshot = p.Headshot });
+                if (!hit.Combat.Alive)
+                    Events.Add(new SimEvent { Type = SimEventType.Kill, Actor = shooter.Id, Target = hit.Id, To = hit.Motor.Position, Headshot = p.Headshot });
+            }
         }
 
         public IEnumerable<Fighter> AllFighters()

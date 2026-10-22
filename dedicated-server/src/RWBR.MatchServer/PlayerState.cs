@@ -57,6 +57,8 @@ public sealed class PlayerState
     public List<InputCommand> PendingInputs { get; } = new();
 
     public int Kills { get; set; }
+    /// <summary>Increments on every trigger pull (wraps); clients turn changes into remote shot effects.</summary>
+    public byte ShotCounter { get; set; }
     /// <summary>Tick of elimination (0 while alive), for survival time in the result.</summary>
     public long EliminatedAtTick { get; set; }
     public int Placement { get; set; }

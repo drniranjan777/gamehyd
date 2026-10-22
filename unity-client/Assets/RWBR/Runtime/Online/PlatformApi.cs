@@ -21,6 +21,16 @@ namespace RWBR.Client.Online
     [Serializable] public sealed class QueueStatusDto { public string state; public string enqueuedAt; public string region; public SeatDto seat; }
     [Serializable] public sealed class ProfileDto { public string playerId; public string displayName; public int level; public int xp; public int xpForNextLevel; }
     [Serializable] public sealed class StatsDto { public int matchesPlayed; public int wins; public int kills; public float winRate; public int level; public int xp; }
+    [Serializable] public sealed class InventoryItemDto { public string cosmeticKey; public string kind; public string displayName; public string rarity; public string acquiredAt; }
+    [Serializable] public sealed class LoadoutDto { public string WEAPON_SKIN; public string OUTFIT; public string EMOTE; public string PARACHUTE; public string BANNER; }
+    [Serializable] public sealed class WalletsDto { public long COIN; public long GEM; }
+    [Serializable] public sealed class InventoryDto { public InventoryItemDto[] items; public LoadoutDto loadout; public WalletsDto wallets; }
+    [Serializable] public sealed class MatchHistoryItemDto
+    {
+        public string matchId; public string mapVersion; public string completedAt; public int placement; public int players;
+        public int kills; public int survivalSeconds; public int xpAwarded; public int coinsAwarded;
+    }
+    [Serializable] public sealed class MatchHistoryPageDto { public MatchHistoryItemDto[] items; public string nextCursor; }
     [Serializable] public sealed class ErrorDto { public ErrorBody error; }
     [Serializable] public sealed class ErrorBody { public string code; public string message; public string requestId; }
 
@@ -99,6 +109,14 @@ namespace RWBR.Client.Online
         public Task<ProfileDto> ProfileAsync() => Send<ProfileDto>("GET", "/player/profile", null);
 
         public Task<StatsDto> StatsAsync() => Send<StatsDto>("GET", "/player/stats", null);
+
+        public Task<InventoryDto> InventoryAsync() => Send<InventoryDto>("GET", "/inventory", null);
+
+        public Task<InventoryDto> EquipAsync(string slot, string cosmeticKey) =>
+            Send<InventoryDto>("PUT", "/inventory/loadout/" + slot, $"{{\"cosmeticKey\":\"{cosmeticKey}\"}}");
+
+        public Task<MatchHistoryPageDto> MatchesAsync(string cursor = null, int limit = 10) =>
+            Send<MatchHistoryPageDto>("GET", $"/player/matches?limit={limit}" + (cursor != null ? "&cursor=" + UnityWebRequest.EscapeURL(cursor) : ""), null);
 
         public static bool IsValidName(string name) =>
             !string.IsNullOrEmpty(name) && name.Length >= 3 && name.Length <= 24 &&

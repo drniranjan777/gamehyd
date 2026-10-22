@@ -21,6 +21,8 @@ public sealed class MatchStats
     public long ShotsFired;
     public long Hits;
     public long FireBlocked;
+    public long Headshots;
+    public long ZoneEliminations;
     public long BadTags;
     public long TicketsRejected;
     public long DeltaSnapshots;
@@ -258,7 +260,7 @@ public sealed class Match
             player.Auth = new PacketAuth(JoinTicket.DeriveSessionKey(_cfg.TicketSecret!, ticket.TicketId));
         }
         player.Motor = MotorState.StandingAt(_cfg.Map.SpawnPoint(_players.Count, _cfg.MaxPlayers));
-        player.Combat.Reset(_cfg.Weapon, _cfg.StartWithWeapon, _cfg.StartingReserveAmmo);
+        player.Combat.Reset(_cfg.Weapon, _cfg.StartWithWeapon, _cfg.StartingReserveAmmo, _cfg.StartingWeaponIndex);
         _players.Add(player);
         _byEndpoint[from] = player;
         Stats.PeakPlayers = Math.Max(Stats.PeakPlayers, _players.Count);
@@ -294,6 +296,7 @@ public sealed class Match
             PlayerId = p.Id,
             SessionToken = p.SessionToken,
             TickRate = (ushort)_cfg.TickRate,
+            WeaponBalanceVersion = (ushort)WeaponCatalog.BalanceVersion,
             MaxPlayers = (byte)_cfg.MaxPlayers,
             MapVersion = _cfg.Map.Version,
         }));
@@ -374,7 +377,7 @@ public sealed class Match
         {
             PlayerState p = _players[i];
             p.Motor = MotorState.StandingAt(_cfg.Map.SpawnPoint(i, _players.Count));
-            p.Combat.Reset(_cfg.Weapon, _cfg.StartWithWeapon, _cfg.StartingReserveAmmo);
+            p.Combat.Reset(_cfg.Weapon, _cfg.StartWithWeapon, _cfg.StartingReserveAmmo, _cfg.StartingWeaponIndex);
             p.Alive = true;
             Array.Fill(p.History, p.Motor);
         }
@@ -408,15 +411,17 @@ public sealed class Match
             if (!p.Alive) continue;
 
             Simulation.Step(ref p.Motor, cmd, _dt, _cfg.Map);
-            p.Combat.Update(Tick, _cfg.Weapon);
+            p.Combat.Update(Tick, ActiveWeapon(p));
             if (!allowFire) continue;
 
             if (cmd.Has(InputButtons.Interact)) TryPickUp(p);
+            if (cmd.Has(InputButtons.SwitchWeapon))
+                p.Combat.TrySwitch(Tick, _cfg.WeaponDef(p.Combat.SlotWeapon(1 - p.Combat.ActiveSlot)), _cfg.TickRate);
             if (cmd.Has(InputButtons.Heal)) p.Combat.TryStartHeal(Tick, _cfg.TickRate);
-            if (cmd.Has(InputButtons.Reload)) p.Combat.TryStartReload(Tick, _cfg.Weapon, _cfg.TickRate);
+            if (cmd.Has(InputButtons.Reload)) p.Combat.TryStartReload(Tick, ActiveWeapon(p), _cfg.TickRate);
             if (!cmd.Has(InputButtons.Fire)) continue;
 
-            FireResult result = p.Combat.TryFire(Tick, _cfg.Weapon, _cfg.TickRate);
+            FireResult result = p.Combat.TryFire(Tick, ActiveWeapon(p), _cfg.TickRate);
             if (result == FireResult.Fired) Fire(p, cmd);
             else Stats.FireBlocked++;
         }
@@ -444,45 +449,51 @@ public sealed class Match
             return;
         }
         _lootTaken[best] = true;
-        p.Combat.PickUp(loot[best], _cfg.Weapon);
+        p.Combat.PickUp(loot[best], _cfg.WeaponDef(loot[best].WeaponIndex));
         Stats.Pickups++;
     }
 
+    private WeaponDefinition ActiveWeapon(PlayerState p) => _cfg.WeaponDef(p.Combat.ActiveWeaponIndex);
+
+    private readonly List<TargetCapsule> _targets = new();
+    private readonly List<PlayerState> _targetPlayers = new();
+    private readonly List<PelletResult> _pellets = new();
+
     private void Fire(PlayerState shooter, InputCommand cmd)
     {
-        WeaponDefinition w = _cfg.Weapon;
+        WeaponDefinition w = ActiveWeapon(shooter);
         Stats.ShotsFired++;
+        shooter.ShotCounter++;
 
         MotorState m = shooter.Motor;
         bool moving = cmd.MoveX * cmd.MoveX + cmd.MoveZ * cmd.MoveZ > 0.01f;
         float spread = w.SpreadFor(moving, m.Crouched, !m.Grounded);
-        Vector3 origin = m.Eye;
-        Vector3 dir = Simulation.SpreadDirection(shooter.Yaw, shooter.Pitch, spread, Simulation.ShotSeed(shooter.Id, cmd.Sequence));
-        float wall = Simulation.WallDistance(origin, dir, w.Range, _cfg.Map);
 
         // Lag compensation: test targets where the shooter saw them, but never further back than MaxRewind.
         long maxRewind = _historyLength - 2;
         long rewindTick = Math.Clamp((long)cmd.AckTick, Tick - maxRewind, Tick);
-
-        PlayerState? best = null;
-        float bestT = wall;
+        _targets.Clear();
+        _targetPlayers.Clear();
         foreach (PlayerState target in _players)
         {
             if (target == shooter || !target.Alive) continue;
             MotorState then = MotorAt(target, rewindTick);
-            float? t = Simulation.RayCapsule(origin, dir, then.Position, then.Height, w.Range);
-            if (t.HasValue && t.Value < bestT)
-            {
-                bestT = t.Value;
-                best = target;
-            }
+            _targets.Add(new TargetCapsule { Feet = then.Position, Height = then.Height });
+            _targetPlayers.Add(target);
         }
-        if (best == null) return;
 
-        Stats.Hits++;
-        best.Combat.ApplyDamage(w.Damage);
-        best.Combat.CancelHeal();
-        if (!best.Combat.Alive) Eliminate(best, shooter);
+        Ballistics.Fire(m.Eye, shooter.Yaw, shooter.Pitch, spread, Simulation.ShotSeed(shooter.Id, cmd.Sequence), w, _cfg.Map, _targets, _pellets);
+        foreach (PelletResult pellet in _pellets)
+        {
+            if (pellet.Target < 0) continue;
+            PlayerState victim = _targetPlayers[pellet.Target];
+            if (!victim.Alive) continue;
+            Stats.Hits++;
+            if (pellet.Headshot) Stats.Headshots++;
+            victim.Combat.ApplyDamage(pellet.Damage);
+            victim.Combat.CancelHeal();
+            if (!victim.Combat.Alive) Eliminate(victim, shooter);
+        }
     }
 
     private MotorState MotorAt(PlayerState p, long tick)
@@ -522,7 +533,9 @@ public sealed class Match
             float dist = new Vector2(p.Position.X, p.Position.Z).Length();
             if (dist <= radius) continue;
             p.Health -= damage;
-            if (p.Health <= 0) Eliminate(p, null);
+            if (p.Health > 0) continue;
+            Stats.ZoneEliminations++;
+            Eliminate(p, null);
         }
     }
 
@@ -616,6 +629,8 @@ public sealed class Match
                 Armor = (byte)Math.Clamp(Math.Ceiling(p.Combat.Armor), 0, 255),
                 Ammo = (byte)Math.Clamp(p.Ammo, 0, 255),
                 Flags = flags,
+                Weapon = p.Combat.HasWeapon ? (byte)p.Combat.ActiveWeaponIndex : WeaponCatalog.None,
+                ShotCounter = p.ShotCounter,
             }));
         }
         _sentSnapshots.Add(snapshot);
@@ -626,6 +641,13 @@ public sealed class Match
             snapshot.AckSequence = p.LastProcessedSequence;
             snapshot.SelfReserveAmmo = (ushort)Math.Clamp(p.Combat.ReserveAmmo, 0, ushort.MaxValue);
             snapshot.SelfMedkits = (byte)Math.Clamp(p.Combat.Medkits, 0, 255);
+            snapshot.SelfActiveSlot = (byte)p.Combat.ActiveSlot;
+            for (int slot = 0; slot < Combatant.SlotCount; slot++)
+            {
+                int w = p.Combat.SlotWeapon(slot);
+                snapshot.SelfSlotWeapon[slot] = w >= 0 ? (byte)w : WeaponCatalog.None;
+                snapshot.SelfSlotAmmo[slot] = (byte)Math.Clamp(p.Combat.SlotAmmo(slot), 0, 255);
+            }
             snapshot.SelfVerticalVelocity = p.Motor.VerticalVelocity;
             snapshot.SelfX = p.Position.X;
             snapshot.SelfY = p.Position.Y;

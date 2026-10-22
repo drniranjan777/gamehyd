@@ -72,7 +72,9 @@ namespace RWBR.Shared.Protocol
             Armor = 16,
             Ammo = 32,
             Flags = 64,
-            All = PositionFull | Yaw | Health | Armor | Ammo | Flags,
+            /// <summary>Weapon in hand and shot counter (change together often enough to share a bit).</summary>
+            Weapon = 128,
+            All = PositionFull | Yaw | Health | Armor | Ammo | Flags | Weapon,
         }
 
         public static byte[] Encode(SnapshotPacket p, SnapshotPacket? baseline)
@@ -93,6 +95,12 @@ namespace RWBR.Shared.Protocol
             w.F32(p.SelfX);
             w.F32(p.SelfY);
             w.F32(p.SelfZ);
+            w.U8(p.SelfActiveSlot);
+            for (int i = 0; i < 2; i++)
+            {
+                w.U8(p.SelfSlotWeapon[i]);
+                w.U8(p.SelfSlotAmmo[i]);
+            }
 
             Dictionary<ushort, SnapshotEntry>? baseById = Index(baseline);
             w.U8((byte)p.Players.Count);
@@ -133,6 +141,12 @@ namespace RWBR.Shared.Protocol
             p.SelfX = r.F32();
             p.SelfY = r.F32();
             p.SelfZ = r.F32();
+            p.SelfActiveSlot = r.U8();
+            for (int i = 0; i < 2; i++)
+            {
+                p.SelfSlotWeapon[i] = r.U8();
+                p.SelfSlotAmmo[i] = r.U8();
+            }
 
             Dictionary<ushort, SnapshotEntry>? baseById = Index(baseline);
             int n = r.U8();
@@ -174,6 +188,7 @@ namespace RWBR.Shared.Protocol
                 if (e.Armor != bb.Armor) mask |= Field.Armor;
                 if (e.Ammo != bb.Ammo) mask |= Field.Ammo;
                 if (e.Flags != bb.Flags) mask |= Field.Flags;
+                if (e.Weapon != bb.Weapon || e.ShotCounter != bb.ShotCounter) mask |= Field.Weapon;
             }
 
             w.U16(e.PlayerId);
@@ -195,6 +210,11 @@ namespace RWBR.Shared.Protocol
             if ((mask & Field.Armor) != 0) w.U8(e.Armor);
             if ((mask & Field.Ammo) != 0) w.U8(e.Ammo);
             if ((mask & Field.Flags) != 0) w.U8((byte)e.Flags);
+            if ((mask & Field.Weapon) != 0)
+            {
+                w.U8(e.Weapon);
+                w.U8(e.ShotCounter);
+            }
         }
 
         private static SnapshotEntry ReadEntry(PacketReader r, Dictionary<ushort, SnapshotEntry>? baseById)
@@ -207,7 +227,10 @@ namespace RWBR.Shared.Protocol
 
             int x = Quantize.Position(b.X), y = Quantize.Position(b.Y), z = Quantize.Position(b.Z);
             ushort yaw = Quantize.Yaw(b.Yaw);
-            var e = new SnapshotEntry { PlayerId = id, Health = b.Health, Armor = b.Armor, Ammo = b.Ammo, Flags = b.Flags };
+            var e = new SnapshotEntry
+            {
+                PlayerId = id, Health = b.Health, Armor = b.Armor, Ammo = b.Ammo, Flags = b.Flags, Weapon = b.Weapon, ShotCounter = b.ShotCounter,
+            };
 
             if ((mask & Field.PositionDelta) != 0)
             {
@@ -226,6 +249,11 @@ namespace RWBR.Shared.Protocol
             if ((mask & Field.Armor) != 0) e.Armor = r.U8();
             if ((mask & Field.Ammo) != 0) e.Ammo = r.U8();
             if ((mask & Field.Flags) != 0) e.Flags = (PlayerFlags)r.U8();
+            if ((mask & Field.Weapon) != 0)
+            {
+                e.Weapon = r.U8();
+                e.ShotCounter = r.U8();
+            }
 
             e.X = Quantize.Position(x);
             e.Y = Quantize.Position(y);

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using RWBR.Client.Audio;
 using RWBR.Client.Greybox;
 using RWBR.Client.Player;
 using RWBR.Client.Settings;
@@ -27,7 +28,7 @@ namespace RWBR.Client.Online
         }
 
         public const string DefaultServer = "127.0.0.1:7777";
-        public const string PracticeScene = "Greybox";
+        public const string MenuScene = "MainMenu";
         /// <summary>Remote players render this many ticks behind the newest snapshot (133 ms at 30 Hz).</summary>
         public const float InterpolationDelayTicks = 4f;
         private const string ServerKey = "rwbr.server";
@@ -39,7 +40,14 @@ namespace RWBR.Client.Online
         private const double SilenceBeforeReconnect = 3.0;
 
         private readonly DeviceInputSource _device = new DeviceInputSource();
-        private readonly WeaponDefinition _weapon = WeaponDefinition.DefaultRifle();
+        private readonly Dictionary<ushort, byte> _lastShotCounter = new Dictionary<ushort, byte>();
+        private bool _switchLatched;
+        private readonly FootstepTracker _footsteps = new FootstepTracker();
+        private float _nextZoneWarning;
+
+        /// <summary>Balance of the weapon in the local player's hand (from the server's snapshot).</summary>
+        public WeaponDefinition SelfWeapon =>
+            Self is { } me && WeaponCatalog.IsValid(me.Weapon) ? WeaponCatalog.Get(me.Weapon) : WeaponCatalog.Get(WeaponCatalog.Rifle);
         private GreyboxWorld _world;
         private OnlineViews _views;
         private int _tickRate = 30;
@@ -234,11 +242,11 @@ namespace RWBR.Client.Online
             Paused = false;
         }
 
-        public void LeaveToPractice()
+        public void LeaveToMenu()
         {
             Net.Leave();
             Cursor.lockState = CursorLockMode.None;
-            SceneManager.LoadScene(PracticeScene);
+            SceneManager.LoadScene(MenuScene);
         }
 
         private void OnDestroy() => Net.Dispose();
@@ -255,6 +263,7 @@ namespace RWBR.Client.Online
                 Interp.Add(s);
                 Prediction?.Reconcile(s, Net.PlayerId);
                 TrackHealth(s);
+                RemoteShots(s);
             }
             foreach (EliminatedPacket e in Net.NewEliminations) OnEliminated(e);
 
@@ -280,6 +289,8 @@ namespace RWBR.Client.Online
                 _reloadLatched |= frame.ReloadPressed;
                 _interactLatched |= frame.InteractPressed;
                 _healLatched |= frame.HealPressed;
+                int activeSlot = Net.Latest?.SelfActiveSlot ?? 0;
+                _switchLatched |= frame.SwitchPressed || (frame.SelectSlot >= 0 && frame.SelectSlot != activeSlot);
                 if (frame.CrouchToggled) _crouchToggle = !_crouchToggle;
             }
 
@@ -300,6 +311,7 @@ namespace RWBR.Client.Online
                 Prediction.DecayOffset(Time.deltaTime);
                 Touch.InteractAvailable = SelfAlive && NearestLoot() >= 0;
                 _views.Render(Net.PlayerId, Prediction.RenderPosition, ViewYaw, Prediction.Predicted, Interp, Net.Latest, Time.time);
+                MatchSounds();
             }
             Feed.RemoveAll(f => Time.time - f.Time > 5f);
 
@@ -331,6 +343,40 @@ namespace RWBR.Client.Online
             }
         }
 
+        /// <summary>Footsteps for everyone we can see, and a periodic warning while outside the zone.</summary>
+        private void MatchSounds()
+        {
+            GameAudio audio = GameAudio.Instance;
+            foreach (ushort id in Interp.KnownPlayers())
+            {
+                SVector3 p;
+                bool grounded, crouched, alive;
+                if (id == Net.PlayerId)
+                {
+                    p = Prediction.Predicted.Position;
+                    grounded = Prediction.Predicted.Grounded;
+                    crouched = Prediction.Predicted.Crouched;
+                    alive = SelfAlive;
+                }
+                else
+                {
+                    if (!Interp.TrySample(id, out p, out _, out SnapshotEntry e)) continue;
+                    grounded = (e.Flags & PlayerFlags.Grounded) != 0;
+                    crouched = (e.Flags & PlayerFlags.Crouched) != 0;
+                    alive = (e.Flags & PlayerFlags.Alive) != 0;
+                }
+                if (alive && _footsteps.Step(id, new Vector3(p.X, p.Y, p.Z), grounded, crouched))
+                    audio.PlayAt(Sfx.Footstep, new Vector3(p.X, p.Y, p.Z), id == Net.PlayerId ? 0.45f : 0.7f, 25f);
+            }
+
+            if (Self is { } me && Net.Latest is { } s && s.Phase == MatchPhase.Active && (me.Flags & PlayerFlags.Alive) != 0 &&
+                new Vector2(me.X - s.ZoneX, me.Z - s.ZoneZ).magnitude > s.ZoneRadius && Time.time >= _nextZoneWarning)
+            {
+                _nextZoneWarning = Time.time + 2f;
+                audio.PlayUi(Sfx.ZoneWarning);
+            }
+        }
+
         private void PrepareMap()
         {
             if (_world == null || !_world.MatchServerMap(Net.Welcome.MapVersion))
@@ -343,6 +389,16 @@ namespace RWBR.Client.Online
             _tickRate = Math.Max(1, (int)Net.Welcome.TickRate);
             Prediction = new ClientPrediction(Map, _tickRate);
             _views.Build(Map);
+            MapLayout map = Map;
+            GameAudio audio = GameAudio.Instance;
+            audio.LineOfSight = (a, b) =>
+            {
+                Vector3 d = b - a;
+                float len = d.magnitude;
+                return len < 0.01f || Simulation.WallDistance(new SVector3(a.x, a.y, a.z), new SVector3(d.x / len, d.y / len, d.z / len), len, map) >= len - 0.05f;
+            };
+            audio.Indoors = p => Simulation.WallDistance(new SVector3(p.x, p.y, p.z), SVector3.UnitY, 12f, map) < 12f;
+            RemoteShotFired += (id, at, w) => GameAudio.Instance.Gunshot(w, new Vector3(at.X, at.Y, at.Z), local: false);
             _mapReady = true;
         }
 
@@ -368,6 +424,8 @@ namespace RWBR.Client.Online
             if (_reloadLatched) buttons |= InputButtons.Reload;
             if (_interactLatched) buttons |= InputButtons.Interact;
             if (_healLatched) buttons |= InputButtons.Heal;
+            if (_switchLatched) buttons |= InputButtons.SwitchWeapon;
+            _switchLatched = false;
             _jumpLatched = _reloadLatched = _interactLatched = _healLatched = false;
             if ((buttons & InputButtons.Jump) != 0) _crouchToggle = false;
 
@@ -433,22 +491,63 @@ namespace RWBR.Client.Online
             if (Net.Latest == null || Net.Latest.Phase != MatchPhase.Active) return; // the server only allows fire in play
             if ((me.Flags & PlayerFlags.HasWeapon) == 0 || (me.Flags & (PlayerFlags.Reloading | PlayerFlags.Healing)) != 0 || me.Ammo == 0) return;
             if (_localTick < _nextLocalShotTick) return;
-            _nextLocalShotTick = _localTick + Math.Max(1, Combatant.Ticks(_weapon.FireIntervalSeconds, _tickRate));
+            WeaponDefinition weapon = SelfWeapon;
+            _nextLocalShotTick = _localTick + Math.Max(1, Combatant.Ticks(weapon.FireIntervalSeconds, _tickRate));
 
             MotorState m = Prediction.Predicted;
             bool moving = cmd.MoveX * cmd.MoveX + cmd.MoveZ * cmd.MoveZ > 0.01f;
-            CurrentSpreadDegrees = _weapon.SpreadFor(moving, m.Crouched, !m.Grounded);
+            CurrentSpreadDegrees = weapon.SpreadFor(moving, m.Crouched, !m.Grounded);
             SVector3 origin = m.Eye;
-            SVector3 dir = Simulation.SpreadDirection(cmd.Yaw, cmd.Pitch, CurrentSpreadDegrees, Simulation.ShotSeed(Net.PlayerId, cmd.Sequence));
-            float t = Simulation.WallDistance(origin, dir, _weapon.Range, Map);
-            float? hit = RemoteHit(origin, dir, _weapon.Range, out _);
-            if (hit.HasValue && hit.Value < t) t = hit.Value;
-
-            _views.AddTracer(origin, origin + dir * t, Time.time);
+            uint seed = Simulation.ShotSeed(Net.PlayerId, cmd.Sequence);
+            for (int p = 0; p < Math.Max(1, weapon.Pellets); p++)
+            {
+                // Same pellet seeds as Ballistics.Fire, so the tracers follow the server's rays.
+                SVector3 dir = Simulation.SpreadDirection(cmd.Yaw, cmd.Pitch, CurrentSpreadDegrees, p == 0 ? seed : seed + (uint)p * 0x9E3779B9u);
+                float t = Simulation.WallDistance(origin, dir, weapon.Range, Map);
+                float? hit = RemoteHit(origin, dir, weapon.Range, out _);
+                if (hit.HasValue && hit.Value < t) t = hit.Value;
+                _views.AddTracer(origin, origin + dir * t, Time.time);
+            }
             _lastShotTime = Time.time;
-            ViewPitch -= _weapon.RecoilPitchDegrees;
-            ViewYaw += _weapon.RecoilYawDegrees * (_recoilSign = -_recoilSign);
+            ShotsFiredLocally++;
+            GameAudio.Instance.Gunshot(weapon, new Vector3(origin.X, origin.Y, origin.Z), local: true);
+            ViewPitch -= weapon.RecoilPitchDegrees;
+            ViewYaw += weapon.RecoilYawDegrees * (_recoilSign = -_recoilSign);
         }
+
+        public int ShotsFiredLocally { get; private set; }
+        public int RemoteShotsSeen { get; private set; }
+
+        /// <summary>
+        /// Other players' shots: a changed shot counter means they fired since the last snapshot. Drawn from where we
+        /// see them (interpolated) along their facing, out to the wall or the weapon's range.
+        /// </summary>
+        private void RemoteShots(SnapshotPacket s)
+        {
+            foreach (SnapshotEntry e in s.Players)
+            {
+                if (_lastShotCounter.TryGetValue(e.PlayerId, out byte before) && before != e.ShotCounter && e.PlayerId != Net.PlayerId &&
+                    WeaponCatalog.IsValid(e.Weapon) && Interp.TrySample(e.PlayerId, out SVector3 pos, out float yaw, out SnapshotEntry seen))
+                {
+                    int shots = Math.Min(3, (int)(byte)(e.ShotCounter - before)); // counter wraps at 256
+                    WeaponDefinition w = WeaponCatalog.Get(e.Weapon);
+                    float eye = (seen.Flags & PlayerFlags.Crouched) != 0 ? GameRules.CrouchEyeHeight : GameRules.EyeHeight;
+                    SVector3 origin = pos + new SVector3(0, eye, 0);
+                    for (int i = 0; i < shots; i++)
+                    {
+                        SVector3 dir = Simulation.SpreadDirection(yaw, 0, w.SpreadDegrees + 1f, (uint)(e.ShotCounter * 31 + i));
+                        float range = Simulation.WallDistance(origin, dir, Math.Min(w.Range, 150f), Map);
+                        _views.AddTracer(origin, origin + dir * range, Time.time);
+                        RemoteShotsSeen++;
+                        RemoteShotFired?.Invoke(e.PlayerId, origin, w);
+                    }
+                }
+                _lastShotCounter[e.PlayerId] = e.ShotCounter;
+            }
+        }
+
+        /// <summary>Raised for each remote shot (position, weapon): hooks sound and effects.</summary>
+        public event Action<ushort, SVector3, WeaponDefinition> RemoteShotFired;
 
         private void TrackHealth(SnapshotPacket s)
         {
@@ -461,6 +560,7 @@ namespace RWBR.Client.Online
                     {
                         LastHitTime = Time.time;
                         LastHitWasKill = false;
+                        GameAudio.Instance.PlayUi(Sfx.HitMarker);
                     }
                 }
                 _lastHealth[e.PlayerId] = e.Health;
@@ -479,6 +579,7 @@ namespace RWBR.Client.Online
             {
                 LastHitTime = Time.time;
                 LastHitWasKill = true;
+                GameAudio.Instance.PlayUi(Sfx.Kill);
             }
             Feed.Add(new FeedEntry { Text = text, Time = Time.time });
         }
