@@ -107,7 +107,13 @@ namespace RWBR.EditorTools
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel26;
             PlayerSettings.Android.forceInternetPermission = true; // UDP to the match server
+            // Development builds may call a local platform API over plain HTTP (http://<PC LAN IP>:3001); release
+            // builds still require HTTPS.
+            PlayerSettings.insecureHttpOption = InsecureHttpOption.DevelopmentOnly;
         }
+
+        /// <summary>True while <see cref="BuildAndroid"/> runs (read by <see cref="AndroidDevManifest"/>).</summary>
+        public static bool BuildingDevelopment { get; private set; }
 
         [MenuItem("RWBR/Build Android (development APK)")]
         public static void BuildAndroid()
@@ -122,7 +128,16 @@ namespace RWBR.EditorTools
                 options = BuildOptions.Development,
             };
             EditorUserBuildSettings.buildAppBundle = false;
-            BuildReport report = BuildPipeline.BuildPlayer(options);
+            BuildingDevelopment = true;
+            BuildReport report;
+            try
+            {
+                report = BuildPipeline.BuildPlayer(options);
+            }
+            finally
+            {
+                BuildingDevelopment = false;
+            }
             BuildSummary s = report.summary;
             Debug.Log($"RWBR: Android build {s.result}: {s.outputPath} {s.totalSize / 1048576f:0.0} MB in {s.totalTime.TotalSeconds:0}s, {s.totalErrors} errors");
             if (Application.isBatchMode) EditorApplication.Exit(s.result == BuildResult.Succeeded ? 0 : 1);
