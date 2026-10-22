@@ -140,8 +140,13 @@ namespace RWBR.Client.Online
         private void Start()
         {
             if (QuickPlayActive) return; // already started by code before the first frame
-            if (CommandLineArg("-platform") != null) StartQuickPlay();
-            else Connect(ServerAddress);
+            // Players go through the platform (sign in, matchmaking, assigned server). A direct connection to a dev
+            // server happens only when asked for: -server on the command line, or a saved dev server in the editor
+            // (local development and the play-mode tests). On phones 127.0.0.1 is the phone itself.
+            if (CommandLineServer() != null) Connect(ServerAddress);
+            else if (CommandLineArg("-platform") != null) StartQuickPlay();
+            else if (Application.isEditor && PlayerPrefs.HasKey(ServerKey)) Connect(ServerAddress);
+            else StartQuickPlay();
         }
 
         /// <summary>Direct connection to a dev server (open mode, no ticket).</summary>

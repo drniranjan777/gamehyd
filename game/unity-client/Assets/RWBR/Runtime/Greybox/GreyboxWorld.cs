@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using RWBR.Shared;
 using UnityEngine;
@@ -55,13 +56,26 @@ namespace RWBR.Client.Greybox
             if (transform.childCount == 0) Build();
         }
 
+        /// <summary>
+        /// The world's vertex-colour shader. It lives in a Resources folder so player builds always include it (a
+        /// shader only looked up by name is otherwise stripped); the fallbacks are shaders Unity always ships.
+        /// </summary>
+        public static Shader WorldShader()
+        {
+            foreach (string name in new[] { "RWBR/VertexColorLit", "Standard", "Sprites/Default" })
+            {
+                Shader shader = Shader.Find(name);
+                if (shader != null) return shader;
+            }
+            throw new InvalidOperationException("No usable shader for the greybox world");
+        }
+
         public void Build()
         {
             for (int i = transform.childCount - 1; i >= 0; i--) DestroyImmediate(transform.GetChild(i).gameObject);
             if (_material == null)
             {
-                Shader shader = Shader.Find("RWBR/VertexColorLit") ?? Shader.Find("Standard");
-                _material = new Material(shader) { name = "GreyboxWorld", hideFlags = HideFlags.DontSave };
+                _material = new Material(WorldShader()) { name = "GreyboxWorld", hideFlags = HideFlags.DontSave };
             }
 
             MapLayout layout = Layout;

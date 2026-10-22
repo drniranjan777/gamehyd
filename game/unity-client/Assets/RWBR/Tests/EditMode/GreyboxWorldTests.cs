@@ -67,5 +67,15 @@ namespace RWBR.Tests
             SVector3 p = Simulation.Move(SVector3.Zero, hack, 1f, new MapLayout("open", 100, new Aabb[0]));
             Assert.LessOrEqual(p.Length(), GameRules.SprintSpeed + 1e-3f);
         }
+
+        /// <summary>Regression: player builds strip shaders only found by name; the world shader must ship.</summary>
+        [Test]
+        public void World_shader_is_in_resources_so_player_builds_include_it()
+        {
+            Shader shader = Resources.Load<Shader>("Shaders/VertexColorLit");
+            Assert.IsNotNull(shader, "VertexColorLit must stay under a Resources folder");
+            Assert.AreEqual("RWBR/VertexColorLit", shader.name);
+            Assert.AreEqual("RWBR/VertexColorLit", RWBR.Client.Greybox.GreyboxWorld.WorldShader().name);
+        }
     }
 }
