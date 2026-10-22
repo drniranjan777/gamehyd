@@ -30,11 +30,11 @@ Simulation tools: `clumsy` (Windows) or `tc netem` (Linux) on the server host; A
 
 ## Server-side acceptance (from Phase 0 onwards)
 
-| Test                                                                    | Where it lives today                                            | Status                                               |
-| ----------------------------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------- |
-| 8-player full match, one server-decided winner                          | `UdpMatchTests` (8 bots over UDP)                               | Automated, passing                                   |
-| 30-player smoke match                                                   | `RWBR.MatchServer --players 30 --fast` + `RWBR.Bots --count 30` | Run manually, passing                                |
-| Speed hack, input bursts, replays, fire-rate abuse, LOS, forged packets | `MatchAuthorityTests`                                           | Automated, passing                                   |
-| Reconnect within grace / token single-use / elimination after grace     | `MatchAuthorityTests`                                           | Automated, passing                                   |
-| 20–30 players for a full-length match (10–15 min), repeated 10×         | —                                                               | Phase 2: needs default config + longer bot behaviour |
-| Same under each network profile                                         | —                                                               | Phase 2: add loss/jitter injection to the bot client |
+| Test                                                                    | Where it lives today                                                                          | Status                                                                        |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| 8-player full match, one server-decided winner                          | `UdpMatchTests` (8 bots over UDP)                                                             | Automated, passing                                                            |
+| 30-player smoke match                                                   | `RWBR.MatchServer --players 30 --fast` + `RWBR.Bots --count 30`                               | Run manually, passing                                                         |
+| Speed hack, input bursts, replays, fire-rate abuse, LOS, forged packets | `MatchAuthorityTests`                                                                         | Automated, passing                                                            |
+| Reconnect within grace / token single-use / elimination after grace     | `MatchAuthorityTests`                                                                         | Automated, passing                                                            |
+| 30 players for a full-length match (~5–6 min, default zone)             | `RWBR.MatchServer --players 30` + `RWBR.Bots --count 30 --loss 0.03 --latency 60 --jitter 30` | Run once on loopback (docs/PHASE-2-STATUS.md); repeat 10× on the cloud region |
+| Same under each network profile                                         | `RWBR.Bots --loss/--latency/--jitter`; `ImpairedNetworkTests` (automated, poor 4G)            | Simulated profiles passing; real profiles need devices                        |

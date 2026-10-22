@@ -2,7 +2,7 @@
 
 Source: [BRD v1.2](Real_World_Battle_Royale_Detailed_BRD_Technical_Plan_v1.2.docx) (21 Oct 2026). Prepared 21 Oct 2026.
 
-**Starting point:** fresh build, started 22 Oct 2026. **Current progress:** Phase 0 engineering work done and tested; decisions and sign-offs open — see [docs/PHASE-0-STATUS.md](docs/PHASE-0-STATUS.md).
+**Starting point:** fresh build, started 22 Oct 2026. **Current progress:** Phases 0–3 engineering work done and tested locally; decisions, cloud/staging, device measurements and sign-offs open — see [Phase 0](docs/PHASE-0-STATUS.md), [Phase 1](docs/PHASE-1-STATUS.md), [Phase 2](docs/PHASE-2-STATUS.md) and [Phase 3](docs/PHASE-3-STATUS.md) status.
 
 **Tech stack (confirmed):**
 
@@ -75,6 +75,8 @@ Each phase ends with a demo, evidence (tests, builds, metrics), and sign-off bef
 
 ### Phase 1 — Core Gameplay Vertical Slice (Weeks 5–10)
 
+> **Progress (22 Oct 2026):** practice mode built on shared rules — jump/crouch/stairs/roofs, rifle with spread/recoil/reload, armor, medkits, loot, 5 AI enemies, HUD, inventory, touch controls, quality presets, frame-time logging. Open: mid-tier device FPS measurement, crash reporting, art pipeline. Details: [docs/PHASE-1-STATUS.md](docs/PHASE-1-STATUS.md).
+
 **Goal:** single-player game that feels good on a real phone.
 
 **Unity (C#):**
@@ -95,6 +97,8 @@ Each phase ends with a demo, evidence (tests, builds, metrics), and sign-off bef
 
 ### Phase 2 — Authoritative Multiplayer (Weeks 8–16, overlaps Phase 1)
 
+> **Progress (22 Oct 2026):** Unity plays online with prediction/reconciliation and interpolation; protocol v3 delta snapshots (45 kbps/player at 30 players); signed join tickets + packet tags; impairment-tested 8-bot matches and a full-length 30-bot soak. Open: cloud/real-network runs, devices, library benchmark. Details: [docs/PHASE-2-STATUS.md](docs/PHASE-2-STATUS.md).
+
 **Goal:** a fair, cheat-resistant match from start to winner.
 
 **Match server (C#):**
@@ -113,6 +117,8 @@ Each phase ends with a demo, evidence (tests, builds, metrics), and sign-off bef
 ---
 
 ### Phase 3 — Platform Backend & Database (Weeks 10–18, overlaps Phase 2)
+
+> **Progress (22 Oct 2026):** exit gate passes end to end locally — guest auth with rotating refresh tokens, profile/stats/history, inventory, reports, PostgreSQL matchmaking, signed server heartbeats and results, exactly-once ledger rewards; Unity Quick play. Open: staging/cloud, platform sign-in credentials, secure device storage. Details: [docs/PHASE-3-STATUS.md](docs/PHASE-3-STATUS.md).
 
 **Goal:** durable accounts, progression, and inventory on staging.
 

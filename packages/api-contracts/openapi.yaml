@@ -1,0 +1,761 @@
+openapi: 3.1.0
+info:
+  title: Real-World Battle Royale Platform API
+  version: 0.3.0
+  description: |
+    Player-facing and game-server-facing API (BRD v1.2 §10). Source of truth for request/response shapes:
+    TypeScript types are generated from this file and every API test validates responses against it.
+    All errors use the `ErrorEnvelope` shape. Authenticated player endpoints take `Authorization: Bearer <accessToken>`.
+    `/internal/*` endpoints are for match servers only and require an HMAC signature (see `ServerSignature`).
+servers:
+  - url: /api/v1
+
+tags:
+  - name: Health
+  - name: Auth
+  - name: Player
+  - name: Maps
+  - name: Matchmaking
+  - name: Matches
+  - name: Inventory
+  - name: Reports
+  - name: Internal
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Liveness
+      responses:
+        '200':
+          description: Process is up
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+  /health/ready:
+    get:
+      tags: [Health]
+      summary: Readiness (database reachable and migrated)
+      responses:
+        '200':
+          description: Ready
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Readiness' }
+        '503': { $ref: '#/components/responses/Error' }
+
+  /auth/guest:
+    post:
+      tags: [Auth]
+      summary: Create a guest account, or sign in with stored guest credentials
+      description: |
+        Send an empty body on first launch: the response includes `guest.deviceId` and `guest.deviceSecret`, which the
+        client must keep in secure storage. Later sign-ins send them back. The secret is shown only once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GuestSignInRequest' }
+      responses:
+        '200':
+          description: Signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /auth/platform:
+    post:
+      tags: [Auth]
+      summary: Sign in with Google Play Games or Apple Game Center
+      description: Not available until platform verification credentials are configured (returns 501).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlatformSignInRequest' }
+      responses:
+        '200':
+          description: Signed in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '401': { $ref: '#/components/responses/Error' }
+        '501': { $ref: '#/components/responses/Error' }
+  /auth/token/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate a refresh token
+      description: Each refresh token works once. Reusing an old one revokes every session from that sign-in.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200':
+          description: New token pair
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '401': { $ref: '#/components/responses/Error' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke a refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '204': { description: Revoked (also when already revoked or unknown) }
+
+  /player/profile:
+    get:
+      tags: [Player]
+      security: [{ bearer: [] }]
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Profile' }
+        '401': { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Player]
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProfileUpdate' }
+      responses:
+        '200':
+          description: Updated profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Profile' }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /player/stats:
+    get:
+      tags: [Player]
+      security: [{ bearer: [] }]
+      responses:
+        '200':
+          description: Lifetime stats
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Stats' }
+        '401': { $ref: '#/components/responses/Error' }
+  /player/matches:
+    get:
+      tags: [Player]
+      security: [{ bearer: [] }]
+      summary: Match history, newest first
+      parameters:
+        - { name: cursor, in: query, schema: { type: string, maxLength: 200 } }
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 50, default: 20 },
+          }
+      responses:
+        '200':
+          description: One page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MatchHistoryPage' }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /maps:
+    get:
+      tags: [Maps]
+      responses:
+        '200':
+          description: Published map versions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/MapSummary' }
+  /maps/{mapKey}/manifest:
+    get:
+      tags: [Maps]
+      parameters:
+        - {
+            name: mapKey,
+            in: path,
+            required: true,
+            schema: { type: string, pattern: '^[a-z0-9-]{3,40}$' },
+          }
+      responses:
+        '200':
+          description: Latest published version's manifest
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MapManifest' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /matchmaking/queue:
+    post:
+      tags: [Matchmaking]
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QueueRequest' }
+      responses:
+        '200':
+          description: Queued or already matched
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QueueStatus' }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Matchmaking]
+      security: [{ bearer: [] }]
+      responses:
+        '204': { description: Left the queue (no-op when not queued) }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /matchmaking/status:
+    get:
+      tags: [Matchmaking]
+      security: [{ bearer: [] }]
+      description: Poll every 1–2 s while queued. When matched, contains a fresh single-use seat ticket.
+      responses:
+        '200':
+          description: Current state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QueueStatus' }
+        '401': { $ref: '#/components/responses/Error' }
+
+  /matches/{matchId}/reconnect-ticket:
+    post:
+      tags: [Matches]
+      security: [{ bearer: [] }]
+      parameters:
+        - { name: matchId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Short-lived single-use seat for a match the player belongs to
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Seat' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /matches/{matchId}/result:
+    get:
+      tags: [Matches]
+      security: [{ bearer: [] }]
+      parameters:
+        - { name: matchId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Final result (participants only)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MatchResult' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /inventory:
+    get:
+      tags: [Inventory]
+      security: [{ bearer: [] }]
+      responses:
+        '200':
+          description: Owned cosmetics, loadout and wallet balances
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Inventory' }
+        '401': { $ref: '#/components/responses/Error' }
+  /inventory/loadout/{slot}:
+    put:
+      tags: [Inventory]
+      security: [{ bearer: [] }]
+      parameters:
+        - {
+            name: slot,
+            in: path,
+            required: true,
+            schema: { $ref: '#/components/schemas/CosmeticKind' },
+          }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [cosmeticKey]
+              properties:
+                cosmeticKey: { type: string, pattern: '^[a-z0-9_]{3,60}$' }
+      responses:
+        '200':
+          description: Updated inventory
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Inventory' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /reports:
+    post:
+      tags: [Reports]
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReportRequest' }
+      responses:
+        '201':
+          description: Report filed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Report' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /reports/{reportId}:
+    get:
+      tags: [Reports]
+      security: [{ bearer: [] }]
+      parameters:
+        - { name: reportId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: A report the player filed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Report' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /internal/game-servers/heartbeat:
+    post:
+      tags: [Internal]
+      security: [{ serverSignature: [] }]
+      description: Match servers call this every ~2 s. The response may assign the next match to host.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HeartbeatRequest' }
+      responses:
+        '200':
+          description: Registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HeartbeatResponse' }
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /internal/matches/{matchId}/result:
+    post:
+      tags: [Internal]
+      security: [{ serverSignature: [] }]
+      description: |
+        Final result from the hosting match server. Idempotent: resubmitting the identical payload returns 200 with
+        `duplicate: true`; a different payload for a completed match is a 409. Rewards are granted exactly once.
+      parameters:
+        - { name: matchId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResultSubmission' }
+      responses:
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResultAccepted' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    serverSignature:
+      type: apiKey
+      in: header
+      name: X-RWBR-Signature
+      description: |
+        hex(HMAC-SHA256(SERVER_SHARED_SECRET, "<timestamp>.<METHOD>.<path>.<hex sha256(body)>")), with the Unix-seconds
+        timestamp in `X-RWBR-Timestamp` (must be within 300 s) and the server's address in `X-RWBR-Server`.
+
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, requestId, details]
+          properties:
+            code: { type: string, examples: [VALIDATION_ERROR] }
+            message: { type: string }
+            requestId: { type: [string, 'null'] }
+            details:
+              type: array
+              items:
+                type: object
+                required: [path, message]
+                properties:
+                  path: { type: string }
+                  message: { type: string }
+
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status: { const: ok }
+    Readiness:
+      type: object
+      required: [status, database, schemaVersion]
+      properties:
+        status: { const: ok }
+        database: { const: ok }
+        schemaVersion: { type: [string, 'null'] }
+
+    DisplayName:
+      type: string
+      minLength: 3
+      maxLength: 24
+      pattern: '^[A-Za-z0-9_. -]+$'
+
+    GuestSignInRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        deviceId: { type: string, format: uuid }
+        deviceSecret: { type: string, minLength: 43, maxLength: 43, pattern: '^[A-Za-z0-9_-]+$' }
+        displayName: { $ref: '#/components/schemas/DisplayName' }
+    PlatformSignInRequest:
+      type: object
+      additionalProperties: false
+      required: [provider, token]
+      properties:
+        provider: { enum: [GOOGLE_PLAY, APPLE] }
+        token: { type: string, minLength: 10, maxLength: 4096 }
+    RefreshRequest:
+      type: object
+      additionalProperties: false
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string, minLength: 43, maxLength: 43 }
+    AuthResponse:
+      type: object
+      additionalProperties: false
+      required: [userId, accessToken, accessTokenExpiresIn, refreshToken, refreshTokenExpiresAt]
+      properties:
+        userId: { type: string, format: uuid }
+        accessToken: { type: string }
+        accessTokenExpiresIn: { type: integer, description: seconds }
+        refreshToken: { type: string }
+        refreshTokenExpiresAt: { type: string, format: date-time }
+        guest:
+          description: Present only when a new guest account was created. Store securely; shown once.
+          type: object
+          additionalProperties: false
+          required: [deviceId, deviceSecret]
+          properties:
+            deviceId: { type: string, format: uuid }
+            deviceSecret: { type: string }
+
+    Profile:
+      type: object
+      additionalProperties: false
+      required: [playerId, displayName, level, xp, xpForNextLevel, createdAt]
+      properties:
+        playerId: { type: string, format: uuid }
+        displayName: { $ref: '#/components/schemas/DisplayName' }
+        level: { type: integer, minimum: 1 }
+        xp: { type: integer, minimum: 0 }
+        xpForNextLevel: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+    ProfileUpdate:
+      type: object
+      additionalProperties: false
+      required: [displayName]
+      properties:
+        displayName: { $ref: '#/components/schemas/DisplayName' }
+    Stats:
+      type: object
+      additionalProperties: false
+      required: [matchesPlayed, wins, kills, winRate, level, xp]
+      properties:
+        matchesPlayed: { type: integer, minimum: 0 }
+        wins: { type: integer, minimum: 0 }
+        kills: { type: integer, minimum: 0 }
+        winRate: { type: number, minimum: 0, maximum: 1 }
+        level: { type: integer, minimum: 1 }
+        xp: { type: integer, minimum: 0 }
+    MatchHistoryItem:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          matchId,
+          mapVersion,
+          mode,
+          completedAt,
+          placement,
+          players,
+          kills,
+          survivalSeconds,
+          xpAwarded,
+          coinsAwarded,
+        ]
+      properties:
+        matchId: { type: string, format: uuid }
+        mapVersion: { type: string }
+        mode: { const: SOLO }
+        completedAt: { type: string, format: date-time }
+        placement: { type: integer, minimum: 1 }
+        players: { type: integer, minimum: 1 }
+        kills: { type: integer, minimum: 0 }
+        survivalSeconds: { type: integer, minimum: 0 }
+        xpAwarded: { type: integer, minimum: 0 }
+        coinsAwarded: { type: integer, minimum: 0 }
+    MatchHistoryPage:
+      type: object
+      additionalProperties: false
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/MatchHistoryItem' }
+        nextCursor: { type: [string, 'null'] }
+
+    MapSummary:
+      type: object
+      additionalProperties: false
+      required: [mapKey, displayName, version, publishedAt]
+      properties:
+        mapKey: { type: string }
+        displayName: { type: string }
+        version: { type: string }
+        publishedAt: { type: string, format: date-time }
+    MapManifest:
+      type: object
+      additionalProperties: false
+      required: [mapKey, version, manifest]
+      properties:
+        mapKey: { type: string }
+        version: { type: string }
+        manifest: { type: object }
+
+    QueueRequest:
+      type: object
+      additionalProperties: false
+      required: [mode, region, clientVersion]
+      properties:
+        mode: { const: SOLO }
+        region: { type: string, pattern: '^[A-Z]{2}-[A-Z]{2,10}$', examples: [IN-SOUTH] }
+        clientVersion: { type: string, pattern: '^[0-9]+\.[0-9]+\.[0-9]+$' }
+        partyId: { type: 'null' }
+    Seat:
+      type: object
+      additionalProperties: false
+      required: [matchId, server, ticket, sessionKey, expiresAt, mapVersion]
+      properties:
+        matchId: { type: string, format: uuid }
+        server: { type: string, description: 'host:port of the match server (UDP)' }
+        ticket:
+          { type: string, contentEncoding: base64, description: 'Signed join ticket (ADR 0007)' }
+        sessionKey:
+          {
+            type: string,
+            contentEncoding: base64,
+            description: 'Key for packet tags; never send it anywhere',
+          }
+        expiresAt: { type: string, format: date-time }
+        mapVersion: { type: string }
+    QueueStatus:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [state]
+          properties:
+            state: { const: IDLE }
+        - type: object
+          additionalProperties: false
+          required: [state, enqueuedAt, region]
+          properties:
+            state: { const: QUEUED }
+            enqueuedAt: { type: string, format: date-time }
+            region: { type: string }
+        - type: object
+          additionalProperties: false
+          required: [state, seat]
+          properties:
+            state: { const: MATCHED }
+            seat: { $ref: '#/components/schemas/Seat' }
+
+    MatchResult:
+      type: object
+      additionalProperties: false
+      required: [matchId, status, reason, winnerPlayerId, durationSeconds, mapVersion, participants]
+      properties:
+        matchId: { type: string, format: uuid }
+        status: { const: COMPLETED }
+        reason: { enum: [WINNER, TIMEOUT, CANCELLED] }
+        winnerPlayerId: { type: [string, 'null'], format: uuid }
+        durationSeconds: { type: integer, minimum: 0 }
+        mapVersion: { type: string }
+        participants:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [playerId, displayName, placement, kills]
+            properties:
+              playerId: { type: string, format: uuid }
+              displayName: { type: string }
+              placement: { type: integer, minimum: 1 }
+              kills: { type: integer, minimum: 0 }
+
+    CosmeticKind: { enum: [WEAPON_SKIN, OUTFIT, EMOTE, PARACHUTE, BANNER] }
+    Inventory:
+      type: object
+      additionalProperties: false
+      required: [items, loadout, wallets]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [cosmeticKey, kind, displayName, rarity, acquiredAt]
+            properties:
+              cosmeticKey: { type: string }
+              kind: { $ref: '#/components/schemas/CosmeticKind' }
+              displayName: { type: string }
+              rarity: { enum: [COMMON, RARE, EPIC, LEGENDARY] }
+              acquiredAt: { type: string, format: date-time }
+        loadout:
+          type: object
+          additionalProperties: { type: string }
+          description: slot -> cosmeticKey
+        wallets:
+          type: object
+          additionalProperties: false
+          required: [COIN, GEM]
+          properties:
+            COIN: { type: integer, minimum: 0 }
+            GEM: { type: integer, minimum: 0 }
+
+    ReportRequest:
+      type: object
+      additionalProperties: false
+      required: [reportedPlayerId, reason]
+      properties:
+        reportedPlayerId: { type: string, format: uuid }
+        matchId: { type: string, format: uuid }
+        reason: { enum: [CHEATING, HARASSMENT, INAPPROPRIATE_NAME, GRIEFING, OTHER] }
+        details: { type: string, maxLength: 1000 }
+    Report:
+      type: object
+      additionalProperties: false
+      required: [reportId, reportedPlayerId, matchId, reason, status, createdAt]
+      properties:
+        reportId: { type: string, format: uuid }
+        reportedPlayerId: { type: string, format: uuid }
+        matchId: { type: [string, 'null'], format: uuid }
+        reason: { enum: [CHEATING, HARASSMENT, INAPPROPRIATE_NAME, GRIEFING, OTHER] }
+        status: { enum: [OPEN, UNDER_REVIEW, ACTIONED, DISMISSED] }
+        createdAt: { type: string, format: date-time }
+
+    HeartbeatRequest:
+      type: object
+      additionalProperties: false
+      required: [address, region, buildVersion, mapVersions, state]
+      properties:
+        address: { type: string, pattern: '^[A-Za-z0-9.:-]{3,100}:[0-9]{1,5}$' }
+        region: { type: string, pattern: '^[A-Z]{2}-[A-Z]{2,10}$' }
+        buildVersion: { type: string, maxLength: 40 }
+        mapVersions: { type: array, items: { type: string }, minItems: 1, maxItems: 20 }
+        state: { enum: [IDLE, HOSTING] }
+        matchId: { type: [string, 'null'], format: uuid }
+        matchPhase: { enum: [WAITING, COUNTDOWN, ACTIVE, COMPLETED, null] }
+        connectedPlayers: { type: integer, minimum: 0 }
+    HeartbeatResponse:
+      type: object
+      additionalProperties: false
+      required: [serverId, assignment]
+      properties:
+        serverId: { type: string, format: uuid }
+        assignment:
+          description: A match to host now (only when the server reported IDLE).
+          oneOf:
+            - type: 'null'
+            - type: object
+              additionalProperties: false
+              required: [matchId, mapVersion, capacity, minPlayers, fillWaitSeconds]
+              properties:
+                matchId: { type: string, format: uuid }
+                mapVersion: { type: string }
+                capacity: { type: integer, minimum: 2, maximum: 100 }
+                minPlayers: { type: integer, minimum: 2 }
+                fillWaitSeconds: { type: integer, minimum: 0 }
+    ResultSubmission:
+      type: object
+      additionalProperties: false
+      required: [mapVersion, reason, durationSeconds, participants]
+      properties:
+        mapVersion: { type: string }
+        reason: { enum: [WINNER, TIMEOUT, CANCELLED] }
+        winnerAccountId: { type: [string, 'null'], format: uuid }
+        durationSeconds: { type: integer, minimum: 0, maximum: 7200 }
+        participants:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required: [accountId, placement, kills, survivalSeconds]
+            properties:
+              accountId: { type: string, format: uuid }
+              placement: { type: integer, minimum: 1, maximum: 100 }
+              kills: { type: integer, minimum: 0, maximum: 99 }
+              survivalSeconds: { type: integer, minimum: 0, maximum: 7200 }
+    ResultAccepted:
+      type: object
+      additionalProperties: false
+      required: [matchId, duplicate]
+      properties:
+        matchId: { type: string, format: uuid }
+        duplicate: { type: boolean }

@@ -36,3 +36,4 @@ game/unity-client/.idea/
 .DS_Store
 Thumbs.db
 game/unity-client/.vscode/
+game/unity-client/.utmp/

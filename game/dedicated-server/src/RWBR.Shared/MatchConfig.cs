@@ -1,3 +1,4 @@
+#nullable enable
 using System.Collections.Generic;
 
 namespace RWBR.Shared
@@ -23,6 +24,11 @@ namespace RWBR.Shared
         public int MinPlayers { get; set; } = 2;
         public int MaxPlayers { get; set; } = 30;
         public float CountdownSeconds { get; set; } = 5f;
+        /// <summary>
+        /// Once MinPlayers are connected, wait this long for the match to fill before counting down
+        /// (0 = start as soon as MinPlayers are in). A full match always starts immediately.
+        /// </summary>
+        public float FillWaitSeconds { get; set; }
         public float MaxMatchSeconds { get; set; } = 900f;
         public float ZoneDamagePerSecond { get; set; } = 5f;
         public List<ZoneStage> ZoneStages { get; set; } = new List<ZoneStage>
@@ -38,6 +44,15 @@ namespace RWBR.Shared
         public float ResultBroadcastSeconds { get; set; } = 1f;
         public WeaponDefinition Weapon { get; set; } = WeaponDefinition.DefaultRifle();
         public MapLayout Map { get; set; } = MapLayout.GreyboxBlock(100f);
+        /// <summary>Prototype loadout: players spawn armed until the drop/loot design is signed off (Appendix A).</summary>
+        public bool StartWithWeapon { get; set; } = true;
+        public int StartingReserveAmmo { get; set; } = 90;
+        /// <summary>Send a snapshot every N ticks (1 = every tick). Clients interpolate between them.</summary>
+        public int SnapshotEveryTicks { get; set; } = 1;
+        /// <summary>HMAC secret shared with the platform API. Null = open dev server without join tickets.</summary>
+        public byte[]? TicketSecret { get; set; }
+        /// <summary>The match these tickets must name (ticket mode).</summary>
+        public System.Guid MatchId { get; set; }
 
         public int Ticks(float seconds) => (int)System.Math.Ceiling(seconds * TickRate);
 

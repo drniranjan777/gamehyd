@@ -26,4 +26,4 @@ Windows 11 dev machine, loopback, single process. These are smoke-test numbers, 
 ## Consequences
 
 - Map collision for the server must be exported from the Unity scene (or authored as data both sides read). Phase 0 uses `MapLayout` as the single source; Phase 4 needs an export step from Unity level geometry.
-- Server collision is currently 2D + height (flat ground). Rooftops/stairs require vertical movement in `Simulation` before Phase 1 rooftop work.
+- Vertical movement (jump, crouch, stairs, roofs, falling) was added to `Simulation` in Phase 1 and runs identically in Unity and on the server.

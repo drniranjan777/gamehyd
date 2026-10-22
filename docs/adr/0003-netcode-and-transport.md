@@ -1,6 +1,6 @@
 # ADR 0003 — Netcode and transport
 
-- **Status:** Proposed — prototype done, benchmark against one library still to do
+- **Status:** Accepted for Phase 2 (22 Oct 2026); library benchmark still open as a safety check
 - **Context:** BRD §7.2/§11: UDP-style transport for high-frequency gameplay, clients send inputs only, server snapshots, prediction/reconciliation, lag compensation, reconnect.
 
 ## What the prototype uses
@@ -12,13 +12,13 @@ A small custom protocol over raw UDP (`RWBR.Shared/Protocol`):
 - **Authority:** one input consumed per player per tick; inputs older than the last processed sequence are dropped (replay protection); backlog capped at 4; move vectors clamped; fire cadence, ammo and reload enforced server-side; hits tested against target positions rewound to the shooter's acknowledged tick, capped at 200 ms; walls block shots.
 - **Reconnect:** silent clients are marked disconnected after 3 s and eliminated after the grace period (20 s default). A `Hello` with the last token from any address restores the player and rotates the token; the old token is rejected.
 
-Covered by 20 automated tests (`game/dedicated-server/tests`), including speed-hack, input-burst, replay, fire-rate, line-of-sight, forged-packet, reconnect and late-join cases, plus an 8-bot match over real UDP.
+Protocol v2 (Phase 1) adds jump/crouch/interact/heal buttons, armor and stance flags, a loot-taken bitset and recipient-only reserve ammo/medkits. Covered by 33 automated tests (`game/dedicated-server/tests`), including speed-hack, input-burst, replay, fire-rate, line-of-sight, forged-packet, reconnect, late-join, pickup-range, double-pickup, crouch-hitbox and heal-interrupt cases, plus an 8-bot match over real UDP.
 
 ## Still open before accepting
 
 1. **Benchmark one library** against the custom stack: Unity Netcode for GameObjects 2.13 (bundled with the editor) or Fish-Net. Criteria: bandwidth at 30 players, server CPU, how cleanly authority stays server-side, licence, and whether it can run outside a Unity server build (ADR 0002).
-2. **Security:** UDP packets are unauthenticated and unencrypted. Before any external test: API-issued, signed, single-use join tickets (`POST /matches/{id}/reconnect-ticket` already in BRD §10) and per-session packet authentication (HMAC or DTLS).
-3. **Bandwidth:** full snapshots cost ~126 kbps/player at 30 players and 30 Hz. Delta compression, quantised positions and relevance filtering are needed for mobile data (target < 50 kbps).
+2. ~~Security~~ **Done (Phase 2):** signed join tickets and per-packet HMAC tags, see ADR 0007.
+3. ~~Bandwidth~~ **Done (Phase 2):** protocol v3 quantised delta snapshots, 45 kbps/player at 30 Hz (22 kbps at 15 Hz) with 30 players.
 4. **Reliability:** `Eliminated` and `MatchCompleted` are resent by state (snapshot flags, repeated result) instead of an ack/resend channel. Needs a small reliable-ordered channel for events.
 
 ## Recommendation

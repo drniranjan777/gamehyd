@@ -1,5 +1,6 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { ApiError } from './api-error';
 
 const CODES: Record<number, string> = {
   400: 'BAD_REQUEST',
@@ -7,8 +8,10 @@ const CODES: Record<number, string> = {
   403: 'FORBIDDEN',
   404: 'NOT_FOUND',
   409: 'CONFLICT',
+  413: 'PAYLOAD_TOO_LARGE',
   422: 'VALIDATION_ERROR',
   429: 'RATE_LIMITED',
+  501: 'NOT_IMPLEMENTED',
   503: 'SERVICE_UNAVAILABLE',
 };
 
@@ -22,11 +25,15 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
 
     const status =
       exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
-    const code = CODES[status] ?? (status >= 500 ? 'INTERNAL_ERROR' : 'ERROR');
+    const code =
+      exception instanceof ApiError
+        ? exception.code
+        : (CODES[status] ?? (status >= 500 ? 'INTERNAL_ERROR' : 'ERROR'));
     const message =
       exception instanceof HttpException && status !== HttpStatus.INTERNAL_SERVER_ERROR
         ? exception.message
         : 'An unexpected error occurred';
+    const details = exception instanceof ApiError ? exception.details : [];
 
     if (status >= 500) {
       console.error(
@@ -41,7 +48,7 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
     }
 
     res.status(status).json({
-      error: { code, message, requestId: req.requestId ?? null, details: [] },
+      error: { code, message, requestId: req.requestId ?? null, details },
     });
   }
 }

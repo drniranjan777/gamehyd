@@ -6,6 +6,11 @@ namespace RWBR.Shared
     /// <summary>Deterministic movement and hit geometry, shared by server authority and client prediction.</summary>
     public static class Simulation
     {
+        /// <summary>Ledge drop that still counts as walking (stairs down); larger drops start a fall.</summary>
+        private const float StepDown = 0.45f;
+        /// <summary>Footprint inset used for standing on ledges, so players can stand partly over an edge.</summary>
+        private const float FootInset = 0.7f;
+
         public static float SanitizeAngle(float radians, float limit)
         {
             if (float.IsNaN(radians) || float.IsInfinity(radians)) return 0f;
@@ -33,13 +38,13 @@ namespace RWBR.Shared
         }
 
         /// <summary>
-        /// Advances a character by one tick. Oversized or non-finite input is clamped, so a tampered client
-        /// can never move faster than <see cref="GameRules.SprintSpeed"/>.
+        /// Advances a character by one tick: walk/sprint/crouch, jump, gravity, stairs, walls and ceilings.
+        /// Oversized or non-finite input is clamped, so a tampered client can never move faster than
+        /// <see cref="GameRules.SprintSpeed"/> or jump while airborne.
         /// </summary>
-        public static Vector3 Move(Vector3 position, InputCommand input, float dt, MapLayout map)
+        public static void Step(ref MotorState s, InputCommand input, float dt, MapLayout map)
         {
-            float mx = float.IsNaN(input.MoveX) || float.IsInfinity(input.MoveX) ? 0 : input.MoveX;
-            float mz = float.IsNaN(input.MoveZ) || float.IsInfinity(input.MoveZ) ? 0 : input.MoveZ;
+            float mx = Finite(input.MoveX), mz = Finite(input.MoveZ);
             float len = (float)Math.Sqrt(mx * mx + mz * mz);
             if (len > 1f)
             {
@@ -47,24 +52,81 @@ namespace RWBR.Shared
                 mz /= len;
             }
 
+            if (input.Has(InputButtons.Crouch)) s.Crouched = true;
+            else if (s.Crouched && HasHeadroom(s.Position, GameRules.PlayerHeight, map)) s.Crouched = false;
+
             float yaw = WrapYaw(input.Yaw);
-            bool sprint = input.Has(InputButtons.Sprint) && mz > 0.5f;
-            float speed = sprint ? GameRules.SprintSpeed : GameRules.WalkSpeed;
-            Vector3 delta = (Right(yaw) * mx + Forward(yaw) * mz) * speed * dt;
-            return ResolveCollisions(position + delta, map);
+            bool sprint = input.Has(InputButtons.Sprint) && mz > 0.5f && !s.Crouched;
+            float speed = s.Crouched ? GameRules.CrouchSpeed : sprint ? GameRules.SprintSpeed : GameRules.WalkSpeed;
+            Vector3 p = s.Position + (Right(yaw) * mx + Forward(yaw) * mz) * speed * dt;
+            p = ResolveHorizontal(p, s.Position.Y, s.Height, map);
+
+            if (s.Grounded && input.Has(InputButtons.Jump) && !s.Crouched)
+            {
+                s.VerticalVelocity = GameRules.JumpSpeed;
+                s.Grounded = false;
+            }
+
+            if (!s.Grounded)
+            {
+                s.VerticalVelocity = Math.Max(-GameRules.MaxFallSpeed, s.VerticalVelocity - GameRules.Gravity * dt);
+                p.Y = s.Position.Y + s.VerticalVelocity * dt;
+                if (s.VerticalVelocity > 0)
+                {
+                    float? ceiling = CeilingAbove(p, s.Position.Y + s.Height, p.Y + s.Height, map);
+                    if (ceiling.HasValue)
+                    {
+                        p.Y = ceiling.Value - s.Height;
+                        s.VerticalVelocity = 0;
+                    }
+                }
+            }
+            else
+            {
+                p.Y = s.Position.Y;
+            }
+
+            float ground = GroundHeight(p, Math.Max(s.Position.Y, p.Y) + GameRules.StepHeight, map);
+            if (s.Grounded)
+            {
+                if (ground >= p.Y - StepDown) p.Y = ground; // walk up or down stairs
+                else s.Grounded = false;                     // walked off a ledge
+            }
+            else if (p.Y <= ground)
+            {
+                p.Y = ground;
+                s.Grounded = true;
+                s.VerticalVelocity = 0;
+            }
+
+            s.Position = p;
         }
 
-        public static Vector3 ResolveCollisions(Vector3 p, MapLayout map)
+        /// <summary>One grounded step without jump/crouch state. Kept for simple callers and tests.</summary>
+        public static Vector3 Move(Vector3 position, InputCommand input, float dt, MapLayout map)
+        {
+            MotorState s = MotorState.StandingAt(position);
+            Step(ref s, input, dt, map);
+            return s.Position;
+        }
+
+        /// <summary>Pushes a standing character at ground level out of walls and back inside the map.</summary>
+        public static Vector3 ResolveCollisions(Vector3 p, MapLayout map) => ResolveHorizontal(p, p.Y, GameRules.PlayerHeight, map);
+
+        /// <summary>
+        /// Horizontal push-out. Boxes the character can step onto (top within <see cref="GameRules.StepHeight"/>
+        /// of the feet) and boxes entirely above the head do not block.
+        /// </summary>
+        public static Vector3 ResolveHorizontal(Vector3 p, float feetY, float height, MapLayout map)
         {
             float r = GameRules.PlayerRadius;
             float limit = map.HalfSize - r;
             p.X = Math.Max(-limit, Math.Min(limit, p.X));
             p.Z = Math.Max(-limit, Math.Min(limit, p.Z));
-            p.Y = 0;
 
             foreach (Aabb box in map.Obstacles)
             {
-                if (box.Min.Y >= GameRules.PlayerHeight) continue; // overhead (roofs, slabs): no ground collision
+                if (box.Max.Y <= feetY + GameRules.StepHeight || box.Min.Y >= feetY + height) continue;
                 float minX = box.Min.X - r, maxX = box.Max.X + r;
                 float minZ = box.Min.Z - r, maxZ = box.Max.Z + r;
                 if (p.X <= minX || p.X >= maxX || p.Z <= minZ || p.Z >= maxZ) continue;
@@ -78,6 +140,46 @@ namespace RWBR.Shared
                 else p.Z = maxZ;
             }
             return p;
+        }
+
+        /// <summary>Highest surface under the footprint whose top is at or below <paramref name="maxTop"/>.</summary>
+        public static float GroundHeight(Vector3 p, float maxTop, MapLayout map)
+        {
+            float ground = 0f;
+            float r = GameRules.PlayerRadius * FootInset;
+            foreach (Aabb box in map.Obstacles)
+            {
+                if (box.Max.Y > maxTop || box.Max.Y <= ground) continue;
+                if (p.X < box.Min.X - r || p.X > box.Max.X + r || p.Z < box.Min.Z - r || p.Z > box.Max.Z + r) continue;
+                ground = box.Max.Y;
+            }
+            return ground;
+        }
+
+        /// <summary>True when a character of <paramref name="height"/> fits at <paramref name="feet"/> (for standing up).</summary>
+        public static bool HasHeadroom(Vector3 feet, float height, MapLayout map)
+        {
+            float r = GameRules.PlayerRadius;
+            foreach (Aabb box in map.Obstacles)
+            {
+                if (box.Min.Y >= feet.Y + height || box.Max.Y <= feet.Y + GameRules.StepHeight) continue;
+                if (feet.X <= box.Min.X - r || feet.X >= box.Max.X + r || feet.Z <= box.Min.Z - r || feet.Z >= box.Max.Z + r) continue;
+                return false;
+            }
+            return true;
+        }
+
+        private static float? CeilingAbove(Vector3 p, float headFrom, float headTo, MapLayout map)
+        {
+            float r = GameRules.PlayerRadius * FootInset;
+            float? lowest = null;
+            foreach (Aabb box in map.Obstacles)
+            {
+                if (box.Min.Y < headFrom - 1e-4f || box.Min.Y > headTo) continue;
+                if (p.X < box.Min.X - r || p.X > box.Max.X + r || p.Z < box.Min.Z - r || p.Z > box.Max.Z + r) continue;
+                if (!lowest.HasValue || box.Min.Y < lowest.Value) lowest = box.Min.Y;
+            }
+            return lowest;
         }
 
         /// <summary>Slab test. Returns distance along the ray to the box, or null when missed within maxDistance.</summary>
@@ -104,19 +206,71 @@ namespace RWBR.Shared
             return tMin;
         }
 
+        /// <summary>Distance to the nearest wall along the ray, or maxDistance when nothing blocks it.</summary>
+        public static float WallDistance(Vector3 origin, Vector3 dir, float maxDistance, MapLayout map)
+        {
+            float wall = maxDistance;
+            foreach (Aabb box in map.Obstacles)
+            {
+                float? t = RayAabb(origin, dir, box, maxDistance);
+                if (t.HasValue && t.Value < wall) wall = t.Value;
+            }
+            return wall;
+        }
+
+        /// <summary>Ray against a standing character capsule at <paramref name="feet"/>.</summary>
+        public static float? RayCapsule(Vector3 origin, Vector3 dir, Vector3 feet, float maxDistance) =>
+            RayCapsule(origin, dir, feet, GameRules.PlayerHeight, maxDistance);
+
         /// <summary>
-        /// Ray against a standing character capsule at <paramref name="feet"/>. Returns distance along the ray
-        /// to the closest approach, or null when the ray passes outside the capsule or beyond maxDistance.
+        /// Ray against a character capsule of the given height. Returns distance along the ray to the closest
+        /// approach, or null when the ray passes outside the capsule or beyond maxDistance.
         /// </summary>
-        public static float? RayCapsule(Vector3 origin, Vector3 dir, Vector3 feet, float maxDistance)
+        public static float? RayCapsule(Vector3 origin, Vector3 dir, Vector3 feet, float height, float maxDistance)
         {
             float r = GameRules.PlayerRadius;
             Vector3 a = feet + new Vector3(0, r, 0);
-            Vector3 b = feet + new Vector3(0, GameRules.PlayerHeight - r, 0);
+            Vector3 b = feet + new Vector3(0, height - r, 0);
             ClosestPointsSegmentSegment(origin, origin + dir * maxDistance, a, b, out float s, out _, out Vector3 c1, out Vector3 c2);
             if (Vector3.DistanceSquared(c1, c2) > r * r) return null;
             return s * maxDistance;
         }
+
+        /// <summary>
+        /// Deterministic shot spread: the same (yaw, pitch, spread, seed) gives the same direction on client and
+        /// server, so predicted tracers match the server's hit test.
+        /// </summary>
+        public static Vector3 SpreadDirection(float yaw, float pitch, float spreadDegrees, uint seed)
+        {
+            uint h = Hash(seed);
+            float u = (h & 0xFFFF) / 65536f;
+            float v = (h >> 16) / 65536f;
+            float radius = spreadDegrees * (float)(Math.PI / 180) * (float)Math.Sqrt(v);
+            float angle = u * 2 * (float)Math.PI;
+            return AimDirection(yaw + radius * (float)Math.Cos(angle), pitch + radius * (float)Math.Sin(angle));
+        }
+
+        public static uint ShotSeed(ushort playerId, uint sequence) => sequence * 2654435761u ^ ((uint)playerId << 20);
+
+        /// <summary>Loot is reachable when within pickup range horizontally and roughly at the character's level.</summary>
+        public static bool CanReach(MotorState s, Vector3 item)
+        {
+            float dx = item.X - s.Position.X, dz = item.Z - s.Position.Z;
+            float dy = item.Y - s.Position.Y;
+            return dx * dx + dz * dz <= GameRules.PickupRange * GameRules.PickupRange && dy > -1f && dy < 2f;
+        }
+
+        private static uint Hash(uint x)
+        {
+            x ^= x >> 16;
+            x *= 0x7feb352d;
+            x ^= x >> 15;
+            x *= 0x846ca68b;
+            x ^= x >> 16;
+            return x;
+        }
+
+        private static float Finite(float v) => float.IsNaN(v) || float.IsInfinity(v) ? 0f : v;
 
         // Ericson, Real-Time Collision Detection, 5.1.9.
         private static void ClosestPointsSegmentSegment(

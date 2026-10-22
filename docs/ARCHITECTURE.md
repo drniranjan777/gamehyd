@@ -19,8 +19,17 @@ Target architecture: BRD v1.2 §7. This page describes what is built today.
 - **API:** global error filter never leaks internal errors; request IDs on every response.
 - **Database:** the API's role cannot run DDL, delete users or touch migration history.
 
-## Not yet connected
+## Platform flow (Phase 3)
 
-- The match server does not report results to the API (Phase 2/3: signed server-to-server result submission).
-- The Unity client does not talk to the API or the match server (Phase 2).
-- No auth, matchmaking or Redis yet (Phase 3).
+1. **Client → API (HTTPS):** guest sign-in, then `POST /matchmaking/queue` and poll `GET /matchmaking/status`.
+2. **Match server → API (HMAC-signed):** heartbeat every 2 s. An idle server receives the next FORMING match (id, map, capacity, minimum players, fill wait).
+3. Once the server reports it is hosting, status returns a **seat**: `host:port`, a signed join ticket and a session key (ADR 0007).
+4. **Client → match server (UDP):** ticket in `Hello`, HMAC tag on every input.
+5. **Match server → API (signed):** final result. The API checks it against the roster, then writes placements, XP, stats and coins (ledger) in one transaction, exactly once.
+6. **Client → API:** profile, stats and history show the result.
+
+## Not yet in place
+
+- Staging/cloud deployment, secrets manager, metrics/tracing backend (ADR 0005).
+- Google Play Games / Apple sign-in (credentials pending); admin portal auth (Phase 5).
+- Redis: not needed yet (matchmaking uses PostgreSQL row locks; rate limits are per instance).

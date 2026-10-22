@@ -24,6 +24,10 @@ namespace RWBR.Shared.Protocol
         MatchFull = 2,
         MatchInProgress = 3,
         InvalidSessionToken = 4,
+        InvalidTicket = 5,
+        TicketExpired = 6,
+        WrongMatch = 7,
+        TicketReused = 8,
     }
 
     public enum MatchPhase : byte
@@ -48,11 +52,15 @@ namespace RWBR.Shared.Protocol
         Alive = 1,
         Connected = 2,
         Reloading = 4,
+        Crouched = 8,
+        Healing = 16,
+        HasWeapon = 32,
+        Grounded = 64,
     }
 
     public static class ProtocolInfo
     {
-        public const ushort Version = 1;
+        public const ushort Version = 3;
         public const ushort NoPlayer = ushort.MaxValue;
         public const int MaxInputsPerPacket = 3;
         public const int MaxNameBytes = 24;
@@ -64,6 +72,8 @@ namespace RWBR.Shared.Protocol
         /// <summary>Empty for a new join; the token from the last Welcome to reconnect.</summary>
         public Guid SessionToken;
         public string Name = "";
+        /// <summary>Signed join ticket from the platform API (empty on servers running without tickets).</summary>
+        public byte[] Ticket = Array.Empty<byte>();
     }
 
     public sealed class WelcomePacket
@@ -80,6 +90,7 @@ namespace RWBR.Shared.Protocol
         public ushort PlayerId;
         public float X, Y, Z, Yaw;
         public byte Health;
+        public byte Armor;
         public byte Ammo;
         public PlayerFlags Flags;
     }
@@ -87,13 +98,26 @@ namespace RWBR.Shared.Protocol
     public sealed class SnapshotPacket
     {
         public uint Tick;
+        /// <summary>Tick of the snapshot this one was delta-encoded against (0 = full snapshot).</summary>
+        public uint BaselineTick;
         public MatchPhase Phase;
         public ushort PhaseTicksLeft;
         public float ZoneX, ZoneZ, ZoneRadius;
         /// <summary>Last input sequence the server processed for the recipient (for client reconciliation).</summary>
         public uint AckSequence;
         public byte AliveCount;
+        /// <summary>Recipient-only inventory (other players' reserves are not broadcast).</summary>
+        public ushort SelfReserveAmmo;
+        public byte SelfMedkits;
+        /// <summary>Recipient's vertical speed, so client prediction can replay jumps and falls exactly.</summary>
+        public float SelfVerticalVelocity;
+        /// <summary>Recipient's exact position (snapshot entries are quantised to 1 cm): exact reconciliation.</summary>
+        public float SelfX, SelfY, SelfZ;
         public List<SnapshotEntry> Players = new List<SnapshotEntry>();
+        /// <summary>Bit i set = loot spawn i has been taken.</summary>
+        public byte[] LootTaken = Array.Empty<byte>();
+
+        public bool IsLootTaken(int id) => id / 8 < LootTaken.Length && (LootTaken[id / 8] & (1 << (id % 8))) != 0;
     }
 
     public sealed class EliminatedPacket
@@ -126,15 +150,22 @@ namespace RWBR.Shared.Protocol
             w.U16(p.ProtocolVersion);
             w.Guid(p.SessionToken);
             w.Str(p.Name, ProtocolInfo.MaxNameBytes);
+            w.U8((byte)p.Ticket.Length);
+            w.Bytes(p.Ticket);
             return w.ToArray();
         }
 
-        public static HelloPacket DecodeHello(PacketReader r) => new HelloPacket
+        public static HelloPacket DecodeHello(PacketReader r)
         {
-            ProtocolVersion = r.U16(),
-            SessionToken = r.Guid(),
-            Name = r.Str(ProtocolInfo.MaxNameBytes),
-        };
+            var p = new HelloPacket
+            {
+                ProtocolVersion = r.U16(),
+                SessionToken = r.Guid(),
+                Name = r.Str(ProtocolInfo.MaxNameBytes),
+            };
+            p.Ticket = r.Bytes(r.U8());
+            return p;
+        }
 
         /// <summary>Inputs newest first; the redundant older ones cover packet loss.</summary>
         public static byte[] Encode(IReadOnlyList<InputCommand> inputs)
@@ -208,62 +239,11 @@ namespace RWBR.Shared.Protocol
 
         public static RejectReason DecodeReject(PacketReader r) => (RejectReason)r.U8();
 
-        public static byte[] Encode(SnapshotPacket p)
-        {
-            var w = new PacketWriter(PacketType.Snapshot);
-            w.U32(p.Tick);
-            w.U8((byte)p.Phase);
-            w.U16(p.PhaseTicksLeft);
-            w.F32(p.ZoneX);
-            w.F32(p.ZoneZ);
-            w.F32(p.ZoneRadius);
-            w.U32(p.AckSequence);
-            w.U8(p.AliveCount);
-            w.U8((byte)p.Players.Count);
-            foreach (SnapshotEntry e in p.Players)
-            {
-                w.U16(e.PlayerId);
-                w.F32(e.X);
-                w.F32(e.Y);
-                w.F32(e.Z);
-                w.F32(e.Yaw);
-                w.U8(e.Health);
-                w.U8(e.Ammo);
-                w.U8((byte)e.Flags);
-            }
-            return w.ToArray();
-        }
+        /// <summary>Full snapshot (no baseline). See <see cref="SnapshotCodec"/> for delta encoding.</summary>
+        public static byte[] Encode(SnapshotPacket p) => SnapshotCodec.Encode(p, null);
 
-        public static SnapshotPacket DecodeSnapshot(PacketReader r)
-        {
-            var p = new SnapshotPacket
-            {
-                Tick = r.U32(),
-                Phase = (MatchPhase)r.U8(),
-                PhaseTicksLeft = r.U16(),
-                ZoneX = r.F32(),
-                ZoneZ = r.F32(),
-                ZoneRadius = r.F32(),
-                AckSequence = r.U32(),
-                AliveCount = r.U8(),
-            };
-            int n = r.U8();
-            for (int i = 0; i < n; i++)
-            {
-                p.Players.Add(new SnapshotEntry
-                {
-                    PlayerId = r.U16(),
-                    X = r.F32(),
-                    Y = r.F32(),
-                    Z = r.F32(),
-                    Yaw = r.F32(),
-                    Health = r.U8(),
-                    Ammo = r.U8(),
-                    Flags = (PlayerFlags)r.U8(),
-                });
-            }
-            return p;
-        }
+        /// <summary>Decodes a full snapshot; delta snapshots need <see cref="SnapshotCodec.Decode"/> with a history.</summary>
+        public static SnapshotPacket DecodeSnapshot(PacketReader r) => SnapshotCodec.Decode(r, null);
 
         public static byte[] Encode(EliminatedPacket p)
         {

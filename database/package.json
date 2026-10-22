@@ -6,7 +6,7 @@
   "scripts": {
     "migrate": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/migrate.test.ts"
+    "test": "tsx --test src/migrate.test.ts src/schema.test.ts"
   },
   "dependencies": {
     "pg": "^8.13.0"

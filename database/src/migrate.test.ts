@@ -82,7 +82,7 @@ describe('migrations', { skip: !adminUrl && 'TEST_ADMIN_DATABASE_URL not set' },
         'INSERT INTO users DEFAULT VALUES RETURNING id',
       );
       await app.query(
-        `INSERT INTO auth_identities (user_id, provider, provider_subject) VALUES ($1, 'GUEST', 'dev-1')`,
+        `INSERT INTO auth_identities (user_id, provider, provider_subject, credential_hash) VALUES ($1, 'GUEST', 'dev-1', sha256('dev'::bytea))`,
         [rows[0]!.id],
       );
       await assert.rejects(app.query('DELETE FROM users'), /permission denied/);
@@ -104,7 +104,7 @@ describe('migrations', { skip: !adminUrl && 'TEST_ADMIN_DATABASE_URL not set' },
       );
       await assert.rejects(
         app.query(
-          `INSERT INTO auth_identities (user_id, provider, provider_subject) VALUES ($1, 'GUEST', 'dev-1')`,
+          `INSERT INTO auth_identities (user_id, provider, provider_subject, credential_hash) VALUES ($1, 'GUEST', 'dev-1', sha256('dev'::bytea))`,
           [rows[0]!.id],
         ),
         /duplicate key/,
