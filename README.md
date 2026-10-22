@@ -3,16 +3,16 @@
 Commercial free-to-play mobile battle royale (Unity 6 client, fictional Hyderabad-inspired map). Requirements:
 [BRD v1.2](Real_World_Battle_Royale_Detailed_BRD_Technical_Plan_v1.2.docx) · [Phase-wise delivery plan](PHASE-PLAN.md)
 
-**Status: Phase 4 engineering done (city map, weapon roster, audio, menus, tutorial); content (art, animation, final audio) and design decisions open.** Phases 0–4 are built and tested locally. Status: [Phase 0](docs/PHASE-0-STATUS.md) · [Phase 1](docs/PHASE-1-STATUS.md) · [Phase 2](docs/PHASE-2-STATUS.md) · [Phase 3](docs/PHASE-3-STATUS.md) · [Phase 4](docs/PHASE-4-STATUS.md).
+**Status: Phase 5 engineering done (store, verified purchases, refunds, admin portal with MFA/RBAC/audit, public website); real store billing waits on Google Play / App Store accounts.** Phases 0–5 are built and tested locally. Status: [Phase 0](docs/PHASE-0-STATUS.md) · [Phase 1](docs/PHASE-1-STATUS.md) · [Phase 2](docs/PHASE-2-STATUS.md) · [Phase 3](docs/PHASE-3-STATUS.md) · [Phase 4](docs/PHASE-4-STATUS.md) · [Phase 5](docs/PHASE-5-STATUS.md).
 
 | Folder                    | What                                                                                                                                                            | Status                                                                                    |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `apps/api/`               | Platform API (Node.js + TypeScript, NestJS)                                                                                                                     | Phase 3: auth, profile, history, inventory, reports, matchmaking, signed server endpoints |
-| `apps/web/`               | Next.js public website                                                                                                                                          | Phase 0: placeholder page                                                                 |
-| `apps/admin/`             | Next.js operations portal                                                                                                                                       | Phase 0: API health page; MFA/RBAC in Phase 3/5                                           |
-| `database/`               | PostgreSQL migrations, runner, roles                                                                                                                            | Phase 3: migrations 0001–0005 (18 tables), ledger, audit                                  |
+| `apps/api/`               | Platform API (Node.js + TypeScript, NestJS)                                                                                                                     | Phase 5: + store, purchase verification, webhooks, refunds, admin API, kill switches      |
+| `apps/web/`               | Next.js public website                                                                                                                                          | Phase 5: landing, news/events, player profiles, support, privacy/terms (drafts), deletion |
+| `apps/admin/`             | Next.js operations portal                                                                                                                                       | Phase 5: MFA sign-in, RBAC, players, reports, catalogue approval, orders, audit, live ops |
+| `database/`               | PostgreSQL migrations, runner, roles                                                                                                                            | Phase 5: migrations 0001–0007, ledger, orders, payments, admin RBAC, audit                |
 | `game/dedicated-server/`  | Authoritative C# match server, shared rules, headless bots                                                                                                      | Phase 3: managed mode (heartbeat, assigned matches, signed results); 30-bot soak          |
-| `game/unity-client/`      | Unity 6 client                                                                                                                                                  | Phase 3: practice, online play, Quick play via the platform                               |
+| `game/unity-client/`      | Unity 6 client                                                                                                                                                  | Phase 5: city, tutorial, online + Quick play, menus, store and account screens            |
 | `infrastructure/`         | Docker Compose (local PostgreSQL)                                                                                                                               | Written, not yet run (no Docker on the dev machine)                                       |
 | `packages/shared-config/` | Shared TypeScript config                                                                                                                                        | In use                                                                                    |
 | `docs/`                   | [Architecture](docs/ARCHITECTURE.md), [ADRs](docs/adr), [risk register](docs/RISK-REGISTER.md), [device & network test plan](docs/TEST-PLAN-DEVICES-NETWORK.md) |                                                                                           |
@@ -62,6 +62,15 @@ dotnet run --project game/dedicated-server/src/RWBR.Bots -c Release -- --count 8
 pnpm --filter @rwbr/api build
 TEST_ADMIN_DATABASE_URL=postgres://postgres@localhost:55432/postgres infrastructure/scripts/fullstack-smoke.sh
 ```
+
+**Store and admin portal (dev)** — the API's `.env.example` turns on dev purchases. Create the first admin, then sign in at http://localhost:3002 with the password and a code from an authenticator app:
+
+```bash
+pnpm --filter @rwbr/api build
+cd apps/api && ADMIN_PASSWORD='choose-a-long-password' node --env-file=.env.example dist/admin-cli.js --email you@example.com --name "Your Name" --role SUPER_ADMIN
+```
+
+In Unity, set `RWBR_DEV_PURCHASE_SECRET` (same value as the API's `DEV_PURCHASE_SECRET`) before starting the editor to buy INR items through the dev store.
 
 To play it yourself: run the API (above), then `RWBR_SERVER_SHARED_SECRET=… RWBR_TICKET_SECRET_HEX=… dotnet run --project game/dedicated-server/src/RWBR.MatchServer -c Release -- --api-url http://localhost:3001/api/v1 --address 127.0.0.1:7777 --fast` with the same secrets as the API, and use **Quick play** in the Online scene.
 

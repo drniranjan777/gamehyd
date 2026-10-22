@@ -112,7 +112,7 @@ namespace RWBR.Tests
             string serverSecret = Hex(32), ticketSecret = Hex(32), api = $"http://127.0.0.1:{apiPort}/api/v1";
             _procs[0] = Start("node", $"\"{apiMain}\"", Repo,
                 ("PORT", apiPort.ToString()), ("DATABASE_URL", appUrl), ("JWT_SECRET", Hex(32)),
-                ("SERVER_SHARED_SECRET", serverSecret), ("TICKET_SECRET_HEX", ticketSecret),
+                ("SERVER_SHARED_SECRET", serverSecret), ("TICKET_SECRET_HEX", ticketSecret), ("ADMIN_TOTP_KEY_HEX", Hex(32)),
                 ("MATCH_CAPACITY", "2"), ("MATCH_MIN_PLAYERS", "2"), ("MATCH_FILL_WAIT_SECONDS", "0"),
                 ("DEFAULT_MAP_VERSION", "greybox-block-40-v2"), ("LOG_REQUESTS", "false"));
             _procs[1] = Start(serverExe, $"--api-url {api} --address 127.0.0.1:{gamePort} --port {gamePort} --fast --max-matches 1", Repo,

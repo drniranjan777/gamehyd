@@ -25,6 +25,7 @@ import { APP_CONFIG, AppConfig } from '../config';
 import { Db } from '../database/database.module';
 import { MatchmakingService } from './matchmaking.service';
 import { ResultsService } from './results.service';
+import { GameConfigService } from '../store/game-config.service';
 
 const region = z.string().regex(/^[A-Z]{2}-[A-Z]{2,10}$/);
 const queueBody = z
@@ -39,13 +40,18 @@ const queueBody = z
 @Controller('matchmaking')
 @UseGuards(AuthGuard, RateLimitGuard)
 export class MatchmakingController {
-  constructor(private readonly mm: MatchmakingService) {}
+  constructor(
+    private readonly mm: MatchmakingService,
+    private readonly gameConfig: GameConfigService,
+  ) {}
 
   @Post('queue')
   @HttpCode(200)
   @RateLimit({ limit: 30, windowSeconds: 60, key: 'user' })
-  queue(@CurrentUser() userId: string, @Body() body: unknown) {
-    return this.mm.enqueue(userId, parse(queueBody, body));
+  async queue(@CurrentUser() userId: string, @Body() body: unknown) {
+    const request = parse(queueBody, body);
+    await this.gameConfig.assertMatchmakingOpen();
+    return this.mm.enqueue(userId, request);
   }
 
   @Delete('queue')

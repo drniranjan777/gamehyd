@@ -498,6 +498,16 @@ export interface paths {
         401: components['responses']['Error'];
         409: components['responses']['Error'];
         422: components['responses']['Error'];
+        429: components['responses']['Error'];
+        /** @description Matchmaking paused by the kill switch (MATCHMAKING_DISABLED) */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ErrorEnvelope'];
+          };
+        };
       };
     };
     delete: {
@@ -897,6 +907,1932 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/store/catalog': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Products on sale now, with the player's ownership. Empty while the store kill switch is off. */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Catalogue */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Catalog'];
+          };
+        };
+        401: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/store/orders': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The player's orders newest first */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['OrderList'];
+          };
+        };
+        401: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    /**
+     * @description Creates an order. Coin/gem products (`IN_GAME`) are paid and granted in this call (status FULFILLED). Real-money
+     *     products return a PENDING order with the platform `sku`; the client buys it in the store, then calls verify.
+     *     Idempotent per `idempotencyKey`: repeating a request returns the same order.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['OrderRequest'];
+        };
+      };
+      responses: {
+        /** @description Order */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Order'];
+          };
+        };
+        401: components['responses']['Error'];
+        404: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+        429: components['responses']['Error'];
+        503: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/store/orders/{orderId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          orderId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Order */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Order'];
+          };
+        };
+        401: components['responses']['Error'];
+        404: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/store/orders/{orderId}/verify': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * @description Sends the platform purchase proof (Google Play purchase token, StoreKit 2 signed transaction, or a dev receipt).
+     *     The server verifies it with the platform and grants exactly once. Retrying is safe. A proof already used for
+     *     another order is a 409 `RECEIPT_ALREADY_USED`; a forged or mismatched one is a 422 `RECEIPT_REJECTED`.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          orderId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['PurchaseProof'];
+        };
+      };
+      responses: {
+        /** @description Fulfilled order */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Order'];
+          };
+        };
+        401: components['responses']['Error'];
+        404: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+        429: components['responses']['Error'];
+        503: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/store/restore': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Restores a platform purchase the game never confirmed (crash after paying, reinstall). */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['RestoreRequest'];
+        };
+      };
+      responses: {
+        /** @description The order the purchase fulfils */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Order'];
+          };
+        };
+        401: components['responses']['Error'];
+        404: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+        429: components['responses']['Error'];
+        503: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/webhooks/google-play': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Google Play Real-time developer notifications via Pub/Sub push, authenticated by Google's OIDC token. */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': Record<string, never>;
+        };
+      };
+      responses: {
+        /** @description Processed or already processed */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['WebhookAck'];
+          };
+        };
+        401: components['responses']['Error'];
+        404: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/webhooks/app-store': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description App Store Server Notifications v2 (`signedPayload` JWS verified against the pinned Apple root). */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': Record<string, never>;
+        };
+      };
+      responses: {
+        /** @description Processed or already processed */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['WebhookAck'];
+          };
+        };
+        401: components['responses']['Error'];
+        404: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/webhooks/dev': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Dev-only refund notifications, signed with `X-RWBR-Dev-Signature` = hex HMAC-SHA256 of the body. */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': Record<string, never>;
+        };
+      };
+      responses: {
+        /** @description Processed or already processed */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['WebhookAck'];
+          };
+        };
+        401: components['responses']['Error'];
+        404: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/player/deletion': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Deletion status */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['DeletionStatus'];
+          };
+        };
+        401: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    /** @description Schedules account deletion after a grace period. Signing in stays possible so the player can cancel. */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Scheduled */
+        202: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['DeletionStatus'];
+          };
+        };
+        401: components['responses']['Error'];
+        409: components['responses']['Error'];
+      };
+    };
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Cancelled */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['DeletionStatus'];
+          };
+        };
+        401: components['responses']['Error'];
+        409: components['responses']['Error'];
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/players/{playerId}/public': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          playerId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Public profile */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['PublicProfile'];
+          };
+        };
+        404: components['responses']['Error'];
+        422: components['responses']['Error'];
+        429: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/events': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Current and upcoming live events */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['EventList'];
+          };
+        };
+        429: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/config': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Live settings and kill switches in force */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['PublicConfig'];
+          };
+        };
+        429: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/auth/login': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Email, password and a 6-digit TOTP code. Five failures lock the account for 15 minutes (423). */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['AdminLoginRequest'];
+        };
+      };
+      responses: {
+        /** @description Session */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminSession'];
+          };
+        };
+        401: components['responses']['Error'];
+        422: components['responses']['Error'];
+        423: components['responses']['Error'];
+        429: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/auth/logout': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Signed out */
+        204: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        401: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/me': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The signed-in admin */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminPrincipal'];
+          };
+        };
+        401: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/overview': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Headline numbers */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminOverview'];
+          };
+        };
+        401: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/admins': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Needs `admins.manage`. */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Admin accounts */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminList'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    /** @description Needs `admins.manage`. The TOTP secret is returned only in this response. */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['AdminCreateRequest'];
+        };
+      };
+      responses: {
+        /** @description Created */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminCreated'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/admins/{adminId}/roles': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          adminId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': {
+            roles: components['schemas']['AdminRole'][];
+            reason: components['schemas']['Reason'];
+          };
+        };
+      };
+      responses: {
+        /** @description Updated admin */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminPrincipal'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        404: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/admins/{adminId}/disable': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          adminId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['ReasonRequest'];
+        };
+      };
+      responses: {
+        /** @description Disabled */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              /** Format: uuid */
+              id: string;
+              /** @constant */
+              status: 'DISABLED';
+            };
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        404: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/players': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Needs `players.read`. `q` is a player id or part of a display name. */
+    get: {
+      parameters: {
+        query: {
+          q: string;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Matching players (up to 50) */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminPlayerList'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/players/{playerId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          playerId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Player detail for support and moderation */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminPlayerDetail'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        404: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/players/{playerId}/sanctions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Needs `players.sanction`. SUSPEND needs `expiresAt`; SUSPEND and BAN end the player's sessions. */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          playerId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['SanctionRequest'];
+        };
+      };
+      responses: {
+        /** @description Recorded */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Sanction'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        404: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/matches': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: {
+          status?: string;
+          limit?: number;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Recent matches */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminMatchList'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/matches/{matchId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          matchId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Match with participants and result evidence */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminMatchDetail'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        404: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/reports': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: {
+          status?: string;
+          limit?: number;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Report queue oldest first */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminReportList'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/reports/{reportId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          reportId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': {
+            status: components['schemas']['ReportStatus'];
+            note: components['schemas']['Reason'];
+          };
+        };
+      };
+      responses: {
+        /** @description Updated */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              /** Format: uuid */
+              reportId: string;
+              status: components['schemas']['ReportStatus'];
+            };
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        404: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    trace?: never;
+  };
+  '/admin/catalog/cosmetics': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description All cosmetics */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['CosmeticList'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/catalog/products': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: {
+          status?: components['schemas']['ProductStatus'];
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Products recently changed first */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminProductList'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    /** @description Needs `catalog.write`. Creates a DRAFT. */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['ProductCreate'];
+        };
+      };
+      responses: {
+        /** @description Draft */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminProduct'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/catalog/products/{key}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          key: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Product */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminProduct'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        404: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** @description Needs `catalog.write`. Drafts only; published products are immutable. */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          key: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['ProductPatch'];
+        };
+      };
+      responses: {
+        /** @description Updated draft */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminProduct'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        404: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    trace?: never;
+  };
+  '/admin/catalog/products/{key}/submit': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          key: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Awaiting approval */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminProduct'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        404: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/catalog/products/{key}/approve': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Needs `catalog.approve`, and the approver must not be the author (403 `SELF_APPROVAL`). */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          key: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Published */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminProduct'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        404: components['responses']['Error'];
+        409: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/catalog/products/{key}/reject': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          key: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['ReasonRequest'];
+        };
+      };
+      responses: {
+        /** @description Back to draft */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminProduct'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        404: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/catalog/products/{key}/retire': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          key: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['ReasonRequest'];
+        };
+      };
+      responses: {
+        /** @description Retired */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminProduct'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        404: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/orders': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: {
+          status?: components['schemas']['OrderStatus'];
+          playerId?: string;
+          limit?: number;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Orders newest first */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminOrderList'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/orders/{orderId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          orderId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Order with payment and platform events */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminOrderDetail'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        404: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/orders/{orderId}/refund': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Needs `orders.refund`. Revokes the grants; idempotent. */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          orderId: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['ReasonRequest'];
+        };
+      };
+      responses: {
+        /** @description Refunded */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['RefundResult'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        404: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/reconcile': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Needs `orders.reconcile`. Runs the housekeeping job now. */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Report */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ReconcileReport'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/audit': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: {
+          entityType?: string;
+          entityId?: string;
+          actor?: string;
+          action?: string;
+          before?: number;
+          limit?: number;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Audit entries newest first */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AuditPage'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/liveops/config': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Current config and recent versions */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['LiveConfig'];
+          };
+        };
+        401: components['responses']['Error'];
+      };
+    };
+    /** @description Needs `liveops.write`. Publishes version `expectedVersion + 1`; 409 if someone published meanwhile. */
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': {
+            expectedVersion: number;
+            config: components['schemas']['GameConfig'];
+            reason: components['schemas']['Reason'];
+          };
+        };
+      };
+      responses: {
+        /** @description New config in force */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['LiveConfig'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/liveops/events': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Events */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminEventList'];
+          };
+        };
+        401: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['EventCreate'];
+        };
+      };
+      responses: {
+        /** @description Scheduled */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminEvent'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/admin/liveops/events/{key}/cancel': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          key: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['ReasonRequest'];
+        };
+      };
+      responses: {
+        /** @description Cancelled */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['AdminEvent'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        404: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1153,6 +3089,534 @@ export interface components {
       /** Format: uuid */
       matchId: string;
       duplicate: boolean;
+    };
+    /** @description INR is real money in paise; COIN and GEM are in-game currencies. */
+    Money: {
+      /** @enum {unknown} */
+      currency: 'INR' | 'COIN' | 'GEM';
+      amountMinor: number;
+    };
+    Grant:
+      | {
+          /** @constant */
+          type: 'COSMETIC';
+          cosmeticKey: string;
+          kind?: components['schemas']['CosmeticKind'];
+        }
+      | {
+          /** @constant */
+          type: 'CURRENCY';
+          /** @enum {unknown} */
+          currency: 'COIN' | 'GEM';
+          amount: number;
+        };
+    PlatformSkus: {
+      ANDROID?: string;
+      IOS?: string;
+    };
+    Catalog: {
+      storeEnabled: boolean;
+      items: {
+        productKey: string;
+        displayName: string;
+        description: string;
+        price: components['schemas']['Money'];
+        grants: components['schemas']['Grant'][];
+        skus: components['schemas']['PlatformSkus'];
+        owned: boolean;
+      }[];
+    };
+    /** @enum {unknown} */
+    OrderPlatform: 'IN_GAME' | 'ANDROID' | 'IOS' | 'DEV';
+    /** @enum {unknown} */
+    OrderStatus: 'PENDING' | 'VERIFIED' | 'FULFILLED' | 'FAILED' | 'CANCELLED' | 'REFUNDED';
+    OrderRequest: {
+      productKey: string;
+      platform: components['schemas']['OrderPlatform'];
+      idempotencyKey: string;
+    };
+    Order: {
+      /** Format: uuid */
+      orderId: string;
+      productKey: string;
+      platform: components['schemas']['OrderPlatform'];
+      status: components['schemas']['OrderStatus'];
+      price: components['schemas']['Money'];
+      /** @description Platform product id to buy; null for IN_GAME */
+      sku: string | null;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      fulfilledAt: string | null;
+      /** Format: date-time */
+      refundedAt: string | null;
+    };
+    OrderList: {
+      items: components['schemas']['Order'][];
+    };
+    PurchaseProof: {
+      proof: string;
+    };
+    RestoreRequest: {
+      /** @enum {unknown} */
+      platform: 'ANDROID' | 'IOS' | 'DEV';
+      sku: string;
+      proof: string;
+    };
+    WebhookAck: {
+      /** @enum {unknown} */
+      outcome: 'APPLIED' | 'IGNORED' | 'UNMATCHED' | 'REJECTED';
+    };
+    DeletionStatus: {
+      /** @enum {unknown} */
+      status: 'ACTIVE' | 'SUSPENDED' | 'BANNED' | 'PENDING_DELETION' | 'DELETED';
+      /** Format: date-time */
+      scheduledFor: string | null;
+    };
+    PublicProfile: {
+      /** Format: uuid */
+      playerId: string;
+      displayName: string;
+      level: number;
+      matchesPlayed: number;
+      wins: number;
+      kills: number;
+      /** Format: date-time */
+      memberSince: string;
+      recentMatches: {
+        /** Format: uuid */
+        matchId: string;
+        mapVersion: string;
+        placement: number;
+        players: number;
+        kills: number;
+        /** Format: date-time */
+        completedAt: string;
+      }[];
+    };
+    EventList: {
+      items: {
+        key: string;
+        title: string;
+        body: string;
+        /** Format: date-time */
+        startsAt: string;
+        /** Format: date-time */
+        endsAt: string;
+        live: boolean;
+      }[];
+    };
+    GameConfig: {
+      storeEnabled: boolean;
+      matchmakingEnabled: boolean;
+      disabledProducts: string[];
+      disabledWeapons: string[];
+    };
+    PublicConfig: {
+      version: number;
+      storeEnabled: boolean;
+      matchmakingEnabled: boolean;
+      disabledProducts: string[];
+      disabledWeapons: string[];
+    };
+    Reason: string;
+    ReasonRequest: {
+      reason: components['schemas']['Reason'];
+    };
+    /** @enum {unknown} */
+    AdminRole: 'SUPPORT' | 'MODERATOR' | 'ECONOMY_OPERATOR' | 'ANALYST' | 'SUPER_ADMIN';
+    AdminLoginRequest: {
+      /** Format: email */
+      email: string;
+      password: string;
+      code: string;
+    };
+    AdminPrincipal: {
+      /** Format: uuid */
+      id: string;
+      email: string;
+      displayName: string;
+      roles: components['schemas']['AdminRole'][];
+      permissions: string[];
+      actor: string;
+    };
+    AdminSession: {
+      /** @description Send as `Authorization: Admin <token>` */
+      token: string;
+      /** Format: date-time */
+      expiresAt: string;
+      admin: components['schemas']['AdminPrincipal'];
+    };
+    AdminList: {
+      items: {
+        /** Format: uuid */
+        id: string;
+        email: string;
+        displayName: string;
+        roles: components['schemas']['AdminRole'][];
+        /** @enum {unknown} */
+        status: 'ACTIVE' | 'DISABLED';
+        /** Format: date-time */
+        lastLoginAt: string | null;
+      }[];
+    };
+    AdminCreateRequest: {
+      /** Format: email */
+      email: string;
+      displayName: string;
+      password: string;
+      roles: components['schemas']['AdminRole'][];
+    };
+    AdminCreated: {
+      admin: components['schemas']['AdminPrincipal'];
+      /** @description Base32; shown once */
+      totpSecret: string;
+      otpauthUrl: string;
+    };
+    AdminOverview: {
+      players: number;
+      activePlayers24h: number;
+      matches24h: number;
+      liveMatches: number;
+      serversOnline: number;
+      openReports: number;
+      productsAwaitingApproval: number;
+      pendingOrders: number;
+      revenueInrMinor30d: number;
+      refunds30d: number;
+      walletsWithLedgerDrift: number;
+    };
+    /** @enum {unknown} */
+    PlayerStatus: 'ACTIVE' | 'SUSPENDED' | 'BANNED' | 'PENDING_DELETION' | 'DELETED';
+    AdminPlayerList: {
+      items: {
+        /** Format: uuid */
+        playerId: string;
+        displayName: string;
+        status: components['schemas']['PlayerStatus'];
+        level: number;
+        /** Format: date-time */
+        createdAt: string;
+      }[];
+    };
+    AdminPlayerDetail: {
+      /** Format: uuid */
+      playerId: string;
+      displayName: string;
+      status: components['schemas']['PlayerStatus'];
+      level: number;
+      xp: number;
+      matchesPlayed: number;
+      wins: number;
+      kills: number;
+      /** Format: date-time */
+      createdAt: string;
+      signIn: {
+        provider: string;
+        /** Format: date-time */
+        lastUsedAt: string | null;
+      }[];
+      wallets: {
+        [key: string]: number;
+      };
+      inventory: {
+        cosmeticKey: string;
+        source: string;
+      }[];
+      orders: components['schemas']['Order'][];
+      sanctions: {
+        /** Format: uuid */
+        id: string;
+        /** @enum {unknown} */
+        action: 'WARN' | 'SUSPEND' | 'BAN' | 'UNBAN';
+        reason: string;
+        /** Format: date-time */
+        expiresAt: string | null;
+        by: string;
+        /** Format: date-time */
+        createdAt: string;
+      }[];
+      reports: {
+        /** Format: uuid */
+        reportId: string;
+        reason: string;
+        status: components['schemas']['ReportStatus'];
+        /** Format: date-time */
+        createdAt: string;
+      }[];
+    };
+    SanctionRequest: {
+      /** @enum {unknown} */
+      action: 'WARN' | 'SUSPEND' | 'BAN' | 'UNBAN';
+      reason: components['schemas']['Reason'];
+      /** Format: date-time */
+      expiresAt?: string;
+      /** Format: uuid */
+      reportId?: string;
+    };
+    Sanction: {
+      /** Format: uuid */
+      id: string;
+      /** @enum {unknown} */
+      action: 'WARN' | 'SUSPEND' | 'BAN' | 'UNBAN';
+      playerStatus: components['schemas']['PlayerStatus'];
+      /** Format: date-time */
+      expiresAt: string | null;
+      /** Format: date-time */
+      createdAt: string;
+    };
+    AdminMatchList: {
+      items: {
+        /** Format: uuid */
+        matchId: string;
+        status: string;
+        mapVersion: string;
+        region: string;
+        players: number;
+        /** Format: uuid */
+        winnerPlayerId: string | null;
+        durationSeconds: number | null;
+        /** Format: date-time */
+        createdAt: string;
+      }[];
+    };
+    AdminMatchDetail: {
+      /** Format: uuid */
+      matchId: string;
+      status: string;
+      mapVersion: string;
+      server: string;
+      completionReason: string | null;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      endedAt: string | null;
+      participants: {
+        /** Format: uuid */
+        playerId: string;
+        displayName: string;
+        placement: number | null;
+        kills: number | null;
+        survivalSeconds: number | null;
+      }[];
+      resultSubmissions: {
+        /** @enum {unknown} */
+        outcome: 'ACCEPTED' | 'DUPLICATE' | 'REJECTED';
+        reason: string | null;
+        /** Format: date-time */
+        receivedAt: string;
+      }[];
+    };
+    /** @enum {unknown} */
+    ReportStatus: 'OPEN' | 'UNDER_REVIEW' | 'ACTIONED' | 'DISMISSED';
+    AdminReportList: {
+      items: {
+        /** Format: uuid */
+        reportId: string;
+        /** Format: uuid */
+        reportedPlayerId: string;
+        reportedDisplayName: string;
+        /** Format: uuid */
+        reporterPlayerId: string | null;
+        /** Format: uuid */
+        matchId: string | null;
+        reason: string;
+        details: string | null;
+        status: components['schemas']['ReportStatus'];
+        /** Format: date-time */
+        createdAt: string;
+      }[];
+    };
+    CosmeticList: {
+      items: {
+        cosmeticKey: string;
+        kind: components['schemas']['CosmeticKind'];
+        displayName: string;
+        /** @enum {unknown} */
+        rarity: 'COMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
+      }[];
+    };
+    /** @enum {unknown} */
+    ProductStatus: 'DRAFT' | 'PENDING_APPROVAL' | 'PUBLISHED' | 'RETIRED';
+    ProductCreate: {
+      key: string;
+      displayName: string;
+      description?: string;
+      price: components['schemas']['Money'];
+      grants: components['schemas']['Grant'][];
+      skus?: components['schemas']['PlatformSkus'];
+      /** Format: date-time */
+      availableFrom?: string | null;
+      /** Format: date-time */
+      availableUntil?: string | null;
+    };
+    ProductPatch: {
+      displayName?: string;
+      description?: string;
+      price?: components['schemas']['Money'];
+      grants?: components['schemas']['Grant'][];
+      skus?: components['schemas']['PlatformSkus'];
+      /** Format: date-time */
+      availableFrom?: string | null;
+      /** Format: date-time */
+      availableUntil?: string | null;
+    };
+    AdminProduct: {
+      productKey: string;
+      displayName: string;
+      description: string;
+      price: components['schemas']['Money'];
+      status: components['schemas']['ProductStatus'];
+      grants: components['schemas']['Grant'][];
+      skus: components['schemas']['PlatformSkus'];
+      /** Format: date-time */
+      availableFrom: string | null;
+      /** Format: date-time */
+      availableUntil: string | null;
+      createdBy: string;
+      approvedBy: string | null;
+      /** Format: date-time */
+      publishedAt: string | null;
+      /** Format: date-time */
+      updatedAt: string;
+    };
+    AdminProductList: {
+      items: components['schemas']['AdminProduct'][];
+    };
+    AdminOrderList: {
+      items: {
+        /** Format: uuid */
+        orderId: string;
+        productKey: string;
+        platform: components['schemas']['OrderPlatform'];
+        status: components['schemas']['OrderStatus'];
+        price: components['schemas']['Money'];
+        sku: string | null;
+        /** Format: date-time */
+        createdAt: string;
+        /** Format: date-time */
+        fulfilledAt: string | null;
+        /** Format: date-time */
+        refundedAt: string | null;
+        /** Format: uuid */
+        playerId: string;
+      }[];
+    };
+    AdminOrderDetail: {
+      /** Format: uuid */
+      orderId: string;
+      productKey: string;
+      platform: components['schemas']['OrderPlatform'];
+      status: components['schemas']['OrderStatus'];
+      price: components['schemas']['Money'];
+      sku: string | null;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      fulfilledAt: string | null;
+      /** Format: date-time */
+      refundedAt: string | null;
+      /** Format: uuid */
+      playerId: string;
+      failureReason: string | null;
+      refundShortfall: number;
+      payment: null | {
+        /** @enum {unknown} */
+        platform: 'ANDROID' | 'IOS' | 'DEV';
+        providerTransactionId: string;
+        /** @enum {unknown} */
+        environment: 'PRODUCTION' | 'SANDBOX' | 'DEV';
+        /** @enum {unknown} */
+        status: 'VERIFIED' | 'REFUNDED';
+        /** Format: date-time */
+        verifiedAt: string;
+      };
+      events: {
+        type: string;
+        /** @enum {unknown} */
+        outcome: 'APPLIED' | 'IGNORED' | 'UNMATCHED' | 'REJECTED';
+        detail: string | null;
+        /** Format: date-time */
+        receivedAt: string;
+      }[];
+    };
+    RefundResult: {
+      /** Format: uuid */
+      orderId: string;
+      productKey: string;
+      platform: components['schemas']['OrderPlatform'];
+      status: components['schemas']['OrderStatus'];
+      price: components['schemas']['Money'];
+      sku: string | null;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      fulfilledAt: string | null;
+      /** Format: date-time */
+      refundedAt: string | null;
+      alreadyRefunded: boolean;
+      /** @description Currency already spent that could not be clawed back */
+      shortfall: number;
+    };
+    ReconcileReport: {
+      cancelledPendingOrders: number;
+      walletsWithLedgerDrift: number;
+      unmatchedPurchaseEvents: number;
+      accountsDeleted: number;
+      suspensionsLifted: number;
+    };
+    AuditPage: {
+      items: {
+        id: number;
+        actor: string;
+        action: string;
+        entityType: string;
+        entityId: string;
+        reason: string | null;
+        details: Record<string, never> | null;
+        requestId: string | null;
+        /** Format: date-time */
+        createdAt: string;
+      }[];
+      nextBefore: number | null;
+    };
+    LiveConfig: {
+      current: {
+        version: number;
+        config: components['schemas']['GameConfig'];
+      };
+      history: {
+        version: number;
+        config: components['schemas']['GameConfig'];
+        reason: string;
+        createdBy: string;
+        /** Format: date-time */
+        createdAt: string;
+      }[];
+    };
+    EventCreate: {
+      key: string;
+      title: string;
+      body?: string;
+      /** Format: date-time */
+      startsAt: string;
+      /** Format: date-time */
+      endsAt: string;
+    };
+    AdminEvent: {
+      key: string;
+      title: string;
+      body: string;
+      /** Format: date-time */
+      startsAt: string;
+      /** Format: date-time */
+      endsAt: string;
+      /** @enum {unknown} */
+      status: 'SCHEDULED' | 'CANCELLED';
+      createdBy: string;
+    };
+    AdminEventList: {
+      items: components['schemas']['AdminEvent'][];
     };
   };
   responses: {

@@ -10,7 +10,8 @@ using UnityEngine.SceneManagement;
 namespace RWBR.Client.Menu
 {
     /// <summary>
-    /// Front end (greybox IMGUI, ADR 0006): play modes, profile and match history, loadout (cosmetics) and settings.
+    /// Front end (greybox IMGUI, ADR 0006): play modes, profile and match history, loadout (cosmetics), store,
+    /// account (deletion) and settings.
     /// The city orbits slowly behind it. Platform screens sign in with the stored guest account.
     /// </summary>
     public sealed class MainMenu : MonoBehaviour
@@ -25,6 +26,8 @@ namespace RWBR.Client.Menu
             Home,
             Profile,
             Loadout,
+            Store,
+            Account,
             Settings,
         }
 
@@ -37,6 +40,9 @@ namespace RWBR.Client.Menu
         private StatsDto _stats;
         private MatchHistoryPageDto _history;
         private InventoryDto _inventory;
+        private CatalogDto _catalog;
+        private DeletionStatusDto _deletion;
+        private bool _confirmDelete;
         private string _platformUrl;
         private string _name;
         private Vector2 _scroll;
@@ -96,14 +102,23 @@ namespace RWBR.Client.Menu
                     await _api.SignInAsync(_name);
                 }
                 _profile = await _api.ProfileAsync();
-                if (screen == Screen.Profile)
+                switch (screen)
                 {
-                    _stats = await _api.StatsAsync();
-                    _history = await _api.MatchesAsync(limit: 10);
-                }
-                else
-                {
-                    _inventory = await _api.InventoryAsync();
+                    case Screen.Profile:
+                        _stats = await _api.StatsAsync();
+                        _history = await _api.MatchesAsync(limit: 10);
+                        break;
+                    case Screen.Store:
+                        _catalog = await _api.CatalogAsync();
+                        _inventory = await _api.InventoryAsync();
+                        break;
+                    case Screen.Account:
+                        _deletion = await _api.DeletionStatusAsync();
+                        _confirmDelete = false;
+                        break;
+                    default:
+                        _inventory = await _api.InventoryAsync();
+                        break;
                 }
                 _status = null;
             }
@@ -123,6 +138,52 @@ namespace RWBR.Client.Menu
             try
             {
                 _inventory = await _api.EquipAsync(slot, key);
+                _status = null;
+            }
+            catch (ApiException e)
+            {
+                _status = $"{e.Code}: {e.Message}";
+            }
+            finally
+            {
+                Busy = false;
+            }
+        }
+
+        private async void Buy(CatalogItemDto item)
+        {
+            Busy = true;
+            _status = $"Buying {item.displayName}…";
+            try
+            {
+                OrderDto order = await new StoreFlow(_api, DevStorePurchaser.FromEnvironment()).BuyAsync(item);
+                _status = order.status == "FULFILLED" ? $"{item.displayName} is yours." : $"Order {order.status.ToLowerInvariant()}.";
+                _catalog = await _api.CatalogAsync();
+                _inventory = await _api.InventoryAsync();
+            }
+            catch (ApiException e)
+            {
+                _status = e.Code switch
+                {
+                    "INSUFFICIENT_FUNDS" => "Not enough coins yet: play matches to earn more.",
+                    "ALREADY_OWNED" => "You already own this.",
+                    "STORE_DISABLED" => "The store is closed for a moment. Try again soon.",
+                    _ => $"{e.Code}: {e.Message}",
+                };
+            }
+            finally
+            {
+                Busy = false;
+            }
+        }
+
+        private async void ChangeDeletion(bool delete)
+        {
+            Busy = true;
+            try
+            {
+                _deletion = delete ? await _api.RequestDeletionAsync() : await _api.CancelDeletionAsync();
+                _confirmDelete = false;
                 _status = null;
             }
             catch (ApiException e)
@@ -163,6 +224,8 @@ namespace RWBR.Client.Menu
                 case Screen.Home: DrawHome(); break;
                 case Screen.Profile: DrawProfile(); break;
                 case Screen.Loadout: DrawLoadout(); break;
+                case Screen.Store: DrawStore(); break;
+                case Screen.Account: DrawAccount(); break;
                 case Screen.Settings: DrawSettings(); break;
             }
             if (_status != null) GUI.Label(new Rect(40, VirtualHeight - 60, 460, 50), _status, _small);
@@ -178,6 +241,7 @@ namespace RWBR.Client.Menu
             if (Button(y += 62, "Play online")) PlayOnline();
             if (Button(y += 74, "Profile & match history")) OpenPlatformScreen(Screen.Profile);
             if (Button(y += 62, "Loadout")) OpenPlatformScreen(Screen.Loadout);
+            if (Button(y += 62, "Store")) OpenPlatformScreen(Screen.Store);
             if (Button(y += 62, "Settings")) _screen = Screen.Settings;
         }
 
@@ -246,9 +310,78 @@ namespace RWBR.Client.Menu
                     }
                     y += 40;
                 }
-                GUI.Label(new Rect(r.x + 24, y + 10, r.width - 48, 50), "Cosmetics never change weapon stats. The store arrives in a later phase.", _small);
+                GUI.Label(new Rect(r.x + 24, y + 10, r.width - 48, 50), "Cosmetics never change weapon stats. Get more in the Store.", _small);
             }
             Back();
+        }
+
+        private void DrawStore()
+        {
+            Panel(out Rect r);
+            if (_inventory != null)
+                GUI.Label(new Rect(r.x + 24, r.y + 20, r.width - 48, 30), $"Coins {_inventory.wallets.COIN}    Gems {_inventory.wallets.GEM}", _label);
+            if (_catalog != null)
+            {
+                if (!_catalog.storeEnabled) GUI.Label(new Rect(r.x + 24, r.y + 64, r.width - 48, 30), "The store is closed for a moment.", _label);
+                bool money = DevStorePurchaser.FromEnvironment() != null;
+                CatalogItemDto[] items = _catalog.items ?? Array.Empty<CatalogItemDto>();
+                _scroll = GUI.BeginScrollView(new Rect(r.x + 16, r.y + 64, r.width - 32, r.height - 150), _scroll,
+                    new Rect(0, 0, r.width - 56, items.Length * 64));
+                float y = 0;
+                foreach (CatalogItemDto item in items)
+                {
+                    GUI.Label(new Rect(8, y, r.width - 300, 28), item.displayName, _label);
+                    GUI.Label(new Rect(8, y + 28, r.width - 300, 24), item.description, _small);
+                    bool canPay = StoreFlow.IsInGameCurrency(item) || money;
+                    GUI.enabled = !Busy && !item.owned && canPay;
+                    string label = item.owned ? "Owned" : canPay ? StoreFlow.Price(item.price) : StoreFlow.Price(item.price) + " (soon)";
+                    if (GUI.Button(new Rect(r.width - 280, y + 6, 220, 40), label, _button)) Buy(item);
+                    GUI.enabled = true;
+                    y += 64;
+                }
+                GUI.EndScrollView();
+                GUI.Label(new Rect(r.x + 24, r.yMax - 76, r.width - 48, 36),
+                    "Cosmetic only: nothing here changes how a weapon performs. Coins are earned by playing.", _small);
+            }
+            Back();
+        }
+
+        private void DrawAccount()
+        {
+            Panel(out Rect r);
+            float y = r.y + 20;
+            if (_profile != null)
+            {
+                GUI.Label(new Rect(r.x + 24, y, r.width - 48, 30), _profile.displayName, _label);
+                GUI.Label(new Rect(r.x + 24, y += 34, r.width - 48, 26), "Player id (for support and your web profile):", _small);
+                GUI.TextField(new Rect(r.x + 24, y += 26, 460, 32), _profile.playerId, _field);
+            }
+            if (_deletion != null)
+            {
+                y += 60;
+                GUI.enabled = !Busy;
+                if (_deletion.status == "PENDING_DELETION")
+                {
+                    DateTime when = DateTime.TryParse(_deletion.scheduledFor, out DateTime d) ? d.ToLocalTime() : DateTime.MinValue;
+                    GUI.Label(new Rect(r.x + 24, y, r.width - 48, 50), $"Your account will be deleted on {when:dd MMM yyyy}. Until then you can change your mind.", _label);
+                    if (GUI.Button(new Rect(r.x + 24, y + 60, 300, 46), "Keep my account", _button)) ChangeDeletion(false);
+                }
+                else
+                {
+                    GUI.Label(new Rect(r.x + 24, y, r.width - 48, 76),
+                        "Deleting your account erases your name, progress and items after 30 days. Purchase records are kept as the law requires. Purchases are not refunded.", _small);
+                    if (!_confirmDelete)
+                    {
+                        if (GUI.Button(new Rect(r.x + 24, y + 84, 300, 46), "Delete account", _button)) _confirmDelete = true;
+                    }
+                    else if (GUI.Button(new Rect(r.x + 24, y + 84, 420, 46), "Yes, delete my account in 30 days", _button))
+                    {
+                        ChangeDeletion(true);
+                    }
+                }
+                GUI.enabled = true;
+            }
+            if (GUI.Button(new Rect(40, VirtualHeight - 120, 200, 46), "Back", _button)) _screen = Screen.Settings;
         }
 
         private void DrawSettings()
@@ -269,6 +402,13 @@ namespace RWBR.Client.Menu
             float ui = GUI.HorizontalSlider(new Rect(340, y, 140, 20), GameSettings.UiVolume, 0, 1);
             if (!Mathf.Approximately(m, GameSettings.MasterVolume) || !Mathf.Approximately(fx, GameSettings.SfxVolume) || !Mathf.Approximately(ui, GameSettings.UiVolume))
                 GameSettings.SetVolumes(m, fx, ui);
+            if (GUI.Button(new Rect(260, VirtualHeight - 120, 220, 46), "Account & data", _button))
+            {
+                Save("rwbr.name", _name);
+                Save("rwbr.platform", _platformUrl);
+                _api = null; // platform or name may have changed
+                OpenPlatformScreen(Screen.Account);
+            }
             if (GUI.Button(new Rect(40, VirtualHeight - 120, 200, 46), "Back", _button))
             {
                 Save("rwbr.name", _name);

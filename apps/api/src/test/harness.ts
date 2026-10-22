@@ -30,6 +30,7 @@ function dbCli(command: 'create' | 'drop', name: string): string {
 
 export const SERVER_SECRET = 'test-server-secret-0123456789abcdef0123456789';
 export const TICKET_SECRET_HEX = 'a1'.repeat(32);
+export const DEV_PURCHASE_SECRET = 'test-dev-purchase-secret-0123456789abcdef';
 
 export interface Harness {
   app: INestApplication;
@@ -51,6 +52,10 @@ export async function startApi(
     LOG_REQUESTS: 'false',
     MATCH_CAPACITY: '3',
     DEFAULT_MAP_VERSION: 'greybox-block-100-v2',
+    ADMIN_TOTP_KEY_HEX: 'b2'.repeat(32),
+    DEV_PURCHASES_ENABLED: 'true',
+    DEV_PURCHASE_SECRET: DEV_PURCHASE_SECRET,
+    RECONCILE_INTERVAL_SECONDS: '0',
     ...overrides,
   });
   const moduleRef = await Test.createTestingModule({

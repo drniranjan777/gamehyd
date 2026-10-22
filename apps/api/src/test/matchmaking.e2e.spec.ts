@@ -227,6 +227,18 @@ describeDb('matchmaking, servers and results (PostgreSQL)', () => {
       coinsAwarded: 10,
     });
 
+    // The website's public profile shows the same result, without private reward details.
+    const pub = await h.http().get(`/api/v1/players/${players[0]!.userId}/public`);
+    expectContract(pub, 'GET', '/players/{playerId}/public');
+    expect(pub.body.recentMatches[0]).toEqual({
+      matchId: a.matchId,
+      mapVersion: 'greybox-block-100-v2',
+      placement: 2,
+      players: 3,
+      kills: expect.any(Number),
+      completedAt: expect.any(String),
+    });
+
     const res = await h
       .http()
       .get(`/api/v1/matches/${a.matchId}/result`)
