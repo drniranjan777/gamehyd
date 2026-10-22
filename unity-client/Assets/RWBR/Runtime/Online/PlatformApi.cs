@@ -31,6 +31,23 @@ namespace RWBR.Client.Online
         public int kills; public int survivalSeconds; public int xpAwarded; public int coinsAwarded;
     }
     [Serializable] public sealed class MatchHistoryPageDto { public MatchHistoryItemDto[] items; public string nextCursor; }
+    [Serializable] public sealed class MoneyDto { public string currency; public long amountMinor; }
+    [Serializable] public sealed class GrantDto { public string type; public string cosmeticKey; public string kind; public string currency; public long amount; }
+    [Serializable] public sealed class SkusDto { public string ANDROID; public string IOS; }
+    [Serializable] public sealed class CatalogItemDto
+    {
+        public string productKey; public string displayName; public string description; public MoneyDto price;
+        public GrantDto[] grants; public SkusDto skus; public bool owned;
+    }
+    [Serializable] public sealed class CatalogDto { public bool storeEnabled; public CatalogItemDto[] items; }
+    [Serializable] public sealed class OrderDto
+    {
+        public string orderId; public string productKey; public string platform; public string status; public MoneyDto price;
+        public string sku; public string createdAt; public string fulfilledAt; public string refundedAt;
+    }
+    [Serializable] public sealed class OrderRequestDto { public string productKey; public string platform; public string idempotencyKey; }
+    [Serializable] public sealed class PurchaseProofDto { public string proof; }
+    [Serializable] public sealed class DeletionStatusDto { public string status; public string scheduledFor; }
     [Serializable] public sealed class ErrorDto { public ErrorBody error; }
     [Serializable] public sealed class ErrorBody { public string code; public string message; public string requestId; }
 
@@ -117,6 +134,26 @@ namespace RWBR.Client.Online
 
         public Task<MatchHistoryPageDto> MatchesAsync(string cursor = null, int limit = 10) =>
             Send<MatchHistoryPageDto>("GET", $"/player/matches?limit={limit}" + (cursor != null ? "&cursor=" + UnityWebRequest.EscapeURL(cursor) : ""), null);
+
+        // ---- Store (Phase 5) ----
+
+        public Task<CatalogDto> CatalogAsync() => Send<CatalogDto>("GET", "/store/catalog", null);
+
+        /// <summary>Creates an order. Reusing <paramref name="idempotencyKey"/> after a timeout returns the same order.</summary>
+        public Task<OrderDto> CreateOrderAsync(string productKey, string platform, string idempotencyKey) =>
+            Send<OrderDto>("POST", "/store/orders", JsonUtility.ToJson(new OrderRequestDto { productKey = productKey, platform = platform, idempotencyKey = idempotencyKey }));
+
+        /// <summary>Sends the store's purchase proof; the server verifies it with the platform and grants once.</summary>
+        public Task<OrderDto> VerifyAsync(string orderId, string proof) =>
+            Send<OrderDto>("POST", $"/store/orders/{orderId}/verify", JsonUtility.ToJson(new PurchaseProofDto { proof = proof }));
+
+        // ---- Account deletion (BRD §13) ----
+
+        public Task<DeletionStatusDto> DeletionStatusAsync() => Send<DeletionStatusDto>("GET", "/player/deletion", null);
+
+        public Task<DeletionStatusDto> RequestDeletionAsync() => Send<DeletionStatusDto>("POST", "/player/deletion", null);
+
+        public Task<DeletionStatusDto> CancelDeletionAsync() => Send<DeletionStatusDto>("DELETE", "/player/deletion", null);
 
         public static bool IsValidName(string name) =>
             !string.IsNullOrEmpty(name) && name.Length >= 3 && name.Length <= 24 &&
