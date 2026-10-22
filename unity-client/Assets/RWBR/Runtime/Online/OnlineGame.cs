@@ -33,7 +33,8 @@ namespace RWBR.Client.Online
         public const float InterpolationDelayTicks = 4f;
         private const string ServerKey = "rwbr.server";
         private const string PlatformKey = "rwbr.platform";
-        public const string DefaultPlatform = "http://127.0.0.1:3001/api/v1";
+        /// <summary>Production platform API. Developers override it in Settings (e.g. http://&lt;PC LAN IP&gt;:3001/api/v1).</summary>
+        public const string DefaultPlatform = "https://game.tallygen.com/api/v1";
         public const string Region = "IN-SOUTH";
         private const string NameKey = "rwbr.name";
         private const float MaxAimDistance = 150f;
