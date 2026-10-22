@@ -37,3 +37,6 @@ game/unity-client/.idea/
 Thumbs.db
 game/unity-client/.vscode/
 game/unity-client/.utmp/
+
+# Client documents (BRD) stay private: never commit them to this public repository.
+*.docx

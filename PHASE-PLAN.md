@@ -1,6 +1,6 @@
 # Real-World Battle Royale — Phase-Wise Delivery Plan
 
-Source: [BRD v1.2](Real_World_Battle_Royale_Detailed_BRD_Technical_Plan_v1.2.docx) (21 Oct 2026). Prepared 21 Oct 2026.
+Source: BRD v1.2, 21 Oct 2026 (client document, kept privately outside this repository). Prepared 21 Oct 2026.
 
 **Starting point:** fresh build, started 22 Oct 2026. **Current progress:** Phases 0–7 engineering work done and tested locally, plus the post-launch P1 engineering items (Phase 8); the launch itself waits on content (art, animation, audio), store accounts, cloud/staging, beta cohorts, device measurements, an external pen test, legal review and on-call. See the status docs in [docs/](docs/) (PHASE-0 … PHASE-8-STATUS.md), the [runbooks](docs/runbooks/README.md) and the [launch plan and backlog](docs/launch/LAUNCH-PLAN.md).
 
