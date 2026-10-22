@@ -43,6 +43,17 @@ export default async function LiveOpsPage() {
                 <input name="disabledWeapons" defaultValue={c.disabledWeapons.join(', ')} />
               </label>
               <label>
+                XP multiplier (1 = normal, 2 = double-XP event)
+                <input
+                  name="xpMultiplier"
+                  type="number"
+                  step="0.5"
+                  min={1}
+                  max={5}
+                  defaultValue={c.xpMultiplier ?? 1}
+                />
+              </label>
+              <label>
                 Reason (audited)
                 <input name="reason" minLength={3} maxLength={300} required />
               </label>

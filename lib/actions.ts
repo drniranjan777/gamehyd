@@ -200,6 +200,7 @@ export async function saveConfig(
         matchmakingEnabled: d.get('matchmakingEnabled') === 'on',
         disabledProducts: list('disabledProducts'),
         disabledWeapons: list('disabledWeapons'),
+        xpMultiplier: Number(text(d, 'xpMultiplier') || '1'),
       },
     }),
   );
