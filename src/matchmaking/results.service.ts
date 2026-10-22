@@ -5,6 +5,7 @@ import { ApiError, Conflict, Invalid, NotFound, Unauthorized } from '../common/a
 import { Db } from '../database/database.module';
 import { levelFor, matchReward } from '../player/progression';
 import { addSeasonXp } from '../seasons/seasons.service';
+import { GameConfigService } from '../store/game-config.service';
 
 export interface ResultSubmission {
   mapVersion: string;
@@ -23,7 +24,10 @@ type Outcome = 'ACCEPTED' | 'DUPLICATE' | 'REJECTED';
  */
 @Injectable()
 export class ResultsService {
-  constructor(private readonly db: Db) {}
+  constructor(
+    private readonly db: Db,
+    private readonly gameConfig: GameConfigService,
+  ) {}
 
   async submit(
     serverAddress: string,
@@ -133,9 +137,12 @@ export class ResultsService {
       [matchId, r.reason, r.winnerAccountId ?? null, r.durationSeconds, hash],
     );
 
+    // Double-XP events: the multiplier in force when the result arrives (retries are duplicates and pay nothing).
+    const { xpMultiplier } = (await this.gameConfig.current()).config;
     for (const p of r.participants) {
       const won = r.reason === 'WINNER' && p.accountId === r.winnerAccountId;
-      const reward = matchReward(p.placement, n, p.kills, won);
+      const base = matchReward(p.placement, n, p.kills, won);
+      const reward = { ...base, xp: Math.round(base.xp * xpMultiplier) };
       await c.query(
         `UPDATE match_participants SET placement = $3, kills = $4, survival_seconds = $5, xp_awarded = $6,
                 coins_awarded = $7, completed_at = now()

@@ -10,6 +10,8 @@ export const gameConfigSchema = z
     matchmakingEnabled: z.boolean(),
     disabledProducts: z.array(z.string().regex(/^[a-z0-9_]{3,60}$/)).max(200),
     disabledWeapons: z.array(z.string().regex(/^[a-z0-9_]{2,40}$/)).max(50),
+    /** Event multiplier for match XP (and so season XP), e.g. 2 for a double-XP weekend. Coins are unaffected. */
+    xpMultiplier: z.number().min(1).max(5).default(1),
   })
   .passthrough();
 

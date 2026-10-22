@@ -276,6 +276,7 @@ export class PublicController {
       matchmakingEnabled: config.matchmakingEnabled,
       disabledProducts: config.disabledProducts,
       disabledWeapons: config.disabledWeapons,
+      xpMultiplier: config.xpMultiplier,
     };
   }
 }
