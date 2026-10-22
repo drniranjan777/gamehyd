@@ -21,7 +21,7 @@ const schema = z.object({
   MATCH_CAPACITY: z.coerce.number().int().min(2).max(100).default(30),
   MATCH_MIN_PLAYERS: z.coerce.number().int().min(2).max(100).default(2),
   MATCH_FILL_WAIT_SECONDS: z.coerce.number().int().min(0).max(300).default(20),
-  DEFAULT_MAP_VERSION: z.string().default('greybox-block-100-v2'),
+  DEFAULT_MAP_VERSION: z.string().default('hyd-city-v1'),
   SERVER_HEARTBEAT_STALE_SECONDS: z.coerce.number().int().min(3).max(120).default(10),
   RATE_LIMIT_ENABLED: bool.default('true'),
   LOG_REQUESTS: bool.default('true'),
