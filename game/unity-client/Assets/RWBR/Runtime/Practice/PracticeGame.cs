@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using RWBR.Client.Audio;
 using RWBR.Client.Greybox;
 using RWBR.Client.Player;
 using RWBR.Client.Settings;
@@ -29,8 +30,17 @@ namespace RWBR.Client.Practice
         private float _accumulator;
         private uint _sequence;
         private bool _crouchToggle;
-        private bool _jumpLatched, _reloadLatched, _interactLatched, _healLatched;
+        private bool _jumpLatched, _reloadLatched, _interactLatched, _healLatched, _switchLatched;
+
+        /// <summary>Map for the next practice run (set by the main menu); null keeps the scene's map.</summary>
+        public static string RequestedMap { get; set; }
+        /// <summary>Run the onboarding steps on the next training-ground run (set by the main menu).</summary>
+        public static bool TutorialRequested { get; set; }
+        public TutorialDirector Tutorial { get; private set; }
         private int _recoilSign = 1;
+        private readonly FootstepTracker _footsteps = new FootstepTracker();
+        private readonly HashSet<ushort> _shotThisTick = new HashSet<ushort>();
+        private bool _wasReloading;
 
         public PracticeSimulation Sim { get; private set; }
         public TouchControls Touch { get; private set; }
@@ -69,10 +79,14 @@ namespace RWBR.Client.Practice
         {
             GameSettings.Load();
             GreyboxWorld world = FindAnyObjectByType<GreyboxWorld>();
+            if (world != null && RequestedMap != null) world.UseMap(RequestedMap);
             Sim = new PracticeSimulation(world != null ? world.Layout : MapLayout.GreyboxBlock(100f));
             Touch = new TouchControls();
             _views = new PracticeViews(transform);
             _views.Build(Sim);
+            GameAudio audio = GameAudio.Instance;
+            audio.LineOfSight = (a, b) => Sim.HasLineOfSight(a.ToShared(), b.ToShared());
+            audio.Indoors = p => Simulation.WallDistance(p.ToShared(), System.Numerics.Vector3.UnitY, 12f, Sim.Map) < 12f;
             Restart();
         }
 
@@ -81,7 +95,6 @@ namespace RWBR.Client.Practice
             Sim.Reset();
             _views.ResetColors(Sim);
             _views.Sync(Sim);
-            ViewYaw = 0;
             ViewPitch = 8f;
             _crouchToggle = false;
             _accumulator = 0;
@@ -90,7 +103,9 @@ namespace RWBR.Client.Practice
             Paused = false;
             InventoryOpen = false;
             RunStartTime = Time.time;
-            Feed.Add(new FeedEntry { Text = "Find a rifle in the building ahead", Time = Time.time });
+            ViewYaw = Sim.Player.Yaw * Mathf.Rad2Deg;
+            Tutorial = TutorialRequested && !Sim.IsCity ? new TutorialDirector(Sim) : null;
+            Feed.Add(new FeedEntry { Text = Sim.IsCity ? "Find a weapon: shops and houses have loot inside" : "Find a rifle in the building ahead", Time = Time.time });
         }
 
         private void Update()
@@ -110,6 +125,7 @@ namespace RWBR.Client.Practice
                 _reloadLatched |= frame.ReloadPressed;
                 _interactLatched |= frame.InteractPressed;
                 _healLatched |= frame.HealPressed;
+                _switchLatched |= frame.SwitchPressed || (frame.SelectSlot >= 0 && frame.SelectSlot != Sim.Player.Combat.ActiveSlot);
                 if (frame.CrouchToggled) _crouchToggle = !_crouchToggle;
 
                 _accumulator += Mathf.Min(Time.deltaTime, 0.25f);
@@ -121,12 +137,14 @@ namespace RWBR.Client.Practice
                     Sim.Step(cmd);
                     _views.AfterStep(Sim);
                     ProcessEvents();
+                    TickSounds();
                     _accumulator -= PracticeSimulation.Dt;
                     if (Sim.Outcome != PracticeOutcome.InProgress) RunEndTime = Time.time;
                 }
             }
 
             Touch.InteractAvailable = Sim.NearestPickup(Sim.Player) >= 0;
+            Tutorial?.Update(Sim, ViewYaw);
             _views.Render(Sim, Mathf.Clamp01(_accumulator / PracticeSimulation.Dt), Time.time);
             Feed.RemoveAll(e => Time.time - e.Time > 5f);
         }
@@ -170,7 +188,8 @@ namespace RWBR.Client.Practice
             if (_reloadLatched) buttons |= InputButtons.Reload;
             if (_interactLatched) buttons |= InputButtons.Interact;
             if (_healLatched) buttons |= InputButtons.Heal;
-            _jumpLatched = _reloadLatched = _interactLatched = _healLatched = false;
+            if (_switchLatched) buttons |= InputButtons.SwitchWeapon;
+            _jumpLatched = _reloadLatched = _interactLatched = _healLatched = _switchLatched = false;
             if (buttons.HasFlag(InputButtons.Jump)) _crouchToggle = false;
 
             // The command has one yaw for both aim and movement. Aim yaw differs slightly from the camera yaw
@@ -218,8 +237,24 @@ namespace RWBR.Client.Practice
             pitch = Mathf.Atan2(d.Y, Mathf.Sqrt(d.X * d.X + d.Z * d.Z));
         }
 
+        private void TickSounds()
+        {
+            GameAudio audio = GameAudio.Instance;
+            foreach (Fighter f in Sim.AllFighters())
+            {
+                if (!f.Combat.Alive) continue;
+                if (_footsteps.Step(f.Id, f.Motor.Position.ToUnity(), f.Motor.Grounded, f.Motor.Crouched))
+                    audio.PlayAt(Sfx.Footstep, f.Motor.Position.ToUnity(), f.IsPlayer ? 0.45f : 0.7f, 25f);
+            }
+            bool reloading = Sim.Player.Combat.Reloading;
+            if (reloading && !_wasReloading) audio.PlayAt(Sfx.Reload, Sim.Player.Motor.Position.ToUnity(), 0.8f, 15f);
+            _wasReloading = reloading;
+        }
+
         private void ProcessEvents()
         {
+            _shotThisTick.Clear();
+            GameAudio audio = GameAudio.Instance;
             foreach (SimEvent e in Sim.Events)
             {
                 bool byPlayer = e.Actor == PracticeSimulation.PlayerId;
@@ -227,6 +262,8 @@ namespace RWBR.Client.Practice
                 {
                     case SimEventType.Shot:
                         _views.AddTracer(e.From, e.To, byPlayer, Time.time);
+                        if (!_shotThisTick.Add(e.Actor)) break; // one sound and one kick per trigger pull, not per pellet
+                        audio.Gunshot(Sim.WeaponOf(FighterOf(e.Actor)), e.From.ToUnity(), byPlayer);
                         if (byPlayer)
                         {
                             ViewPitch -= Sim.PlayerWeapon.RecoilPitchDegrees;
@@ -238,6 +275,8 @@ namespace RWBR.Client.Practice
                         {
                             LastHitTime = Time.time;
                             LastHitWasKill = false;
+                            audio.PlayUi(e.Headshot ? Sfx.Headshot : Sfx.HitMarker);
+                            if (Tutorial != null) Tutorial.EnemyHit = true;
                         }
                         else if (e.Target == PracticeSimulation.PlayerId)
                         {
@@ -249,18 +288,30 @@ namespace RWBR.Client.Practice
                         {
                             LastHitWasKill = true;
                             Kills++;
-                            Feed.Add(new FeedEntry { Text = $"You eliminated {NameOf(e.Target)}", Time = Time.time });
+                            audio.PlayUi(Sfx.Kill);
+                            Feed.Add(new FeedEntry { Text = $"You eliminated {NameOf(e.Target)}{(e.Headshot ? " (headshot)" : "")} with the {Sim.PlayerWeapon.DisplayName}", Time = Time.time });
                         }
                         else
                         {
                             Feed.Add(new FeedEntry { Text = $"{NameOf(e.Actor)} eliminated you", Time = Time.time });
                         }
                         break;
+                    case SimEventType.Switch:
+                        if (byPlayer) audio.PlayUi(Sfx.Switch);
+                        break;
                     case SimEventType.Pickup:
-                        if (byPlayer) Feed.Add(new FeedEntry { Text = $"Picked up {e.Loot}", Time = Time.time });
+                        if (byPlayer) audio.PlayUi(Sfx.Pickup);
+                        if (byPlayer) Feed.Add(new FeedEntry { Text = $"Picked up {(e.Loot == LootType.Weapon || e.Loot == LootType.Rifle ? Sim.PlayerWeapon.DisplayName : e.Loot.ToString())}", Time = Time.time });
                         break;
                 }
             }
+        }
+
+        private Fighter FighterOf(ushort id)
+        {
+            foreach (Fighter f in Sim.AllFighters())
+                if (f.Id == id) return f;
+            return Sim.Player;
         }
 
         private string NameOf(ushort id)

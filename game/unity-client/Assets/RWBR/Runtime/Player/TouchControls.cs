@@ -16,6 +16,7 @@ namespace RWBR.Client.Player
         Interact,
         Inventory,
         Pause,
+        Switch,
     }
 
     /// <summary>
@@ -62,6 +63,7 @@ namespace RWBR.Client.Player
             new ButtonLayout { Button = TouchButton.Interact, Label = "PICK UP", Center = new Vector2(0.64f, 0.42f), Radius = 0.065f },
             new ButtonLayout { Button = TouchButton.Inventory, Label = "BAG", Center = new Vector2(0.05f, 0.90f), Radius = 0.05f },
             new ButtonLayout { Button = TouchButton.Pause, Label = "| |", Center = new Vector2(0.96f, 0.90f), Radius = 0.045f },
+            new ButtonLayout { Button = TouchButton.Switch, Label = "SWAP", Center = new Vector2(0.80f, 0.55f), Radius = 0.05f },
         };
 
         private readonly Dictionary<int, Tracked> _touches = new Dictionary<int, Tracked>();
@@ -86,7 +88,7 @@ namespace RWBR.Client.Player
 
         public PlayerInputFrame Read()
         {
-            var f = new PlayerInputFrame();
+            var f = new PlayerInputFrame { SelectSlot = -1 };
             StickOrigin = null;
             _held.Clear();
             float h = Screen.height;
@@ -155,6 +157,7 @@ namespace RWBR.Client.Player
                     case TouchButton.Interact: f.InteractPressed = true; break;
                     case TouchButton.Inventory: f.InventoryToggled = true; break;
                     case TouchButton.Pause: f.PausePressed = true; break;
+                    case TouchButton.Switch: f.SwitchPressed = true; break;
                 }
                 return new Tracked { Role = Role.Button, Button = b.Button, Origin = pos, Last = pos };
             }

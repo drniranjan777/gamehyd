@@ -24,6 +24,26 @@ Console.CancelKeyPress += (_, e) =>
     cts.Cancel();
 };
 
+// In-process balance simulation: RWBR.MatchServer --simulate 3 [--map hyd-city-v1] [--players 30]
+int simulate = IntArg("--simulate", 0);
+if (simulate > 0)
+{
+    string mapVersion = StrArg("--map") ?? CityMap.Version;
+    if (!MapLayout.TryFromVersion(mapVersion, out MapLayout simMap)) throw new ArgumentException($"unknown map {mapVersion}");
+    int simPlayers = IntArg("--players", 30);
+    var results = new System.Collections.Generic.List<RWBR.MatchServer.Sim.SimulatedMatch>();
+    for (int i = 1; i <= simulate; i++)
+    {
+        var simCfg = new MatchConfig { MinPlayers = simPlayers, MaxPlayers = simPlayers, Map = simMap, ZoneStages = MatchConfig.ZonesFor(simMap), CountdownSeconds = 3 };
+        var r = RWBR.MatchServer.Sim.MatchSimulator.Run(simCfg, i);
+        results.Add(r);
+        Console.WriteLine(JsonSerializer.Serialize(r));
+    }
+    Console.WriteLine($"average active {results.Average(r => r.ActiveMinutes):0.00} min, player kills {results.Average(r => r.PlayerKills):0.0}, " +
+                      $"zone eliminations {results.Average(r => r.ZoneEliminations):0.0}, speed {results.Average(r => r.SimulatedSecondsPerWallSecond):0}x real time");
+    return 0;
+}
+
 string? apiUrl = StrArg("--api-url");
 if (apiUrl != null)
 {

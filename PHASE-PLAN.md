@@ -2,7 +2,7 @@
 
 Source: [BRD v1.2](Real_World_Battle_Royale_Detailed_BRD_Technical_Plan_v1.2.docx) (21 Oct 2026). Prepared 21 Oct 2026.
 
-**Starting point:** fresh build, started 22 Oct 2026. **Current progress:** Phases 0–3 engineering work done and tested locally; decisions, cloud/staging, device measurements and sign-offs open — see [Phase 0](docs/PHASE-0-STATUS.md), [Phase 1](docs/PHASE-1-STATUS.md), [Phase 2](docs/PHASE-2-STATUS.md) and [Phase 3](docs/PHASE-3-STATUS.md) status.
+**Starting point:** fresh build, started 22 Oct 2026. **Current progress:** Phases 0–4 engineering work done and tested locally; art/animation/audio content, design decisions, cloud/staging, device measurements and sign-offs open — see [Phase 0](docs/PHASE-0-STATUS.md), [1](docs/PHASE-1-STATUS.md), [2](docs/PHASE-2-STATUS.md), [3](docs/PHASE-3-STATUS.md) and [4](docs/PHASE-4-STATUS.md) status.
 
 **Tech stack (confirmed):**
 
@@ -148,6 +148,8 @@ Each phase ends with a demo, evidence (tests, builds, metrics), and sign-off bef
 ---
 
 ### Phase 4 — Content, Map & Progression (Weeks 14–24)
+
+> **Progress (22 Oct 2026):** Hyderabad-inspired city (hyd-city-v1, 5 districts, 3,871 boxes, chunked LOD), 6-weapon roster with slots/headshots/falloff/pellets, protocol v4, placeholder 3D audio with occlusion, main menu, loadout/profile screens, 7-step tutorial, TTK table and match simulator. Open: art, animation, final audio, production UI, bot navigation, drop/spawn decision. Details: [docs/PHASE-4-STATUS.md](docs/PHASE-4-STATUS.md).
 
 **Goal:** content-complete alpha.
 

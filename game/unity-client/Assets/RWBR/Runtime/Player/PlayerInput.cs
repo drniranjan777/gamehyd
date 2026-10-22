@@ -20,6 +20,10 @@ namespace RWBR.Client.Player
         public bool HealPressed;
         public bool InventoryToggled;
         public bool PausePressed;
+        /// <summary>Toggle to the other weapon slot (Q, mouse wheel, touch SWAP).</summary>
+        public bool SwitchPressed;
+        /// <summary>Select a slot directly (keys 1/2): 0 or 1, or -1 for none.</summary>
+        public int SelectSlot;
 
         public void Merge(PlayerInputFrame other)
         {
@@ -34,6 +38,8 @@ namespace RWBR.Client.Player
             HealPressed |= other.HealPressed;
             InventoryToggled |= other.InventoryToggled;
             PausePressed |= other.PausePressed;
+            SwitchPressed |= other.SwitchPressed;
+            if (other.SelectSlot >= 0) SelectSlot = other.SelectSlot;
         }
     }
 
@@ -53,7 +59,7 @@ namespace RWBR.Client.Player
 
         public PlayerInputFrame Read()
         {
-            var f = new PlayerInputFrame();
+            var f = new PlayerInputFrame { SelectSlot = -1 };
             Keyboard kb = Keyboard.current;
             if (kb != null)
             {
@@ -67,12 +73,16 @@ namespace RWBR.Client.Player
                 f.HealPressed = kb.hKey.wasPressedThisFrame || kb.digit4Key.wasPressedThisFrame;
                 f.InventoryToggled = kb.tabKey.wasPressedThisFrame || kb.iKey.wasPressedThisFrame;
                 f.PausePressed = kb.escapeKey.wasPressedThisFrame;
+                f.SwitchPressed = kb.qKey.wasPressedThisFrame;
+                if (kb.digit1Key.wasPressedThisFrame) f.SelectSlot = 0;
+                if (kb.digit2Key.wasPressedThisFrame) f.SelectSlot = 1;
             }
             Mouse mouse = Mouse.current;
             if (mouse != null && MouseLookEnabled)
             {
                 f.Look += mouse.delta.ReadValue() * MouseDegreesPerPixel;
                 f.Fire |= mouse.leftButton.isPressed;
+                f.SwitchPressed |= Mathf.Abs(mouse.scroll.ReadValue().y) > 0.1f;
             }
             Gamepad pad = Gamepad.current;
             if (pad != null)
@@ -88,6 +98,7 @@ namespace RWBR.Client.Player
                 f.HealPressed |= pad.dpad.up.wasPressedThisFrame;
                 f.InventoryToggled |= pad.selectButton.wasPressedThisFrame;
                 f.PausePressed |= pad.startButton.wasPressedThisFrame;
+                f.SwitchPressed |= pad.rightShoulder.wasPressedThisFrame;
             }
             f.Move = Vector2.ClampMagnitude(f.Move, 1f);
             return f;

@@ -60,7 +60,7 @@ namespace RWBR.Shared.Protocol
 
     public static class ProtocolInfo
     {
-        public const ushort Version = 3;
+        public const ushort Version = 4;
         public const ushort NoPlayer = ushort.MaxValue;
         public const int MaxInputsPerPacket = 3;
         public const int MaxNameBytes = 24;
@@ -83,6 +83,8 @@ namespace RWBR.Shared.Protocol
         public ushort TickRate;
         public byte MaxPlayers;
         public string MapVersion = "";
+        /// <summary>WeaponCatalog.BalanceVersion on the server; the client's catalog must match.</summary>
+        public ushort WeaponBalanceVersion;
     }
 
     public struct SnapshotEntry
@@ -93,6 +95,10 @@ namespace RWBR.Shared.Protocol
         public byte Armor;
         public byte Ammo;
         public PlayerFlags Flags;
+        /// <summary>Catalog index of the weapon in hand (WeaponCatalog.None when unarmed).</summary>
+        public byte Weapon;
+        /// <summary>Increments per trigger pull; a change means this player fired since the last snapshot.</summary>
+        public byte ShotCounter;
     }
 
     public sealed class SnapshotPacket
@@ -113,6 +119,10 @@ namespace RWBR.Shared.Protocol
         public float SelfVerticalVelocity;
         /// <summary>Recipient's exact position (snapshot entries are quantised to 1 cm): exact reconciliation.</summary>
         public float SelfX, SelfY, SelfZ;
+        /// <summary>Recipient's weapon slots: catalog index (None = empty) and magazine rounds.</summary>
+        public byte SelfActiveSlot;
+        public byte[] SelfSlotWeapon = { 255, 255 };
+        public byte[] SelfSlotAmmo = { 0, 0 };
         public List<SnapshotEntry> Players = new List<SnapshotEntry>();
         /// <summary>Bit i set = loot spawn i has been taken.</summary>
         public byte[] LootTaken = Array.Empty<byte>();
@@ -218,6 +228,7 @@ namespace RWBR.Shared.Protocol
             w.U16(p.TickRate);
             w.U8(p.MaxPlayers);
             w.Str(p.MapVersion, 64);
+            w.U16(p.WeaponBalanceVersion);
             return w.ToArray();
         }
 
@@ -228,6 +239,7 @@ namespace RWBR.Shared.Protocol
             TickRate = r.U16(),
             MaxPlayers = r.U8(),
             MapVersion = r.Str(64),
+            WeaponBalanceVersion = r.U16(),
         };
 
         public static byte[] EncodeReject(RejectReason reason)

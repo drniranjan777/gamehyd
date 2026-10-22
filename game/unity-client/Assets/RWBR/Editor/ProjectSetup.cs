@@ -1,6 +1,7 @@
 using System;
 using RWBR.Client.Diagnostics;
 using RWBR.Client.Greybox;
+using RWBR.Client.Menu;
 using RWBR.Client.Online;
 using RWBR.Client.Player;
 using RWBR.Client.Practice;
@@ -20,6 +21,7 @@ namespace RWBR.EditorTools
     {
         public const string ScenePath = "Assets/Scenes/Greybox.unity";
         public const string OnlineScenePath = "Assets/Scenes/Online.unity";
+        public const string MenuScenePath = "Assets/Scenes/MainMenu.unity";
         public const string ApplicationId = "com.rwbr.battleroyale";
         public const string AndroidApkPath = "Builds/Android/rwbr-practice.apk";
 
@@ -29,14 +31,33 @@ namespace RWBR.EditorTools
             if (!AssetDatabase.IsValidFolder("Assets/Scenes")) AssetDatabase.CreateFolder("Assets", "Scenes");
             CreateScene(ScenePath, game => game.AddComponent<PracticeGame>(), game => game.AddComponent<PracticeHud>(), "Practice");
             CreateScene(OnlineScenePath, game => game.AddComponent<OnlineGame>(), game => game.AddComponent<OnlineHud>(), "Online");
+            CreateMenuScene();
             EditorBuildSettings.scenes = new[]
             {
+                new EditorBuildSettingsScene(MenuScenePath, true), // first scene = what the app opens with
                 new EditorBuildSettingsScene(ScenePath, true),
                 new EditorBuildSettingsScene(OnlineScenePath, true),
             };
             ConfigurePlayerSettings();
             AssetDatabase.SaveAssets();
             Debug.Log($"RWBR: scenes written to {ScenePath} and {OnlineScenePath}");
+        }
+
+        private static void CreateMenuScene()
+        {
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            var sun = new GameObject("Sun").AddComponent<Light>();
+            sun.type = LightType.Directional;
+            sun.shadows = LightShadows.Soft;
+            sun.transform.rotation = Quaternion.Euler(40, -50, 0);
+            var world = new GameObject("GreyboxWorld").AddComponent<GreyboxWorld>();
+            world.UseMap(RWBR.Shared.CityMap.Version); // the city as the menu backdrop
+            var cameraGo = new GameObject("Main Camera", typeof(Camera), typeof(AudioListener));
+            cameraGo.tag = "MainCamera";
+            cameraGo.GetComponent<Camera>().farClipPlane = 800f;
+            new GameObject("MainMenu").AddComponent<MainMenu>();
+            if (!EditorSceneManager.SaveScene(scene, MenuScenePath))
+                throw new InvalidOperationException($"Could not save {MenuScenePath}");
         }
 
         private static void CreateScene(string path, Func<GameObject, MonoBehaviour> addGame, Action<GameObject> addHud, string name)
@@ -94,7 +115,7 @@ namespace RWBR.EditorTools
             ConfigurePlayerSettings();
             var options = new BuildPlayerOptions
             {
-                scenes = new[] { ScenePath, OnlineScenePath },
+                scenes = new[] { MenuScenePath, ScenePath, OnlineScenePath },
                 locationPathName = AndroidApkPath,
                 target = BuildTarget.Android,
                 targetGroup = BuildTargetGroup.Android,

@@ -50,7 +50,7 @@ public class SnapshotCodecTests
     }
 
     [Fact]
-    public void Unchanged_players_cost_three_bytes_moving_nine_full_twentyone()
+    public void Unchanged_players_cost_three_bytes_moving_nine_full_twentythree()
     {
         SnapshotPacket idle1 = Snap(1, Enumerable.Range(1, 30).Select(i => Player((ushort)i, i, i)).ToArray());
         SnapshotPacket idle2 = Snap(2, Enumerable.Range(1, 30).Select(i => Player((ushort)i, i, i)).ToArray());
@@ -63,7 +63,7 @@ public class SnapshotCodecTests
 
         Assert.Equal(30 * 3, idle - header);
         Assert.Equal(30 * 9, moving - header); // id + mask + 3 × int16 (yaw unchanged)
-        Assert.Equal(30 * 21, full - header); // id + mask + 3 × int32 + yaw + health/armor/ammo/flags
+        Assert.Equal(30 * 23, full - header); // id + mask + 3 × int32 + yaw + health/armor/ammo/flags + weapon/shots
     }
 
     [Fact]

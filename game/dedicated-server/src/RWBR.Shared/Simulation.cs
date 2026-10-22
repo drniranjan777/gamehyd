@@ -1,4 +1,6 @@
+#nullable enable
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 
 namespace RWBR.Shared
@@ -10,6 +12,16 @@ namespace RWBR.Shared
         private const float StepDown = 0.45f;
         /// <summary>Footprint inset used for standing on ledges, so players can stand partly over an edge.</summary>
         private const float FootInset = 0.7f;
+
+        [ThreadStatic] private static List<int>? _near;
+
+        /// <summary>Obstacles near an XZ rectangle, from the map's spatial grid (per-thread scratch list).</summary>
+        private static List<int> Near(MapLayout map, float minX, float minZ, float maxX, float maxZ)
+        {
+            List<int> list = _near ??= new List<int>(64);
+            map.Grid.Query(minX, minZ, maxX, maxZ, list);
+            return list;
+        }
 
         public static float SanitizeAngle(float radians, float limit)
         {
@@ -124,8 +136,9 @@ namespace RWBR.Shared
             p.X = Math.Max(-limit, Math.Min(limit, p.X));
             p.Z = Math.Max(-limit, Math.Min(limit, p.Z));
 
-            foreach (Aabb box in map.Obstacles)
+            foreach (int i in Near(map, p.X - r, p.Z - r, p.X + r, p.Z + r))
             {
+                Aabb box = map.Obstacles[i];
                 if (box.Max.Y <= feetY + GameRules.StepHeight || box.Min.Y >= feetY + height) continue;
                 float minX = box.Min.X - r, maxX = box.Max.X + r;
                 float minZ = box.Min.Z - r, maxZ = box.Max.Z + r;
@@ -147,8 +160,9 @@ namespace RWBR.Shared
         {
             float ground = 0f;
             float r = GameRules.PlayerRadius * FootInset;
-            foreach (Aabb box in map.Obstacles)
+            foreach (int i in Near(map, p.X - r, p.Z - r, p.X + r, p.Z + r))
             {
+                Aabb box = map.Obstacles[i];
                 if (box.Max.Y > maxTop || box.Max.Y <= ground) continue;
                 if (p.X < box.Min.X - r || p.X > box.Max.X + r || p.Z < box.Min.Z - r || p.Z > box.Max.Z + r) continue;
                 ground = box.Max.Y;
@@ -160,8 +174,9 @@ namespace RWBR.Shared
         public static bool HasHeadroom(Vector3 feet, float height, MapLayout map)
         {
             float r = GameRules.PlayerRadius;
-            foreach (Aabb box in map.Obstacles)
+            foreach (int i in Near(map, feet.X - r, feet.Z - r, feet.X + r, feet.Z + r))
             {
+                Aabb box = map.Obstacles[i];
                 if (box.Min.Y >= feet.Y + height || box.Max.Y <= feet.Y + GameRules.StepHeight) continue;
                 if (feet.X <= box.Min.X - r || feet.X >= box.Max.X + r || feet.Z <= box.Min.Z - r || feet.Z >= box.Max.Z + r) continue;
                 return false;
@@ -173,8 +188,9 @@ namespace RWBR.Shared
         {
             float r = GameRules.PlayerRadius * FootInset;
             float? lowest = null;
-            foreach (Aabb box in map.Obstacles)
+            foreach (int i in Near(map, p.X - r, p.Z - r, p.X + r, p.Z + r))
             {
+                Aabb box = map.Obstacles[i];
                 if (box.Min.Y < headFrom - 1e-4f || box.Min.Y > headTo) continue;
                 if (p.X < box.Min.X - r || p.X > box.Max.X + r || p.Z < box.Min.Z - r || p.Z > box.Max.Z + r) continue;
                 if (!lowest.HasValue || box.Min.Y < lowest.Value) lowest = box.Min.Y;
@@ -207,7 +223,11 @@ namespace RWBR.Shared
         }
 
         /// <summary>Distance to the nearest wall along the ray, or maxDistance when nothing blocks it.</summary>
-        public static float WallDistance(Vector3 origin, Vector3 dir, float maxDistance, MapLayout map)
+        public static float WallDistance(Vector3 origin, Vector3 dir, float maxDistance, MapLayout map) =>
+            map.Grid.RayDistance(origin, dir, maxDistance);
+
+        /// <summary>Brute-force reference for <see cref="WallDistance"/> (tests).</summary>
+        public static float WallDistanceBruteForce(Vector3 origin, Vector3 dir, float maxDistance, MapLayout map)
         {
             float wall = maxDistance;
             foreach (Aabb box in map.Obstacles)
@@ -226,12 +246,17 @@ namespace RWBR.Shared
         /// Ray against a character capsule of the given height. Returns distance along the ray to the closest
         /// approach, or null when the ray passes outside the capsule or beyond maxDistance.
         /// </summary>
-        public static float? RayCapsule(Vector3 origin, Vector3 dir, Vector3 feet, float height, float maxDistance)
+        public static float? RayCapsule(Vector3 origin, Vector3 dir, Vector3 feet, float height, float maxDistance) =>
+            RayCapsule(origin, dir, feet, height, maxDistance, out _);
+
+        /// <summary>As above; <paramref name="hitHeight"/> is the height above the feet of the closest point on the capsule's spine.</summary>
+        public static float? RayCapsule(Vector3 origin, Vector3 dir, Vector3 feet, float height, float maxDistance, out float hitHeight)
         {
             float r = GameRules.PlayerRadius;
             Vector3 a = feet + new Vector3(0, r, 0);
             Vector3 b = feet + new Vector3(0, height - r, 0);
             ClosestPointsSegmentSegment(origin, origin + dir * maxDistance, a, b, out float s, out _, out Vector3 c1, out Vector3 c2);
+            hitHeight = c2.Y - feet.Y;
             if (Vector3.DistanceSquared(c1, c2) > r * r) return null;
             return s * maxDistance;
         }

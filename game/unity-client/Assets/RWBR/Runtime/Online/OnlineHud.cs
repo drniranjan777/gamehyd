@@ -129,7 +129,7 @@ namespace RWBR.Client.Online
             GUI.Label(new Rect(x, r.y + 270, 140, 30), "Dev server", _label);
             _addressDraft = GUI.TextField(new Rect(x + 140, r.y + 268, w - 140, 34), _addressDraft, 64, _field);
             if (GUI.Button(new Rect(x, r.yMax - 70, 250, 44), "Connect directly", _button)) _game.Connect(_addressDraft);
-            if (GUI.Button(new Rect(r.xMax - 280, r.yMax - 70, 250, 44), "Back to practice", _button)) _game.LeaveToPractice();
+            if (GUI.Button(new Rect(r.xMax - 280, r.yMax - 70, 250, 44), "Main menu", _button)) _game.LeaveToMenu();
         }
 
         private void DrawPhase(SnapshotPacket s)
@@ -208,7 +208,16 @@ namespace RWBR.Client.Online
                 GUI.Label(new Rect(wx + 12, wy + 18, 220, 24), "UNARMED", _label);
                 return;
             }
-            GUI.Label(new Rect(wx + 12, wy + 6, 220, 24), (self.Flags & PlayerFlags.Reloading) != 0 ? "RIFLE · reloading" : "RIFLE", _small);
+            string name = _game.SelfWeapon.DisplayName.ToUpperInvariant();
+            GUI.Label(new Rect(wx + 12, wy + 6, 220, 24), (self.Flags & PlayerFlags.Reloading) != 0 ? name + " · reloading" : name, _small);
+            for (int slot = 0; slot < 2; slot++)
+            {
+                byte w = s.SelfSlotWeapon[slot];
+                bool active = slot == s.SelfActiveSlot;
+                var r = new Rect(wx + slot * 120, wy - 26, 116, 22);
+                Fill(r, new Color(0, 0, 0, active ? 0.6f : 0.3f));
+                GUI.Label(r, $" {slot + 1} {(WeaponCatalog.IsValid(w) ? WeaponCatalog.Get(w).DisplayName : "—")}", _small);
+            }
             GUI.Label(new Rect(wx + 12, wy + 24, 220, 34), $"<size=30>{self.Ammo}</size>  / {s.SelfReserveAmmo}", new GUIStyle(_label) { richText = true });
         }
 
@@ -269,7 +278,7 @@ namespace RWBR.Client.Online
 
         private void DrawPause()
         {
-            Rect r = Panel(520, 360, "Paused");
+            Rect r = Panel(520, 410, "Paused");
             float x = r.x + 30, y = r.y + 70;
             GUI.Label(new Rect(x, y, 300, 26), $"Look sensitivity  {GameSettings.Sensitivity:0.00}", _label);
             float sens = GUI.HorizontalSlider(new Rect(x, y + 32, 460, 24), GameSettings.Sensitivity, GameSettings.MinSensitivity, GameSettings.MaxSensitivity);
@@ -279,8 +288,13 @@ namespace RWBR.Client.Online
             if (q != (int)GameSettings.Quality) GameSettings.SetQuality((QualityPreset)q);
             bool perf = GUI.Toggle(new Rect(x, y + 150, 460, 26), GameSettings.ShowPerformance, "  Show performance and network overlay");
             if (perf != GameSettings.ShowPerformance) GameSettings.SetShowPerformance(perf);
+            GUI.Label(new Rect(x, y + 186, 140, 24), "Volume", _small);
+            float m = GUI.HorizontalSlider(new Rect(x + 130, y + 192, 120, 20), GameSettings.MasterVolume, 0, 1);
+            float sfx = GUI.HorizontalSlider(new Rect(x + 320, y + 192, 120, 20), GameSettings.SfxVolume, 0, 1);
+            if (!Mathf.Approximately(m, GameSettings.MasterVolume) || !Mathf.Approximately(sfx, GameSettings.SfxVolume))
+                GameSettings.SetVolumes(m, sfx, GameSettings.UiVolume);
             if (GUI.Button(new Rect(x, r.yMax - 70, 210, 44), "Resume", _button)) _game.Paused = false;
-            if (GUI.Button(new Rect(x + 250, r.yMax - 70, 210, 44), "Leave match", _button)) _game.LeaveToPractice();
+            if (GUI.Button(new Rect(x + 250, r.yMax - 70, 210, 44), "Leave match", _button)) _game.LeaveToMenu();
         }
 
         private void DrawResult(NetClient net)
@@ -306,7 +320,7 @@ namespace RWBR.Client.Online
                 if (_game.Platform != null) _game.StartQuickPlay();
                 else _game.Connect(_game.ServerAddress);
             }
-            if (GUI.Button(new Rect(r.x + 280, r.yMax - 70, 210, 44), "Practice", _button)) _game.LeaveToPractice();
+            if (GUI.Button(new Rect(r.x + 280, r.yMax - 70, 210, 44), "Main menu", _button)) _game.LeaveToMenu();
         }
     }
 }

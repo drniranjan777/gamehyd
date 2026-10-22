@@ -6,3 +6,4 @@ dist/
 coverage/
 .local/
 .github/
+docs/balance/

@@ -50,6 +50,7 @@ export async function startApi(
     TICKET_SECRET_HEX,
     LOG_REQUESTS: 'false',
     MATCH_CAPACITY: '3',
+    DEFAULT_MAP_VERSION: 'greybox-block-100-v2',
     ...overrides,
   });
   const moduleRef = await Test.createTestingModule({

@@ -15,6 +15,9 @@ namespace RWBR.Client.Settings
         private const string SensitivityKey = "rwbr.sensitivity";
         private const string QualityKey = "rwbr.quality";
         private const string ShowPerfKey = "rwbr.showPerf";
+        private const string MasterKey = "rwbr.volume.master";
+        private const string SfxKey = "rwbr.volume.sfx";
+        private const string UiKey = "rwbr.volume.ui";
 
         public const float MinSensitivity = 0.2f;
         public const float MaxSensitivity = 3f;
@@ -22,6 +25,9 @@ namespace RWBR.Client.Settings
         public static float Sensitivity { get; private set; } = 1f;
         public static QualityPreset Quality { get; private set; } = QualityPreset.Medium;
         public static bool ShowPerformance { get; private set; } = true;
+        public static float MasterVolume { get; private set; } = 0.8f;
+        public static float SfxVolume { get; private set; } = 1f;
+        public static float UiVolume { get; private set; } = 0.8f;
 
         public static void Load()
         {
@@ -30,6 +36,9 @@ namespace RWBR.Client.Settings
                 Sensitivity = Mathf.Clamp(PlayerPrefs.GetFloat(SensitivityKey, 1f), MinSensitivity, MaxSensitivity);
                 Quality = (QualityPreset)Mathf.Clamp(PlayerPrefs.GetInt(QualityKey, DefaultQuality()), 0, 2);
                 ShowPerformance = PlayerPrefs.GetInt(ShowPerfKey, 1) == 1;
+                MasterVolume = Mathf.Clamp01(PlayerPrefs.GetFloat(MasterKey, 0.8f));
+                SfxVolume = Mathf.Clamp01(PlayerPrefs.GetFloat(SfxKey, 1f));
+                UiVolume = Mathf.Clamp01(PlayerPrefs.GetFloat(UiKey, 0.8f));
             }
             catch (System.Exception)
             {
@@ -48,6 +57,14 @@ namespace RWBR.Client.Settings
         {
             Quality = preset;
             ApplyQuality(preset);
+            Save();
+        }
+
+        public static void SetVolumes(float master, float sfx, float ui)
+        {
+            MasterVolume = Mathf.Clamp01(master);
+            SfxVolume = Mathf.Clamp01(sfx);
+            UiVolume = Mathf.Clamp01(ui);
             Save();
         }
 
@@ -108,6 +125,9 @@ namespace RWBR.Client.Settings
                 PlayerPrefs.SetFloat(SensitivityKey, Sensitivity);
                 PlayerPrefs.SetInt(QualityKey, (int)Quality);
                 PlayerPrefs.SetInt(ShowPerfKey, ShowPerformance ? 1 : 0);
+                PlayerPrefs.SetFloat(MasterKey, MasterVolume);
+                PlayerPrefs.SetFloat(SfxKey, SfxVolume);
+                PlayerPrefs.SetFloat(UiKey, UiVolume);
                 PlayerPrefs.Save();
             }
             catch (System.Exception)

@@ -1,3 +1,4 @@
+using System.Linq;
 using RWBR.Client.Diagnostics;
 using RWBR.Client.Player;
 using RWBR.Client.Settings;
@@ -56,6 +57,7 @@ namespace RWBR.Client.Practice
             DrawVitals(p);
             DrawWeapon(sim, p);
             DrawObjective(sim);
+            DrawTutorial();
             DrawPrompt(sim, p);
             DrawPerf();
             if (_game.Touch.Visible && _game.InputOverride == null) DrawTouch();
@@ -139,7 +141,8 @@ namespace RWBR.Client.Practice
                 GUI.Label(new Rect(x + 12, y + 34, 220, 24), "Find a rifle", _small);
                 return;
             }
-            GUI.Label(new Rect(x + 12, y + 6, 220, 24), "RIFLE", _small);
+            GUI.Label(new Rect(x + 12, y + 6, 230, 24), sim.PlayerWeapon.DisplayName.ToUpperInvariant(), _small);
+            DrawSlots(p, x, y - 26);
             GUI.Label(new Rect(x + 12, y + 24, 220, 34), $"<size=30>{p.Combat.Ammo}</size>  / {p.Combat.ReserveAmmo}", new GUIStyle(_label) { richText = true });
             if (p.Combat.Reloading)
             {
@@ -153,11 +156,36 @@ namespace RWBR.Client.Practice
             }
         }
 
+        private void DrawTutorial()
+        {
+            TutorialDirector t = _game.Tutorial;
+            if (t == null || _game.MenusOpen) return;
+            var r = new Rect(_w / 2 - 300, 70, 600, 58);
+            Fill(r, new Color(0.1f, 0.25f, 0.45f, 0.8f));
+            GUI.Label(new Rect(r.x + 14, r.y + 4, 120, 22), $"TRAINING {Mathf.Min(t.Index + 1, t.Count)}/{t.Count}", _small);
+            GUI.Label(new Rect(r.x + 14, r.y + 24, r.width - 28, 30), t.Text(_game.Touch.Visible), _label);
+        }
+
+        private void DrawSlots(Fighter p, float x, float y)
+        {
+            for (int slot = 0; slot < Combatant.SlotCount; slot++)
+            {
+                int w = p.Combat.SlotWeapon(slot);
+                string name = w >= 0 ? WeaponCatalog.Get(w).DisplayName : "—";
+                bool active = slot == p.Combat.ActiveSlot;
+                var r = new Rect(x + slot * 120, y, 116, 22);
+                Fill(r, new Color(0, 0, 0, active ? 0.6f : 0.3f));
+                GUI.Label(r, $" {slot + 1} {name}", new GUIStyle(_small) { normal = { textColor = active ? Color.white : new Color(1, 1, 1, 0.6f) } });
+            }
+        }
+
         private void DrawObjective(PracticeSimulation sim)
         {
             float x = 24, y = 20;
             Fill(new Rect(x, y, 250, 34), new Color(0, 0, 0, 0.45f));
             GUI.Label(new Rect(x + 10, y + 5, 240, 26), $"Enemies left: {sim.EnemiesAlive} / {sim.Enemies.Count}", _label);
+            string area = sim.Map.DistrictAt(sim.Player.Motor.Position.X, sim.Player.Motor.Position.Z);
+            if (area.Length > 0) GUI.Label(new Rect(x + 260, y + 5, 300, 26), area, _label);
             float fy = y + 44;
             foreach (PracticeGame.FeedEntry e in _game.Feed)
             {
@@ -243,7 +271,8 @@ namespace RWBR.Client.Practice
         {
             Rect r = Panel(460, 330, "Inventory");
             float x = r.x + 30, y = r.y + 70;
-            GUI.Label(new Rect(x, y, 400, 26), $"Weapon:  {(p.Combat.HasWeapon ? "Rifle" : "—")}", _label);
+            string slots = string.Join("  ·  ", new[] { 0, 1 }.Select(i => p.Combat.SlotWeapon(i) >= 0 ? WeaponCatalog.Get(p.Combat.SlotWeapon(i)).DisplayName : "—"));
+            GUI.Label(new Rect(x, y, 400, 26), $"Weapons:  {slots}", _label);
             GUI.Label(new Rect(x, y + 32, 400, 26), $"Magazine:  {p.Combat.Ammo} / {sim.PlayerWeapon.MagazineSize}", _label);
             GUI.Label(new Rect(x, y + 64, 400, 26), $"Reserve ammo:  {p.Combat.ReserveAmmo} / {GameRules.MaxReserveAmmo}", _label);
             GUI.Label(new Rect(x, y + 96, 400, 26), $"Armor:  {Mathf.CeilToInt(p.Combat.Armor)} / {GameRules.MaxArmor}", _label);
@@ -260,7 +289,7 @@ namespace RWBR.Client.Practice
 
         private void DrawPause()
         {
-            Rect r = Panel(520, 450, "Paused");
+            Rect r = Panel(520, 530, "Paused");
             float x = r.x + 30, y = r.y + 70;
 
             GUI.Label(new Rect(x, y, 200, 26), $"Look sensitivity  {GameSettings.Sensitivity:0.00}", _label);
@@ -274,11 +303,25 @@ namespace RWBR.Client.Practice
 
             bool perf = GUI.Toggle(new Rect(x, y + 150, 460, 26), GameSettings.ShowPerformance, "  Show performance overlay");
             if (perf != GameSettings.ShowPerformance) GameSettings.SetShowPerformance(perf);
+            VolumeSliders(x, y + 186);
 
             if (GUI.Button(new Rect(x, r.yMax - 70, 210, 44), "Resume", _button)) _game.Paused = false;
             if (GUI.Button(new Rect(x + 250, r.yMax - 70, 210, 44), "Restart", _button)) _game.Restart();
-            if (GUI.Button(new Rect(x, r.yMax - 124, 460, 44), "Play online", _button))
+            if (GUI.Button(new Rect(x, r.yMax - 124, 220, 44), "Play online", _button))
                 UnityEngine.SceneManagement.SceneManager.LoadScene("Online");
+            if (GUI.Button(new Rect(x + 240, r.yMax - 124, 220, 44), "Main menu", _button))
+                UnityEngine.SceneManagement.SceneManager.LoadScene("MainMenu");
+        }
+
+        private void VolumeSliders(float x, float y)
+        {
+            GUI.Label(new Rect(x, y, 140, 24), "Volume", _small);
+            GUI.Label(new Rect(x + 70, y, 60, 24), "master", _small);
+            float m = GUI.HorizontalSlider(new Rect(x + 130, y + 6, 120, 20), GameSettings.MasterVolume, 0, 1);
+            GUI.Label(new Rect(x + 260, y, 60, 24), "effects", _small);
+            float s = GUI.HorizontalSlider(new Rect(x + 320, y + 6, 120, 20), GameSettings.SfxVolume, 0, 1);
+            if (!Mathf.Approximately(m, GameSettings.MasterVolume) || !Mathf.Approximately(s, GameSettings.SfxVolume))
+                GameSettings.SetVolumes(m, s, GameSettings.UiVolume);
         }
 
         private void DrawOutcome(PracticeSimulation sim)

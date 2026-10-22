@@ -3,7 +3,7 @@
 Commercial free-to-play mobile battle royale (Unity 6 client, fictional Hyderabad-inspired map). Requirements:
 [BRD v1.2](Real_World_Battle_Royale_Detailed_BRD_Technical_Plan_v1.2.docx) · [Phase-wise delivery plan](PHASE-PLAN.md)
 
-**Status: Phase 3 exit gate passing on the dev machine (accounts, matchmaking, results, XP).** Phases 0–3 are built and tested locally; product decisions, cloud/staging, device tests and sign-offs are open. Status: [Phase 0](docs/PHASE-0-STATUS.md) · [Phase 1](docs/PHASE-1-STATUS.md) · [Phase 2](docs/PHASE-2-STATUS.md) · [Phase 3](docs/PHASE-3-STATUS.md).
+**Status: Phase 4 engineering done (city map, weapon roster, audio, menus, tutorial); content (art, animation, final audio) and design decisions open.** Phases 0–4 are built and tested locally. Status: [Phase 0](docs/PHASE-0-STATUS.md) · [Phase 1](docs/PHASE-1-STATUS.md) · [Phase 2](docs/PHASE-2-STATUS.md) · [Phase 3](docs/PHASE-3-STATUS.md) · [Phase 4](docs/PHASE-4-STATUS.md).
 
 | Folder                    | What                                                                                                                                                            | Status                                                                                    |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
@@ -67,7 +67,9 @@ To play it yourself: run the API (above), then `RWBR_SERVER_SHARED_SECRET=… RW
 
 **Online play (dev server, no platform)** — start a server (above, e.g. `--players 2 --fast`) and one bot, then in Unity open `Assets/Scenes/Online.unity` (or Practice → Esc → Play online) and connect to `127.0.0.1:7777`. Bots can simulate bad networks: `--loss 0.05 --latency 75 --jitter 40`.
 
-**Unity** — open `game/unity-client` in Unity 6000.6.7f1 and play `Assets/Scenes/Greybox.unity` (WASD + mouse, Shift sprint, Space jump, C crouch, E pick up, R reload, H heal, Tab bag, Esc menu). Headless:
+**Balance tools** — `docs/balance/TTK.md` (regenerate: `UPDATE_DOCS=1 dotnet test game/dedicated-server/RWBR.MatchServer.slnx`), and full-match simulation: `dotnet run --project game/dedicated-server/src/RWBR.MatchServer -c Release -- --simulate 3 --map hyd-city-v1 --players 30`.
+
+**Unity** — open `game/unity-client` in Unity 6000.6.7f1 and play `Assets/Scenes/MainMenu.unity` (WASD + mouse, Shift sprint, Space jump, C crouch, E pick up, Q / 1 / 2 / wheel switch weapon, R reload, H heal, Tab bag, Esc menu). Headless:
 
 ```bash
 game/unity-client/unity-batch.sh setup

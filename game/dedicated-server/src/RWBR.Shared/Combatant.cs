@@ -14,19 +14,30 @@ namespace RWBR.Shared
     }
 
     /// <summary>
-    /// Health, armor, weapon and item state for one character, advanced in ticks. Shared by the authoritative
-    /// server and the offline client so both apply the same rules (BRD 5.2, 5.3).
+    /// Health, armor, two weapon slots and item state for one character, advanced in ticks. Shared by the
+    /// authoritative server and the offline client so both apply the same rules (BRD 5.2, 5.3). Weapon balance is
+    /// passed in by the caller (catalog or a test override), never stored here.
     /// </summary>
     public sealed class Combatant
     {
+        public const int SlotCount = 2;
+
+        private readonly int[] _slotWeapon = { -1, -1 };
+        private readonly int[] _slotAmmo = new int[SlotCount];
+        // Per slot, so swapping weapons can never skip a weapon's own fire interval (no quick-swap exploit).
+        private readonly long[] _slotNextFire = new long[SlotCount];
+
         public float Health { get; set; } = GameRules.MaxHealth;
         public float Armor { get; set; }
-        public bool HasWeapon { get; set; }
-        public int Ammo { get; set; }
         public int ReserveAmmo { get; set; }
         public int Medkits { get; set; }
+        public int ActiveSlot { get; private set; }
 
-        public long NextFireTick { get; private set; }
+        public long NextFireTick
+        {
+            get => _slotNextFire[ActiveSlot];
+            private set => _slotNextFire[ActiveSlot] = value;
+        }
         public long ReloadDoneTick { get; private set; } = -1;
         public long HealDoneTick { get; private set; } = -1;
 
@@ -34,27 +45,44 @@ namespace RWBR.Shared
         public bool Reloading => ReloadDoneTick >= 0;
         public bool Healing => HealDoneTick >= 0;
 
+        /// <summary>Catalog index of the weapon in hand, or -1.</summary>
+        public int ActiveWeaponIndex => _slotWeapon[ActiveSlot];
+        public bool HasWeapon => ActiveWeaponIndex >= 0;
+        public int SlotWeapon(int slot) => _slotWeapon[slot];
+        public int SlotAmmo(int slot) => _slotAmmo[slot];
+
+        /// <summary>Rounds in the active weapon's magazine.</summary>
+        public int Ammo
+        {
+            get => _slotAmmo[ActiveSlot];
+            set => _slotAmmo[ActiveSlot] = value;
+        }
+
         public static int Ticks(float seconds, int tickRate) => (int)Math.Ceiling(seconds * tickRate);
 
-        public void Reset(WeaponDefinition weapon, bool withWeapon, int reserveAmmo)
+        /// <summary>Respawn state: full health, empty slots, or <paramref name="weaponIndex"/> in slot 1 when armed.</summary>
+        public void Reset(WeaponDefinition weapon, bool withWeapon, int reserveAmmo, int weaponIndex = WeaponCatalog.Rifle)
         {
             Health = GameRules.MaxHealth;
             Armor = 0;
-            HasWeapon = withWeapon;
-            Ammo = withWeapon ? weapon.MagazineSize : 0;
+            _slotWeapon[0] = withWeapon ? weaponIndex : -1;
+            _slotWeapon[1] = -1;
+            _slotAmmo[0] = withWeapon ? weapon.MagazineSize : 0;
+            _slotAmmo[1] = 0;
+            ActiveSlot = 0;
             ReserveAmmo = reserveAmmo;
             Medkits = 0;
-            NextFireTick = 0;
+            _slotNextFire[0] = _slotNextFire[1] = 0;
             ReloadDoneTick = -1;
             HealDoneTick = -1;
         }
 
         /// <summary>Completes reloads and heals whose time has come. Call once per tick before actions.</summary>
-        public void Update(long tick, WeaponDefinition weapon)
+        public void Update(long tick, WeaponDefinition activeWeapon)
         {
             if (Reloading && tick >= ReloadDoneTick)
             {
-                int take = Math.Min(weapon.MagazineSize - Ammo, ReserveAmmo);
+                int take = Math.Min(activeWeapon.MagazineSize - Ammo, ReserveAmmo);
                 Ammo += take;
                 ReserveAmmo -= take;
                 ReloadDoneTick = -1;
@@ -92,6 +120,18 @@ namespace RWBR.Shared
             return true;
         }
 
+        /// <summary>Swaps to the other slot if it holds a weapon. Cancels reloads and heals; firing waits for the draw.</summary>
+        public bool TrySwitch(long tick, WeaponDefinition next, int tickRate)
+        {
+            int other = 1 - ActiveSlot;
+            if (_slotWeapon[other] < 0) return false;
+            ActiveSlot = other;
+            ReloadDoneTick = -1;
+            HealDoneTick = -1;
+            NextFireTick = Math.Max(NextFireTick, tick + Ticks(next.SwitchSeconds, tickRate)); // the drawn weapon's slot
+            return true;
+        }
+
         public bool TryStartHeal(long tick, int tickRate)
         {
             if (Medkits <= 0 || Healing || Health >= GameRules.MaxHealth) return false;
@@ -114,24 +154,38 @@ namespace RWBR.Shared
             return lost;
         }
 
-        /// <summary>False when picking the item up would have no effect (already owned, full, or better armor).</summary>
-        public bool CanPickUp(LootSpawn item) => item.Type switch
+        /// <summary>False when picking the item up would have no effect (weapon already carried, full, or better armor).</summary>
+        public bool CanPickUp(LootSpawn item)
         {
-            LootType.Rifle => !HasWeapon,
-            LootType.Ammo => ReserveAmmo < GameRules.MaxReserveAmmo,
-            LootType.Medkit => Medkits < GameRules.MaxMedkits,
-            LootType.Armor => Armor < Math.Min(GameRules.MaxArmor, item.Quantity),
-            _ => false,
-        };
+            int weapon = item.WeaponIndex;
+            if (weapon >= 0) return _slotWeapon[0] != weapon && _slotWeapon[1] != weapon;
+            return item.Type switch
+            {
+                LootType.Ammo => ReserveAmmo < GameRules.MaxReserveAmmo,
+                LootType.Medkit => Medkits < GameRules.MaxMedkits,
+                LootType.Armor => Armor < Math.Min(GameRules.MaxArmor, item.Quantity),
+                _ => false,
+            };
+        }
 
+        /// <summary>
+        /// Weapons go into an empty slot (and are drawn), otherwise replace the weapon in hand.
+        /// <paramref name="weapon"/> is the balance for the picked-up weapon (magazine size).
+        /// </summary>
         public void PickUp(LootSpawn item, WeaponDefinition weapon)
         {
+            int index = item.WeaponIndex;
+            if (index >= 0)
+            {
+                int slot = _slotWeapon[ActiveSlot] < 0 ? ActiveSlot : _slotWeapon[1 - ActiveSlot] < 0 ? 1 - ActiveSlot : ActiveSlot;
+                _slotWeapon[slot] = index;
+                _slotAmmo[slot] = weapon.MagazineSize;
+                ActiveSlot = slot;
+                ReloadDoneTick = -1;
+                return;
+            }
             switch (item.Type)
             {
-                case LootType.Rifle:
-                    HasWeapon = true;
-                    Ammo = weapon.MagazineSize;
-                    break;
                 case LootType.Ammo:
                     ReserveAmmo = Math.Min(GameRules.MaxReserveAmmo, ReserveAmmo + item.Quantity);
                     break;

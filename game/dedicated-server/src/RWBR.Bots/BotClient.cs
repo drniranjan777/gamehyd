@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Numerics;
 using RWBR.Shared;
+using RWBR.Shared.Bots;
 using RWBR.Shared.Protocol;
 
 namespace RWBR.Bots;
@@ -30,6 +31,7 @@ public sealed class BotClient : IDisposable
 {
     private readonly IPEndPoint _server;
     private readonly Random _rng;
+    private readonly BotBrain _brain;
     private readonly BotOptions _options;
     private readonly PacketAuth? _auth;
     private readonly List<InputCommand> _recent = new(); // newest first, resent for loss tolerance
@@ -47,6 +49,7 @@ public sealed class BotClient : IDisposable
         _server = server;
         Name = name;
         _rng = new Random(seed);
+        _brain = new BotBrain(seed);
         _options = options ?? new BotOptions();
         if (_options.SessionKey != null) _auth = new PacketAuth(_options.SessionKey);
         _socket = CreateSocket();
@@ -122,59 +125,7 @@ public sealed class BotClient : IDisposable
         SendNow(_auth != null ? _auth.Sign(leave) : leave);
     }
 
-    private InputCommand Decide(double time)
-    {
-        SnapshotPacket? snap = LastSnapshot;
-        if (snap == null) return default;
-        SnapshotEntry? selfOrNull = snap.Players.Cast<SnapshotEntry?>().FirstOrDefault(p => p!.Value.PlayerId == PlayerId);
-        if (selfOrNull is not { } self || (self.Flags & PlayerFlags.Alive) == 0) return default;
-
-        var me = new Vector3(self.X, self.Y, self.Z);
-        SnapshotEntry? target = null;
-        float best = float.MaxValue;
-        foreach (SnapshotEntry p in snap.Players)
-        {
-            if (p.PlayerId == PlayerId || (p.Flags & PlayerFlags.Alive) == 0) continue;
-            float d = Vector3.Distance(me, new Vector3(p.X, p.Y, p.Z));
-            if (d < best)
-            {
-                best = d;
-                target = p;
-            }
-        }
-
-        float yaw = self.Yaw, pitch = 0;
-        if (target is { } t)
-        {
-            float dx = t.X - me.X, dz = t.Z - me.Z;
-            float dy = (t.Y + 1.2f) - (me.Y + GameRules.EyeHeight);
-            yaw = MathF.Atan2(dx, dz) + (float)(_rng.NextDouble() - 0.5) * 0.04f;
-            pitch = MathF.Atan2(dy, MathF.Sqrt(dx * dx + dz * dz));
-        }
-
-        // Head for the zone centre when near the edge; otherwise close in and strafe.
-        Vector3 worldMove;
-        float fromCenter = new Vector2(me.X - snap.ZoneX, me.Z - snap.ZoneZ).Length();
-        if (fromCenter > snap.ZoneRadius * 0.7f)
-            worldMove = Vector3.Normalize(new Vector3(snap.ZoneX - me.X, 0, snap.ZoneZ - me.Z));
-        else
-            worldMove = (target != null && best > 12 ? Simulation.Forward(yaw) : Vector3.Zero)
-                        + Simulation.Right(yaw) * MathF.Sin((float)time * 2 + PlayerId);
-
-        var buttons = InputButtons.None;
-        if (target != null && best < 45) buttons |= InputButtons.Fire;
-        float mz = Vector3.Dot(worldMove, Simulation.Forward(yaw));
-        if (mz > 0.7f) buttons |= InputButtons.Sprint;
-
-        return new InputCommand
-        {
-            MoveX = Vector3.Dot(worldMove, Simulation.Right(yaw)),
-            MoveZ = mz,
-            Yaw = yaw,
-            Pitch = pitch,
-            Buttons = buttons,
-        };
-    }
+    private InputCommand Decide(double time) => _brain.Decide(LastSnapshot, PlayerId, time);
 
     private void ReceiveAll()
     {
