@@ -3551,6 +3551,8 @@ export interface components {
       connectedPlayers?: number;
       /** @description 99th-percentile tick time over the last ~10 s while hosting */
       tickMsP99?: number | null;
+      /** @description Rolling deploy: take no new matches; unhosted assignments are requeued */
+      draining?: boolean;
     };
     HeartbeatResponse: {
       /** Format: uuid */
@@ -3713,6 +3715,8 @@ export interface components {
       matchmakingEnabled: boolean;
       disabledProducts: string[];
       disabledWeapons: string[];
+      /** @description Match XP multiplier for events (default 1) */
+      xpMultiplier?: number;
     };
     PublicConfig: {
       version: number;
@@ -3720,6 +3724,7 @@ export interface components {
       matchmakingEnabled: boolean;
       disabledProducts: string[];
       disabledWeapons: string[];
+      xpMultiplier: number;
     };
     Reason: string;
     ReasonRequest: {

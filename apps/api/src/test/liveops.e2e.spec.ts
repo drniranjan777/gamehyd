@@ -334,4 +334,113 @@ describeDb('live ops: season pass, ops dashboard, releases, economy (PostgreSQL)
       'release.create',
     ]);
   });
+  it('pays double XP (and season XP) during a double-XP event, not double coins', async () => {
+    const cfg = await api()
+      .get('/api/v1/admin/liveops/config')
+      .set(...as('root'));
+    const put = await api()
+      .put('/api/v1/admin/liveops/config')
+      .set(...as('root'))
+      .send({
+        expectedVersion: cfg.body.current.version,
+        config: { ...cfg.body.current.config, xpMultiplier: 2 },
+        reason: 'double XP weekend',
+      });
+    expect(put.status).toBe(200);
+    expect((await api().get('/api/v1/config')).body.xpMultiplier).toBe(2);
+
+    const db = h.app.get(Db);
+    const [winner, loser] = [await guest(h), await guest(h)];
+    const server = await db.one<{ id: string }>(
+      `INSERT INTO game_servers (address, region, build_version) VALUES ('127.0.0.1:47812', 'IN-SOUTH', 't') RETURNING id`,
+    );
+    const m = await db.one<{ id: string }>(
+      `INSERT INTO matches (game_server_id, map_version, mode, region, capacity, ruleset_version, hosted_at)
+       VALUES ($1, 'greybox-block-100-v2', 'SOLO', 'IN-SOUTH', 2, 'v1', now()) RETURNING id`,
+      [server!.id],
+    );
+    for (const p of [winner, loser])
+      await db.query('INSERT INTO match_participants (match_id, user_id) VALUES ($1, $2)', [
+        m!.id,
+        p.userId,
+      ]);
+    const result = await signed(
+      h,
+      'POST',
+      `/internal/matches/${m!.id}/result`,
+      {
+        mapVersion: 'greybox-block-100-v2',
+        reason: 'WINNER',
+        winnerAccountId: winner.userId,
+        durationSeconds: 300,
+        participants: [
+          { accountId: winner.userId, placement: 1, kills: 1, survivalSeconds: 300 },
+          { accountId: loser.userId, placement: 2, kills: 0, survivalSeconds: 200 },
+        ],
+      },
+      '127.0.0.1:47812',
+    );
+    expect(result.status).toBe(200);
+    const stats = await api()
+      .get('/api/v1/player/stats')
+      .set(...bearer(winner.accessToken));
+    expect(stats.body.xp).toBe(920); // (100 + 50 + 10 + 300) x 2
+    const inv = await api()
+      .get('/api/v1/inventory')
+      .set(...bearer(winner.accessToken));
+    expect(inv.body.wallets.COIN).toBe(65); // coins unchanged by the event
+    const season = await api()
+      .get('/api/v1/seasons/current')
+      .set(...bearer(winner.accessToken));
+    expect(season.body.progress.xp).toBe(920);
+  });
+  it('drains a server: no new matches, unhosted assignments go back to the queue', async () => {
+    const db = h.app.get(Db);
+    const address = '127.0.0.1:47813';
+    const beat = (draining: boolean) =>
+      signed(
+        h,
+        'POST',
+        '/internal/game-servers/heartbeat',
+        {
+          address,
+          region: 'IN-SOUTH',
+          buildVersion: 'test',
+          mapVersions: ['greybox-block-100-v2'],
+          state: 'IDLE',
+          connectedPlayers: 0,
+          draining,
+        },
+        address,
+      );
+    await beat(false);
+    const server = await db.one<{ id: string }>('SELECT id FROM game_servers WHERE address = $1', [
+      address,
+    ]);
+    const g = await guest(h);
+    const m = await db.one<{ id: string }>(
+      `INSERT INTO matches (game_server_id, map_version, mode, region, capacity, ruleset_version)
+       VALUES ($1, 'greybox-block-100-v2', 'SOLO', 'IN-SOUTH', 3, 'v1') RETURNING id`,
+      [server!.id],
+    );
+    await db.query(
+      `INSERT INTO matchmaking_queue (user_id, mode, region, client_version, match_id, matched_at) VALUES ($1, 'SOLO', 'IN-SOUTH', '0.8.0', $2, now())`,
+      [g.userId, m!.id],
+    );
+
+    const res = await beat(true);
+    expect(res.status).toBe(200);
+    expectContract(res, 'POST', '/internal/game-servers/heartbeat');
+    expect(res.body.assignment).toBeNull();
+    const after = await db.one<{
+      status: string;
+      server_status: string;
+      queued_match: string | null;
+    }>(
+      `SELECT m.status, s.status AS server_status, (SELECT match_id FROM matchmaking_queue WHERE user_id = $2) AS queued_match
+         FROM matches m JOIN game_servers s ON s.id = m.game_server_id WHERE m.id = $1`,
+      [m!.id, g.userId],
+    );
+    expect(after).toEqual({ status: 'CANCELLED', server_status: 'DRAINING', queued_match: null });
+  });
 });

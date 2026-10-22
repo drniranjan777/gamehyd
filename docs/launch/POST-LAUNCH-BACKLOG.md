@@ -20,16 +20,16 @@ Collected from the open items of Phases 0–7, ordered by what blocks or risks t
 
 ## P1: first month
 
-| Item                                                                      | Notes                                              |
-| ------------------------------------------------------------------------- | -------------------------------------------------- |
-| Redis for rate limits and the status cache when running > 2 API instances | In-memory today                                    |
-| Match-server DRAINING mode for rolling deploys                            | Schema has the status; server doesn't implement it |
-| In-game report button on the results screen                               | API exists                                         |
-| In-game news and a "matchmaking paused" screen                            | Website shows events today                         |
-| XP multiplier live setting (double-XP weekends)                           | Needed by the live-ops calendar                    |
-| Bot navigation and looting                                                | Needed to validate loot balance in the simulator   |
-| Cosmetics drawn on characters                                             | Loadout is stored but not rendered                 |
-| Alerting on the Phase 7 thresholds (pager, not just dashboards)           | Needs the observability backend                    |
+| Item                                                                      | Notes                                                                  |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Redis for rate limits and the status cache when running > 2 API instances | In-memory today                                                        |
+| ~~Match-server DRAINING mode for rolling deploys~~                        | **Done (Phase 8).** Schema has the status; server doesn't implement it |
+| ~~In-game report button on the results screen~~                           | **Done (Phase 8).** API exists                                         |
+| ~~In-game news and a "matchmaking paused" screen~~                        | **Done (Phase 8).** Website shows events today                         |
+| ~~XP multiplier live setting (double-XP weekends)~~                       | **Done (Phase 8).** Needed by the live-ops calendar                    |
+| ~~Bot navigation and looting~~                                            | **Done (Phase 8).** Needed to validate loot balance in the simulator   |
+| Cosmetics drawn on characters                                             | Loadout is stored but not rendered                                     |
+| Alerting on the Phase 7 thresholds (pager, not just dashboards)           | Needs the observability backend                                        |
 
 ## P2: after retention and cost data (PHASE-PLAN Phase 7)
 

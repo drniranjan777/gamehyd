@@ -5,8 +5,8 @@
 ## Contain (first 15 minutes)
 
 1. Check **Overview → Servers online**. If it's 0, the match servers aren't heartbeating: go to [server crash](server-crash.md).
-2. If servers are online but matches aren't starting, pause matchmaking so players aren't stuck: **Live ops → Matchmaking open: off**, with a reason. Queue requests then get `503 MATCHMAKING_DISABLED` (the game currently shows the error message; a friendly "paused" screen is a Phase 6 follow-up).
-3. Post a status message as a **Live ops event** (title "Matchmaking paused", ending in about an hour). It shows on the website (in-game news is not built yet).
+2. If servers are online but matches aren't starting, pause matchmaking so players aren't stuck: **Live ops → Matchmaking open: off**, with a reason. Queue requests then get `503 MATCHMAKING_DISABLED` (the game shows "Matchmaking is paused for maintenance").
+3. Post a status message as a **Live ops event** (title "Matchmaking paused", ending in about an hour). It shows on the website and in the game's home-screen news.
 
 ## Diagnose
 

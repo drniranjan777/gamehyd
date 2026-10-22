@@ -18,13 +18,27 @@ using RWBR.Shared;
 int port = IntArg("--port", 7777);
 int tick = IntArg("--tick", 30);
 using var cts = new CancellationTokenSource();
+// First Ctrl+C / SIGTERM: graceful stop where supported (managed mode drains); second: stop now.
+Action? gracefulStop = null;
+void Stop()
+{
+    Action? graceful = Interlocked.Exchange(ref gracefulStop, null);
+    if (graceful != null) graceful();
+    else cts.Cancel();
+}
 Console.CancelKeyPress += (_, e) =>
 {
     e.Cancel = true;
-    cts.Cancel();
+    Stop();
 };
+using var sigterm = System.Runtime.InteropServices.PosixSignalRegistration.Create(
+    System.Runtime.InteropServices.PosixSignal.SIGTERM, ctx =>
+    {
+        ctx.Cancel = true;
+        Stop();
+    });
 
-// In-process balance simulation: RWBR.MatchServer --simulate 3 [--map hyd-city-v1] [--players 30]
+// In-process balance simulation: RWBR.MatchServer --simulate 3 [--map hyd-city-v1] [--players 30] [--loot-start]
 int simulate = IntArg("--simulate", 0);
 if (simulate > 0)
 {
@@ -35,6 +49,7 @@ if (simulate > 0)
     for (int i = 1; i <= simulate; i++)
     {
         var simCfg = new MatchConfig { MinPlayers = simPlayers, MaxPlayers = simPlayers, Map = simMap, ZoneStages = MatchConfig.ZonesFor(simMap), CountdownSeconds = 3 };
+        if (args.Contains("--loot-start")) simCfg.StartWithWeapon = false; // design option: everyone starts unarmed and loots
         var r = RWBR.MatchServer.Sim.MatchSimulator.Run(simCfg, i);
         results.Add(r);
         Console.WriteLine(JsonSerializer.Serialize(r));
@@ -63,6 +78,7 @@ if (apiUrl != null)
         Fast = args.Contains("--fast"),
         MaxMatches = IntArg("--max-matches", 0),
     });
+    gracefulStop = server.Drain;
     await server.RunAsync(cts.Token);
     return 0;
 }

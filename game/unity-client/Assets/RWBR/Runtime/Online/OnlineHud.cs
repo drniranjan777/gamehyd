@@ -326,6 +326,46 @@ namespace RWBR.Client.Online
                 else _game.Connect(_game.ServerAddress);
             }
             if (GUI.Button(new Rect(r.x + 280, r.yMax - 70, 210, 44), "Main menu", _button)) _game.LeaveToMenu();
+            DrawReportPanel(new Rect(r.x, r.yMax + 12, r.width, 0));
+        }
+
+        private static readonly string[] ReportReasons = { "CHEATING", "HARASSMENT", "INAPPROPRIATE_NAME", "GRIEFING" };
+        private int _reportReason;
+        private bool _reportOpen;
+        private Vector2 _reportScroll;
+
+        /// <summary>Below the result: report another player from this match (server-confirmed roster only).</summary>
+        private void DrawReportPanel(Rect at)
+        {
+            MatchResultDto result = _game.PlatformResult;
+            if (result?.participants == null || _game.Platform == null) return;
+            string self = _game.Platform.UserId;
+            if (!_reportOpen)
+            {
+                if (GUI.Button(new Rect(at.x + 155, at.y, 210, 36), "Report a player", _button)) _reportOpen = true;
+                return;
+            }
+            int others = 0;
+            foreach (ResultParticipantDto p in result.participants) if (p.playerId != self) others++;
+            Rect r = new Rect(at.x, at.y, at.width, 92 + Mathf.Min(others, 3) * 34);
+            Fill(r, new Color(0.08f, 0.09f, 0.11f, 0.95f));
+            _reportReason = GUI.Toolbar(new Rect(r.x + 12, r.y + 10, r.width - 24, 30), _reportReason,
+                new[] { "Cheating", "Harassment", "Name", "Griefing" });
+            _reportScroll = GUI.BeginScrollView(new Rect(r.x, r.y + 50, r.width, Mathf.Min(others, 3) * 34), _reportScroll,
+                new Rect(0, 0, r.width - 20, others * 34));
+            float y = 0;
+            foreach (ResultParticipantDto p in result.participants)
+            {
+                if (p.playerId == self) continue;
+                GUI.Label(new Rect(16, y + 4, r.width - 200, 26), $"#{p.placement}  {p.displayName}  ·  {p.kills} elims", _label);
+                bool done = _game.HasReported(p.playerId);
+                GUI.enabled = !done;
+                if (GUI.Button(new Rect(r.width - 170, y, 134, 30), done ? "Reported" : "Report")) _game.ReportPlayer(p.playerId, ReportReasons[_reportReason]);
+                GUI.enabled = true;
+                y += 34;
+            }
+            GUI.EndScrollView();
+            if (_game.ReportStatus != null) GUI.Label(new Rect(r.x + 16, r.yMax - 32, r.width - 32, 26), _game.ReportStatus, _label);
         }
     }
 }

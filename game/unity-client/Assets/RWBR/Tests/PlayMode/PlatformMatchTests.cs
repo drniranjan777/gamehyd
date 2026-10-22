@@ -141,6 +141,15 @@ namespace RWBR.Tests
             yield return WaitUntil(() => game.ProfileAfter != null, 20, "XP from the platform");
             Debug.Log($"RWBR platform test: level {game.ProfileAfter.level}, xp {game.ProfileAfter.xp}, placement result {game.Net.Result.Reason}");
             Assert.Greater(game.ProfileAfter.xp, 0, "the server's signed result did not reach the player's profile");
+
+            // The confirmed result lists the other player, who can be reported from the results screen.
+            yield return WaitUntil(() => game.PlatformResult != null, 10, "the platform result");
+            Assert.AreEqual(2, game.PlatformResult.participants.Length);
+            ResultParticipantDto bot = System.Array.Find(game.PlatformResult.participants, p => p.playerId != game.Platform.UserId);
+            game.ReportPlayer(bot.playerId, "CHEATING");
+            yield return WaitUntil(() => game.ReportStatus != null, 10, "the report to be filed");
+            StringAssert.Contains("moderator", game.ReportStatus);
+            Assert.IsTrue(game.HasReported(bot.playerId));
         }
 
         [Serializable]

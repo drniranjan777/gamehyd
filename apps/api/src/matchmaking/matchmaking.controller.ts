@@ -138,6 +138,7 @@ const heartbeatBody = z
     matchPhase: z.enum(['WAITING', 'COUNTDOWN', 'ACTIVE', 'COMPLETED']).nullable().optional(),
     connectedPlayers: z.number().int().min(0).max(1000).optional(),
     tickMsP99: z.number().min(0).max(10_000).nullable().optional(),
+    draining: z.boolean().optional(),
   })
   .strict();
 
@@ -185,10 +186,10 @@ export class InternalController {
     return this.db.tx(async (c) => {
       const { rows } = await c.query<{ id: string }>(
         `INSERT INTO game_servers (address, region, build_version, map_versions, reported_state, connected_players, last_heartbeat_at, status)
-         VALUES ($1, $2, $3, $4, $5, $6, now(), 'AVAILABLE')
+         VALUES ($1, $2, $3, $4, $5, $6, now(), $7)
          ON CONFLICT (address) DO UPDATE SET region = EXCLUDED.region, build_version = EXCLUDED.build_version,
            map_versions = EXCLUDED.map_versions, reported_state = EXCLUDED.reported_state,
-           connected_players = EXCLUDED.connected_players, last_heartbeat_at = now(), status = 'AVAILABLE'
+           connected_players = EXCLUDED.connected_players, last_heartbeat_at = now(), status = EXCLUDED.status
          RETURNING id`,
         [
           hb.address,
@@ -197,6 +198,7 @@ export class InternalController {
           hb.mapVersions,
           hb.state,
           hb.connectedPlayers ?? 0,
+          hb.draining ? 'DRAINING' : 'AVAILABLE',
         ],
       );
       const serverId = rows[0]!.id;
@@ -219,6 +221,18 @@ export class InternalController {
             [hb.matchId, serverId],
           );
         }
+        return { serverId, assignment: null };
+      }
+
+      // Draining (rolling deploy): no new work. Matches assigned but never hosted go back to the queue now.
+      if (hb.draining) {
+        await c.query(
+          `WITH gone AS (
+             UPDATE matches SET status = 'CANCELLED', completion_reason = 'CANCELLED', ended_at = now()
+              WHERE game_server_id = $1 AND status = 'FORMING' AND hosted_at IS NULL RETURNING id)
+           UPDATE matchmaking_queue SET match_id = NULL, matched_at = NULL WHERE match_id IN (SELECT id FROM gone)`,
+          [serverId],
+        );
         return { serverId, assignment: null };
       }
 

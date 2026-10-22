@@ -54,6 +54,28 @@ namespace RWBR.Tests
         }
 
         [Test]
+        public void Explains_platform_errors_players_can_act_on()
+        {
+            StringAssert.Contains("paused", OnlineGame.FriendlyError(new ApiException(503, "MATCHMAKING_DISABLED", "x")));
+            StringAssert.Contains("Update", OnlineGame.FriendlyError(new ApiException(426, "CLIENT_OUTDATED", "x")));
+            StringAssert.Contains("support", OnlineGame.FriendlyError(new ApiException(403, "ACCOUNT_RESTRICTED", "x")));
+            Assert.AreEqual("Platform error X: y", OnlineGame.FriendlyError(new ApiException(500, "X", "y")));
+        }
+
+        [Test]
+        public void Reads_news_and_match_results()
+        {
+            EventListDto news = JsonUtility.FromJson<EventListDto>(
+                "{\"items\":[{\"key\":\"bonfire\",\"title\":\"Bonfire Night\",\"body\":\"Double XP\",\"startsAt\":\"2026-10-22T10:00:00Z\",\"endsAt\":\"2026-10-23T10:00:00Z\",\"live\":true}]}");
+            Assert.IsTrue(news.items[0].live);
+            MatchResultDto result = JsonUtility.FromJson<MatchResultDto>(
+                "{\"matchId\":\"m1\",\"status\":\"COMPLETED\",\"reason\":\"WINNER\",\"winnerPlayerId\":\"p1\",\"durationSeconds\":300,\"mapVersion\":\"hyd-city-v1\"," +
+                "\"participants\":[{\"playerId\":\"p1\",\"displayName\":\"Ravi\",\"placement\":1,\"kills\":3},{\"playerId\":\"p2\",\"displayName\":\"Meera\",\"placement\":2,\"kills\":0}]}");
+            Assert.AreEqual(2, result.participants.Length);
+            Assert.AreEqual("Meera", result.participants[1].displayName);
+        }
+
+        [Test]
         public void Real_money_products_need_a_store_in_this_build()
         {
             var flow = new StoreFlow(new PlatformApi("http://127.0.0.1:1/api/v1"), null);

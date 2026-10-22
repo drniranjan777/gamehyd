@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Real-World Battle Royale Platform API
-  version: 0.7.0
+  version: 0.8.0
   description: |
     Player-facing and game-server-facing API (BRD v1.2 §10). Source of truth for request/response shapes:
     TypeScript types are generated from this file and every API test validates responses against it.
@@ -1821,6 +1821,11 @@ components:
             minimum: 0,
             description: 99th-percentile tick time over the last ~10 s while hosting,
           }
+        draining:
+          {
+            type: boolean,
+            description: 'Rolling deploy: take no new matches; unhosted assignments are requeued',
+          }
     HeartbeatResponse:
       type: object
       additionalProperties: false
@@ -2045,16 +2050,25 @@ components:
         matchmakingEnabled: { type: boolean }
         disabledProducts: { type: array, items: { type: string }, maxItems: 200 }
         disabledWeapons: { type: array, items: { type: string }, maxItems: 50 }
+        xpMultiplier:
+          {
+            type: number,
+            minimum: 1,
+            maximum: 5,
+            description: Match XP multiplier for events (default 1),
+          }
     PublicConfig:
       type: object
       additionalProperties: false
-      required: [version, storeEnabled, matchmakingEnabled, disabledProducts, disabledWeapons]
+      required:
+        [version, storeEnabled, matchmakingEnabled, disabledProducts, disabledWeapons, xpMultiplier]
       properties:
         version: { type: integer, minimum: 1 }
         storeEnabled: { type: boolean }
         matchmakingEnabled: { type: boolean }
         disabledProducts: { type: array, items: { type: string } }
         disabledWeapons: { type: array, items: { type: string } }
+        xpMultiplier: { type: number, minimum: 1, maximum: 5 }
 
     # ---- Phase 5: admin ----
     Reason: { type: string, minLength: 3, maxLength: 500 }

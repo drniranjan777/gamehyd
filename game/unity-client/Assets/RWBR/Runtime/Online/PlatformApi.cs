@@ -59,6 +59,16 @@ namespace RWBR.Client.Online
         public bool Active => season != null && !string.IsNullOrEmpty(season.key);
     }
     [Serializable] public sealed class SeasonClaimDto { public int tier; public string track; }
+    [Serializable] public sealed class ReportDto { public string reportId; public string status; }
+    [Serializable] public sealed class EventDto { public string key; public string title; public string body; public string startsAt; public string endsAt; public bool live; }
+    [Serializable] public sealed class EventListDto { public EventDto[] items; }
+    [Serializable] public sealed class ResultParticipantDto { public string playerId; public string displayName; public int placement; public int kills; }
+    [Serializable] public sealed class MatchResultDto
+    {
+        public string matchId; public string reason; public string winnerPlayerId; public int durationSeconds; public string mapVersion;
+        public ResultParticipantDto[] participants;
+    }
+    [Serializable] public sealed class ReportRequestDto { public string reportedPlayerId; public string matchId; public string reason; }
     [Serializable] public sealed class ErrorDto { public ErrorBody error; }
     [Serializable] public sealed class ErrorBody { public string code; public string message; public string requestId; }
 
@@ -158,6 +168,17 @@ namespace RWBR.Client.Online
         /// <summary>Sends the store's purchase proof; the server verifies it with the platform and grants once.</summary>
         public Task<OrderDto> VerifyAsync(string orderId, string proof) =>
             Send<OrderDto>("POST", $"/store/orders/{orderId}/verify", JsonUtility.ToJson(new PurchaseProofDto { proof = proof }));
+
+        // ---- News, results and reports (Phase 8) ----
+
+        /// <summary>Current and upcoming live events (no sign-in needed).</summary>
+        public Task<EventListDto> EventsAsync() => Send<EventListDto>("GET", "/events", null);
+
+        /// <summary>The server-confirmed result with every participant's player id (for reporting).</summary>
+        public Task<MatchResultDto> MatchResultAsync(string matchId) => Send<MatchResultDto>("GET", $"/matches/{matchId}/result", null);
+
+        public Task<ReportDto> ReportAsync(string reportedPlayerId, string matchId, string reason) =>
+            Send<ReportDto>("POST", "/reports", JsonUtility.ToJson(new ReportRequestDto { reportedPlayerId = reportedPlayerId, matchId = matchId, reason = reason }));
 
         // ---- Season pass (Phase 7) ----
 
