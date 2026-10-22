@@ -1,6 +1,8 @@
 import { Inject, Injectable, Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
 import { APP_CONFIG, AppConfig } from '../config';
 import { Db } from '../database/database.module';
+import { MatchmakingService } from '../matchmaking/matchmaking.service';
+import { MetricsService } from '../telemetry/metrics.service';
 import { StoreService } from './store.service';
 
 export interface ReconcileReport {
@@ -9,6 +11,8 @@ export interface ReconcileReport {
   unmatchedPurchaseEvents: number;
   accountsDeleted: number;
   suspensionsLifted: number;
+  unhostedMatchesCancelled: number;
+  telemetryEventsPurged: number;
 }
 
 /**
@@ -25,6 +29,8 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
   constructor(
     private readonly db: Db,
     private readonly store: StoreService,
+    private readonly matchmaking: MatchmakingService,
+    private readonly metrics: MetricsService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -60,6 +66,10 @@ export class JobsService implements OnModuleInit, OnApplicationShutdown {
       const suspensionsLifted = await this.liftExpiredSuspensions();
       const report = {
         suspensionsLifted,
+        unhostedMatchesCancelled: await this.matchmaking.sweepUnhosted(true),
+        telemetryEventsPurged: await this.metrics.purgeTelemetry(
+          this.config.TELEMETRY_RETENTION_DAYS,
+        ),
         cancelledPendingOrders,
         walletsWithLedgerDrift: drift!.n,
         unmatchedPurchaseEvents: unmatched!.n,

@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { Conflict, Invalid, NotFound, parse } from '../common/api-error';
 import { Db } from '../database/database.module';
 import { GameConfigService, gameConfigSchema } from '../store/game-config.service';
+import { MetricsService } from '../telemetry/metrics.service';
 import {
   AdminAuthService,
   AdminGuard,
@@ -64,7 +65,19 @@ export class AdminOpsController {
     private readonly db: Db,
     private readonly auth: AdminAuthService,
     private readonly gameConfig: GameConfigService,
+    private readonly metrics: MetricsService,
   ) {}
+
+  /** Beta KPIs and release gates (Phase 6). */
+  @Get('metrics')
+  @RequirePermission('metrics.read')
+  async kpis(@Query() query: unknown) {
+    const { days } = parse(
+      z.object({ days: z.coerce.number().int().min(1).max(90).default(7) }).strict(),
+      query,
+    );
+    return this.metrics.compute(days);
+  }
 
   /** The append-only audit trail, newest first, paged by id. */
   @Get('audit')

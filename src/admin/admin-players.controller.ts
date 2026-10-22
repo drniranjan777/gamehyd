@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { z } from 'zod';
 import { Conflict, Invalid, NotFound, parse } from '../common/api-error';
+import { forgetAccountStatus } from '../common/guards';
 import { parseUuid, uuid } from '../common/schemas';
 import { Db } from '../database/database.module';
 import { levelFor } from '../player/progression';
@@ -202,7 +203,7 @@ export class AdminPlayersController {
         { path: 'expiresAt', message: 'not allowed for this action' },
       ]);
     }
-    return this.db.tx(async (c) => {
+    const result = await this.db.tx(async (c) => {
       const { rows } = await c.query<{ status: string }>(
         'SELECT status FROM users WHERE id = $1 FOR UPDATE',
         [id],
@@ -265,6 +266,8 @@ export class AdminPlayersController {
         createdAt: inserted[0]!.created_at.toISOString(),
       };
     });
+    forgetAccountStatus(id);
+    return result;
   }
 
   // ---- Matches ----
