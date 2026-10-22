@@ -159,7 +159,7 @@ public class MatchAuthorityTests
         PlayerState a = clients[0].State, b = clients[1].State;
         a.Position = new Vector3(0, 0, -10);
         b.Position = new Vector3(0, 0, 10); // the 4x4x5 box at the origin is between them
-        Array.Fill(b.History, b.Position);
+        Array.Fill(b.History, b.Motor);
 
         for (int i = 0; i < 10; i++)
         {
@@ -178,7 +178,7 @@ public class MatchAuthorityTests
         PlayerState a = clients[0].State, b = clients[1].State;
         a.Position = new Vector3(-10, 0, -10);
         b.Position = new Vector3(-10, 0, 0);
-        Array.Fill(b.History, b.Position);
+        Array.Fill(b.History, b.Motor);
 
         for (int i = 0; i < 60 && match.Phase == MatchPhase.Active; i++)
         {

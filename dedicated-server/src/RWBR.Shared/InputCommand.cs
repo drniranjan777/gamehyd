@@ -9,6 +9,13 @@ namespace RWBR.Shared
         Fire = 1,
         Sprint = 2,
         Reload = 4,
+        Jump = 8,
+        /// <summary>Held state: crouched while set (clients implement toggle-to-crouch on top of this).</summary>
+        Crouch = 16,
+        /// <summary>Pick up the nearest loot in range.</summary>
+        Interact = 32,
+        /// <summary>Start using a medkit.</summary>
+        Heal = 64,
     }
 
     /// <summary>One client input sample. Clients send inputs, never positions, damage or results (BRD 7.2).</summary>

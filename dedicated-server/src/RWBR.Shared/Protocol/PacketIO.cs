@@ -30,6 +30,10 @@ namespace RWBR.Shared.Protocol
         public void U32(uint v) => BinaryPrimitives.WriteUInt32LittleEndian(Take(4), v);
         public void F32(float v) => BinaryPrimitives.WriteInt32LittleEndian(Take(4), BitConverter.SingleToInt32Bits(v));
         public void Guid(Guid v) => v.TryWriteBytes(Take(16));
+        public void I16(short v) => BinaryPrimitives.WriteInt16LittleEndian(Take(2), v);
+        public void I32(int v) => BinaryPrimitives.WriteInt32LittleEndian(Take(4), v);
+        public void Bytes(byte[] v) => v.AsSpan().CopyTo(Take(v.Length));
+        public int Length => _pos;
 
         public void Str(string v, int maxBytes)
         {
@@ -72,6 +76,11 @@ namespace RWBR.Shared.Protocol
         public uint U32() => BinaryPrimitives.ReadUInt32LittleEndian(Take(4));
         public float F32() => BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(Take(4)));
         public Guid Guid() => new Guid(Take(16));
+        public short I16() => BinaryPrimitives.ReadInt16LittleEndian(Take(2));
+        public int I32() => BinaryPrimitives.ReadInt32LittleEndian(Take(4));
+        public byte[] Bytes(int n) => Take(n).ToArray();
+        public int Position => _pos;
+        public int Remaining => _len - _pos;
 
         public string Str(int maxBytes)
         {

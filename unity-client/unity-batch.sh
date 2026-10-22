@@ -2,6 +2,7 @@
 # Headless Unity tasks for this project.
 #   ./unity-batch.sh setup            regenerate the greybox scene + player settings
 #   ./unity-batch.sh test EditMode    run EditMode tests (or PlayMode)
+#   ./unity-batch.sh android          development APK -> Builds/Android/rwbr-practice.apk
 # Override the editor with UNITY_EXE. Only one Unity process may have the project open.
 set -euo pipefail
 
@@ -23,8 +24,12 @@ case "${1:-}" in
     echo
     grep -q 'result="Passed"' <(grep -o '<test-run [^>]*' "$LOGS/results-$platform.xml")
     ;;
+  android)
+    "$UNITY_EXE" -batchmode -nographics -quit -projectPath "$HERE" -buildTarget Android       -executeMethod RWBR.EditorTools.ProjectSetup.BuildAndroid -logFile "$LOGS/android.log"
+    grep -E "RWBR: Android build" "$LOGS/android.log" || { grep -E "error|Error" "$LOGS/android.log" | tail -20; exit 1; }
+    ;;
   *)
-    echo "usage: $0 setup | test [EditMode|PlayMode]" >&2
+    echo "usage: $0 setup | test [EditMode|PlayMode] | android" >&2
     exit 2
     ;;
 esac

@@ -17,6 +17,25 @@ namespace RWBR.Client.Greybox
 
         public MapLayout Layout => _layout ??= MapLayout.GreyboxBlock(halfSize);
 
+        /// <summary>
+        /// Rebuilds for a server map version such as "greybox-block-40-v2". Returns false for unknown versions,
+        /// in which case the client must not play (its collision would not match the server's).
+        /// </summary>
+        public bool MatchServerMap(string version)
+        {
+            if (version == Layout.Version) return true;
+            string[] parts = version.Split('-');
+            if (parts.Length < 3 || parts[0] != "greybox" || parts[1] != "block" ||
+                !float.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float size))
+                return false;
+            MapLayout candidate = MapLayout.GreyboxBlock(size);
+            if (candidate.Version != version) return false;
+            halfSize = size;
+            _layout = candidate;
+            Build();
+            return true;
+        }
+
         private void Awake()
         {
             if (transform.childCount == 0) Build();

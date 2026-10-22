@@ -21,6 +21,12 @@ public sealed class MatchStats
     public long ShotsFired;
     public long Hits;
     public long FireBlocked;
+    public long BadTags;
+    public long TicketsRejected;
+    public long DeltaSnapshots;
+    public long FullSnapshots;
+    public long Pickups;
+    public long PickupsRejected;
     public int PeakPlayers;
 }
 
@@ -38,18 +44,28 @@ public sealed class Match
     private readonly List<PlayerState> _players = new();
     private readonly Dictionary<IPEndPoint, PlayerState> _byEndpoint = new();
     private readonly int _historyLength;
+    private readonly bool[] _lootTaken;
+    private readonly SnapshotHistory _sentSnapshots = new();
+    private readonly HashSet<Guid> _usedTickets = new();
+    private readonly Func<DateTimeOffset> _clock;
     private readonly float _dt;
     private ushort _nextId = 1;
     private long _phaseEndTick;
+    private long _firstJoinTick = -1;
+    private long _endTick;
+    private volatile int _publicPhase;
+    private volatile int _publicConnected;
     private long _activeStartTick;
     private long _finishTick;
     private float _zoneStartRadius;
 
-    public Match(MatchConfig config)
+    public Match(MatchConfig config, Func<DateTimeOffset>? clock = null)
     {
         _cfg = config;
+        _clock = clock ?? (() => DateTimeOffset.UtcNow);
         _dt = 1f / config.TickRate;
         _historyLength = config.Ticks(config.MaxRewindSeconds) + 2;
+        _lootTaken = new bool[config.Map.Loot.Count];
     }
 
     public long Tick { get; private set; }
@@ -62,6 +78,8 @@ public sealed class Match
     public bool IsFinished => Phase == MatchPhase.Completed && Tick >= _finishTick;
     public Vector2 ZoneCenter => Vector2.Zero;
     public float ZoneRadius => CurrentZoneRadius();
+    /// <summary>Phase and connected count as of the last tick; safe to read from other threads (heartbeats).</summary>
+    public (MatchPhase Phase, int Connected) PublicStatus => ((MatchPhase)_publicPhase, _publicConnected);
     public double ActiveSeconds => Phase >= MatchPhase.Active ? (Tick - _activeStartTick) * (double)_dt : 0;
 
     public void Receive(IPEndPoint from, byte[] data, int length)
@@ -71,21 +89,33 @@ public sealed class Match
         try
         {
             var r = new PacketReader(data, length);
-            switch (r.Type)
+            if (r.Type == PacketType.Hello)
             {
-                case PacketType.Hello:
-                    HandleHello(from, PacketCodec.DecodeHello(r));
-                    break;
-                case PacketType.Input:
-                    HandleInput(from, PacketCodec.DecodeInput(r));
-                    break;
-                case PacketType.Leave:
-                    HandleLeave(from);
-                    break;
-                default:
-                    Stats.MalformedPackets++;
-                    break;
+                HandleHello(from, PacketCodec.DecodeHello(r), data, length);
+                return;
             }
+            if (r.Type != PacketType.Input && r.Type != PacketType.Leave)
+            {
+                Stats.MalformedPackets++;
+                return;
+            }
+            if (!_byEndpoint.TryGetValue(from, out PlayerState? p))
+            {
+                Stats.UnknownSenderPackets++;
+                return;
+            }
+            // Authenticated sessions: every input/leave must carry a valid tag from the session key.
+            if (p.Auth != null)
+            {
+                if (!p.Auth.Verify(data, length))
+                {
+                    Stats.BadTags++;
+                    return;
+                }
+                r = new PacketReader(data, length - PacketAuth.TagBytes);
+            }
+            if (r.Type == PacketType.Input) HandleInput(p, PacketCodec.DecodeInput(r));
+            else HandleLeave(p);
         }
         catch (PacketFormatException)
         {
@@ -103,7 +133,7 @@ public sealed class Match
         {
             case MatchPhase.WaitingForPlayers:
                 SimulatePlayers(allowFire: false);
-                if (ConnectedCount() >= _cfg.MinPlayers)
+                if (ReadyToCountDown())
                 {
                     Phase = MatchPhase.Countdown;
                     _phaseEndTick = Tick + _cfg.Ticks(_cfg.CountdownSeconds);
@@ -121,16 +151,43 @@ public sealed class Match
                 break;
             case MatchPhase.Completed:
                 if (Result != null) Broadcast(PacketCodec.Encode(Result));
+                PublishStatus();
                 return;
         }
+        PublishStatus();
 
         RecordHistory();
         BroadcastSnapshots();
     }
 
+    private void PublishStatus()
+    {
+        _publicPhase = (int)Phase;
+        _publicConnected = ConnectedCount();
+    }
+
+    private bool ReadyToCountDown()
+    {
+        int connected = ConnectedCount();
+        if (connected == 0) _firstJoinTick = -1;
+        else if (_firstJoinTick < 0) _firstJoinTick = Tick;
+        if (connected >= _cfg.MaxPlayers) return true;
+        if (connected < _cfg.MinPlayers) return false;
+        return _cfg.FillWaitSeconds <= 0 || Tick - _firstJoinTick >= _cfg.Ticks(_cfg.FillWaitSeconds);
+    }
+
+    /// <summary>Survival in whole seconds from the start of play to elimination (or the end).</summary>
+    public int SurvivalSeconds(PlayerState p)
+    {
+        long until = p.EliminatedAtTick > 0 ? p.EliminatedAtTick : (_endTick > 0 ? _endTick : Tick);
+        return (int)Math.Max(0, (until - _activeStartTick) / _cfg.TickRate);
+    }
+
+    public int DurationSeconds => (int)Math.Max(0, ((_endTick > 0 ? _endTick : Tick) - _activeStartTick) / _cfg.TickRate);
+
     // ---- Connection handling ----
 
-    private void HandleHello(IPEndPoint from, HelloPacket hello)
+    private void HandleHello(IPEndPoint from, HelloPacket hello, byte[] data, int length)
     {
         if (hello.ProtocolVersion != ProtocolInfo.Version)
         {
@@ -139,34 +196,48 @@ public sealed class Match
         }
 
         // Retransmitted Hello from a bound endpoint: answer idempotently without rotating the token.
-        if (_byEndpoint.TryGetValue(from, out PlayerState? bound))
+        if (_byEndpoint.TryGetValue(from, out PlayerState? bound) && hello.Ticket.Length == 0 &&
+            (hello.SessionToken == Guid.Empty || hello.SessionToken == bound.SessionToken))
         {
-            if (hello.SessionToken == Guid.Empty || hello.SessionToken == bound.SessionToken)
-            {
-                bound.LastHeardTick = Tick;
-                SendWelcome(bound);
-                return;
-            }
+            bound.LastHeardTick = Tick;
+            SendWelcome(bound);
+            return;
         }
 
         if (hello.SessionToken != Guid.Empty)
         {
             PlayerState? existing = _players.FirstOrDefault(p => p.SessionToken == hello.SessionToken);
-            if (existing == null)
+            // In ticket mode a reconnect must also be signed with the session key: a sniffed token is not enough.
+            if (existing == null || (existing.Auth != null && !existing.Auth.Verify(data, length)))
             {
                 Send(from, PacketCodec.EncodeReject(RejectReason.InvalidSessionToken));
                 return;
             }
-            // Reconnect: rebind to the new endpoint and rotate the token so the old one cannot be reused.
-            _byEndpoint.Remove(existing.EndPoint);
-            existing.EndPoint = from;
-            existing.Connected = true;
-            existing.LastHeardTick = Tick;
-            existing.SessionToken = Guid.NewGuid();
-            existing.PendingInputs.Clear();
-            _byEndpoint[from] = existing;
-            SendWelcome(existing);
+            Rebind(existing, from);
             return;
+        }
+
+        JoinTicket? ticket = null;
+        if (_cfg.TicketSecret != null)
+        {
+            RejectReason? why = CheckTicket(hello.Ticket, out ticket);
+            if (why.HasValue)
+            {
+                Stats.TicketsRejected++;
+                Send(from, PacketCodec.EncodeReject(why.Value));
+                return;
+            }
+            _usedTickets.Add(ticket!.TicketId);
+
+            // Same account with a fresh ticket (app restarted, new device): take over the existing player.
+            PlayerState? same = _players.FirstOrDefault(p => p.AccountId == ticket.AccountId);
+            if (same != null)
+            {
+                same.Auth?.Dispose();
+                same.Auth = new PacketAuth(JoinTicket.DeriveSessionKey(_cfg.TicketSecret, ticket.TicketId));
+                Rebind(same, from);
+                return;
+            }
         }
 
         if (Phase >= MatchPhase.Active)
@@ -180,16 +251,41 @@ public sealed class Match
             return;
         }
 
-        var player = new PlayerState(_nextId++, hello.Name, from, _historyLength)
+        var player = new PlayerState(_nextId++, ticket?.DisplayName ?? hello.Name, from, _historyLength) { LastHeardTick = Tick };
+        if (ticket != null)
         {
-            LastHeardTick = Tick,
-            Ammo = _cfg.Weapon.MagazineSize,
-        };
-        player.Position = _cfg.Map.SpawnPoint(_players.Count, _cfg.MaxPlayers);
+            player.AccountId = ticket.AccountId;
+            player.Auth = new PacketAuth(JoinTicket.DeriveSessionKey(_cfg.TicketSecret!, ticket.TicketId));
+        }
+        player.Motor = MotorState.StandingAt(_cfg.Map.SpawnPoint(_players.Count, _cfg.MaxPlayers));
+        player.Combat.Reset(_cfg.Weapon, _cfg.StartWithWeapon, _cfg.StartingReserveAmmo);
         _players.Add(player);
         _byEndpoint[from] = player;
         Stats.PeakPlayers = Math.Max(Stats.PeakPlayers, _players.Count);
         SendWelcome(player);
+    }
+
+    private RejectReason? CheckTicket(byte[] bytes, out JoinTicket? ticket)
+    {
+        if (!JoinTicket.TryVerify(bytes, _cfg.TicketSecret!, out ticket) || ticket == null) return RejectReason.InvalidTicket;
+        if (ticket.ExpiresAt < _clock()) return RejectReason.TicketExpired;
+        if (ticket.MatchId != _cfg.MatchId) return RejectReason.WrongMatch;
+        if (_usedTickets.Contains(ticket.TicketId)) return RejectReason.TicketReused;
+        return null;
+    }
+
+    /// <summary>Moves a player to a new address and rotates its token so the old one cannot be reused.</summary>
+    private void Rebind(PlayerState p, IPEndPoint from)
+    {
+        _byEndpoint.Remove(p.EndPoint);
+        p.EndPoint = from;
+        p.Connected = true;
+        p.LastHeardTick = Tick;
+        p.SessionToken = Guid.NewGuid();
+        p.PendingInputs.Clear();
+        p.LastAckedSnapshot = 0; // the client may have lost its snapshot history: start from a full snapshot
+        _byEndpoint[from] = p;
+        SendWelcome(p);
     }
 
     private void SendWelcome(PlayerState p) =>
@@ -202,15 +298,16 @@ public sealed class Match
             MapVersion = _cfg.Map.Version,
         }));
 
-    private void HandleInput(IPEndPoint from, List<InputCommand> inputs)
+    private void HandleInput(PlayerState p, List<InputCommand> inputs)
     {
-        if (!_byEndpoint.TryGetValue(from, out PlayerState? p))
-        {
-            Stats.UnknownSenderPackets++;
-            return;
-        }
         p.LastHeardTick = Tick;
         p.Connected = true;
+
+        // The newest input says which snapshot the client last decoded: the next delta baseline.
+        InputCommand newest = inputs[0];
+        foreach (InputCommand c in inputs)
+            if (c.Sequence > newest.Sequence) newest = c;
+        if (newest.Sequence > p.LastProcessedSequence && newest.AckTick <= Tick) p.LastAckedSnapshot = newest.AckTick;
 
         foreach (InputCommand cmd in inputs)
         {
@@ -233,9 +330,8 @@ public sealed class Match
         }
     }
 
-    private void HandleLeave(IPEndPoint from)
+    private void HandleLeave(PlayerState p)
     {
-        if (!_byEndpoint.TryGetValue(from, out PlayerState? p)) return;
         if (Phase == MatchPhase.Active && p.Alive) Eliminate(p, null);
         if (Phase < MatchPhase.Active) RemovePlayer(p);
         else p.Connected = false;
@@ -273,16 +369,14 @@ public sealed class Match
         Phase = MatchPhase.Active;
         _activeStartTick = Tick;
         _zoneStartRadius = _cfg.Map.HalfSize * 1.4143f; // covers the map corners
+        Array.Clear(_lootTaken);
         for (int i = 0; i < _players.Count; i++)
         {
             PlayerState p = _players[i];
-            p.Position = _cfg.Map.SpawnPoint(i, _players.Count);
-            p.Health = GameRules.MaxHealth;
+            p.Motor = MotorState.StandingAt(_cfg.Map.SpawnPoint(i, _players.Count));
+            p.Combat.Reset(_cfg.Weapon, _cfg.StartWithWeapon, _cfg.StartingReserveAmmo);
             p.Alive = true;
-            p.Ammo = _cfg.Weapon.MagazineSize;
-            p.ReloadDoneTick = -1;
-            p.NextFireTick = 0;
-            Array.Fill(p.History, p.Position);
+            Array.Fill(p.History, p.Motor);
         }
     }
 
@@ -299,51 +393,72 @@ public sealed class Match
             }
             else
             {
-                // No input this tick (loss or idle): stand still, keep facing.
-                cmd = new InputCommand { Yaw = p.Yaw, Pitch = p.Pitch, AckTick = (uint)Tick };
+                // No input this tick (loss or idle): stand still, keep facing and stance.
+                cmd = new InputCommand
+                {
+                    Yaw = p.Yaw,
+                    Pitch = p.Pitch,
+                    AckTick = (uint)Tick,
+                    Buttons = p.Motor.Crouched ? InputButtons.Crouch : InputButtons.None,
+                };
             }
 
             p.Yaw = Simulation.WrapYaw(cmd.Yaw);
             p.Pitch = Simulation.SanitizeAngle(cmd.Pitch, GameRules.MaxPitchRadians);
             if (!p.Alive) continue;
 
-            p.Position = Simulation.Move(p.Position, cmd, _dt, _cfg.Map);
-
-            if (p.Reloading && Tick >= p.ReloadDoneTick)
-            {
-                p.Ammo = _cfg.Weapon.MagazineSize;
-                p.ReloadDoneTick = -1;
-            }
+            Simulation.Step(ref p.Motor, cmd, _dt, _cfg.Map);
+            p.Combat.Update(Tick, _cfg.Weapon);
             if (!allowFire) continue;
 
-            if (cmd.Has(InputButtons.Reload) && !p.Reloading && p.Ammo < _cfg.Weapon.MagazineSize) StartReload(p);
+            if (cmd.Has(InputButtons.Interact)) TryPickUp(p);
+            if (cmd.Has(InputButtons.Heal)) p.Combat.TryStartHeal(Tick, _cfg.TickRate);
+            if (cmd.Has(InputButtons.Reload)) p.Combat.TryStartReload(Tick, _cfg.Weapon, _cfg.TickRate);
             if (!cmd.Has(InputButtons.Fire)) continue;
 
-            if (p.Reloading || Tick < p.NextFireTick) Stats.FireBlocked++;
-            else if (p.Ammo <= 0) StartReload(p);
-            else Fire(p, cmd);
+            FireResult result = p.Combat.TryFire(Tick, _cfg.Weapon, _cfg.TickRate);
+            if (result == FireResult.Fired) Fire(p, cmd);
+            else Stats.FireBlocked++;
         }
     }
 
-    private void StartReload(PlayerState p) => p.ReloadDoneTick = Tick + _cfg.Ticks(_cfg.Weapon.ReloadSeconds);
+    /// <summary>Server-validated pickup of the nearest untaken, useful loot within reach.</summary>
+    private void TryPickUp(PlayerState p)
+    {
+        IReadOnlyList<LootSpawn> loot = _cfg.Map.Loot;
+        int best = -1;
+        float bestDist = float.MaxValue;
+        for (int i = 0; i < loot.Count; i++)
+        {
+            if (_lootTaken[i] || !Simulation.CanReach(p.Motor, loot[i].Position) || !p.Combat.CanPickUp(loot[i])) continue;
+            float d = Vector3.DistanceSquared(p.Position, loot[i].Position);
+            if (d < bestDist)
+            {
+                bestDist = d;
+                best = i;
+            }
+        }
+        if (best < 0)
+        {
+            Stats.PickupsRejected++;
+            return;
+        }
+        _lootTaken[best] = true;
+        p.Combat.PickUp(loot[best], _cfg.Weapon);
+        Stats.Pickups++;
+    }
 
     private void Fire(PlayerState shooter, InputCommand cmd)
     {
         WeaponDefinition w = _cfg.Weapon;
-        shooter.Ammo--;
-        shooter.NextFireTick = Tick + Math.Max(1, _cfg.Ticks(w.FireIntervalSeconds));
         Stats.ShotsFired++;
-        if (shooter.Ammo == 0) StartReload(shooter);
 
-        Vector3 origin = shooter.Position + new Vector3(0, GameRules.EyeHeight, 0);
-        Vector3 dir = Simulation.AimDirection(shooter.Yaw, shooter.Pitch);
-
-        float wall = w.Range;
-        foreach (Aabb box in _cfg.Map.Obstacles)
-        {
-            float? t = Simulation.RayAabb(origin, dir, box, w.Range);
-            if (t.HasValue && t.Value < wall) wall = t.Value;
-        }
+        MotorState m = shooter.Motor;
+        bool moving = cmd.MoveX * cmd.MoveX + cmd.MoveZ * cmd.MoveZ > 0.01f;
+        float spread = w.SpreadFor(moving, m.Crouched, !m.Grounded);
+        Vector3 origin = m.Eye;
+        Vector3 dir = Simulation.SpreadDirection(shooter.Yaw, shooter.Pitch, spread, Simulation.ShotSeed(shooter.Id, cmd.Sequence));
+        float wall = Simulation.WallDistance(origin, dir, w.Range, _cfg.Map);
 
         // Lag compensation: test targets where the shooter saw them, but never further back than MaxRewind.
         long maxRewind = _historyLength - 2;
@@ -354,7 +469,8 @@ public sealed class Match
         foreach (PlayerState target in _players)
         {
             if (target == shooter || !target.Alive) continue;
-            float? t = Simulation.RayCapsule(origin, dir, PositionAt(target, rewindTick), w.Range);
+            MotorState then = MotorAt(target, rewindTick);
+            float? t = Simulation.RayCapsule(origin, dir, then.Position, then.Height, w.Range);
             if (t.HasValue && t.Value < bestT)
             {
                 bestT = t.Value;
@@ -364,19 +480,20 @@ public sealed class Match
         if (best == null) return;
 
         Stats.Hits++;
-        best.Health -= w.Damage;
-        if (best.Health <= 0) Eliminate(best, shooter);
+        best.Combat.ApplyDamage(w.Damage);
+        best.Combat.CancelHeal();
+        if (!best.Combat.Alive) Eliminate(best, shooter);
     }
 
-    private Vector3 PositionAt(PlayerState p, long tick)
+    private MotorState MotorAt(PlayerState p, long tick)
     {
-        if (tick >= Tick || Tick - tick >= _historyLength) return p.Position;
+        if (tick >= Tick || Tick - tick >= _historyLength) return p.Motor;
         return p.History[tick % _historyLength];
     }
 
     private void RecordHistory()
     {
-        foreach (PlayerState p in _players) p.History[Tick % _historyLength] = p.Position;
+        foreach (PlayerState p in _players) p.History[Tick % _historyLength] = p.Motor;
     }
 
     private float CurrentZoneRadius()
@@ -414,6 +531,7 @@ public sealed class Match
         if (!victim.Alive) return;
         victim.Alive = false;
         victim.Health = 0;
+        victim.EliminatedAtTick = Tick;
         victim.Placement = AliveCount() + 1;
         if (killer != null) killer.Kills++;
         Broadcast(PacketCodec.Encode(new EliminatedPacket
@@ -447,6 +565,7 @@ public sealed class Match
     private void Complete(CompletionReason reason, PlayerState? winner)
     {
         Phase = MatchPhase.Completed;
+        _endTick = Tick;
         _finishTick = Tick + _cfg.Ticks(_cfg.ResultBroadcastSeconds);
         Result = new MatchCompletedPacket
         {
@@ -464,6 +583,7 @@ public sealed class Match
 
     private void BroadcastSnapshots()
     {
+        if (Tick % Math.Max(1, _cfg.SnapshotEveryTicks) != 0) return;
         var snapshot = new SnapshotPacket
         {
             Tick = (uint)Tick,
@@ -473,14 +593,19 @@ public sealed class Match
             ZoneZ = 0,
             ZoneRadius = CurrentZoneRadius(),
             AliveCount = (byte)AliveCount(),
+            LootTaken = PackLootTaken(),
         };
         foreach (PlayerState p in _players)
         {
             var flags = PlayerFlags.None;
             if (p.Alive) flags |= PlayerFlags.Alive;
             if (p.Connected) flags |= PlayerFlags.Connected;
-            if (p.Reloading) flags |= PlayerFlags.Reloading;
-            snapshot.Players.Add(new SnapshotEntry
+            if (p.Combat.Reloading) flags |= PlayerFlags.Reloading;
+            if (p.Combat.Healing) flags |= PlayerFlags.Healing;
+            if (p.Combat.HasWeapon) flags |= PlayerFlags.HasWeapon;
+            if (p.Motor.Crouched) flags |= PlayerFlags.Crouched;
+            if (p.Motor.Grounded) flags |= PlayerFlags.Grounded;
+            snapshot.Players.Add(Quantize.Normalize(new SnapshotEntry
             {
                 PlayerId = p.Id,
                 X = p.Position.X,
@@ -488,17 +613,38 @@ public sealed class Match
                 Z = p.Position.Z,
                 Yaw = p.Yaw,
                 Health = (byte)Math.Clamp(Math.Ceiling(p.Health), 0, 255),
+                Armor = (byte)Math.Clamp(Math.Ceiling(p.Combat.Armor), 0, 255),
                 Ammo = (byte)Math.Clamp(p.Ammo, 0, 255),
                 Flags = flags,
-            });
+            }));
         }
+        _sentSnapshots.Add(snapshot);
 
         foreach (PlayerState p in _players)
         {
             if (!p.Connected) continue;
             snapshot.AckSequence = p.LastProcessedSequence;
-            Send(p.EndPoint, PacketCodec.Encode(snapshot));
+            snapshot.SelfReserveAmmo = (ushort)Math.Clamp(p.Combat.ReserveAmmo, 0, ushort.MaxValue);
+            snapshot.SelfMedkits = (byte)Math.Clamp(p.Combat.Medkits, 0, 255);
+            snapshot.SelfVerticalVelocity = p.Motor.VerticalVelocity;
+            snapshot.SelfX = p.Position.X;
+            snapshot.SelfY = p.Position.Y;
+            snapshot.SelfZ = p.Position.Z;
+
+            SnapshotPacket? baseline = Tick - p.LastAckedSnapshot < SnapshotHistory.Size ? _sentSnapshots.Get(p.LastAckedSnapshot) : null;
+            if (baseline == snapshot) baseline = null;
+            if (baseline != null) Stats.DeltaSnapshots++;
+            else Stats.FullSnapshots++;
+            Send(p.EndPoint, SnapshotCodec.Encode(snapshot, baseline));
         }
+    }
+
+    private byte[] PackLootTaken()
+    {
+        var bits = new byte[(_lootTaken.Length + 7) / 8];
+        for (int i = 0; i < _lootTaken.Length; i++)
+            if (_lootTaken[i]) bits[i / 8] |= (byte)(1 << (i % 8));
+        return bits;
     }
 
     private void Broadcast(byte[] data)
