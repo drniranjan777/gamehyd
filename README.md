@@ -79,7 +79,7 @@ cd apps/api && ADMIN_PASSWORD='choose-a-long-password' node --env-file=.env.exam
 
 In Unity, set `RWBR_DEV_PURCHASE_SECRET` (same value as the API's `DEV_PURCHASE_SECRET`) before starting the editor to buy INR items through the dev store.
 
-To play it yourself: run the API (above), then `RWBR_SERVER_SHARED_SECRET=… RWBR_TICKET_SECRET_HEX=… dotnet run --project game/dedicated-server/src/RWBR.MatchServer -c Release -- --api-url http://localhost:3001/api/v1 --address 127.0.0.1:7777 --fast` with the same secrets as the API, and use **Quick play** in the Online scene.
+To play it yourself: run the API (above), then `RWBR_SERVER_SHARED_SECRET=… RWBR_TICKET_SECRET_HEX=… dotnet run --project game/dedicated-server/src/RWBR.MatchServer -c Release -- --api-url http://localhost:3001/api/v1 --address 127.0.0.1:7777 --fast` with the same secrets as the API, and use **Quick play** in the Online scene. The game's default platform is production (`https://game.tallygen.com/api/v1`); for local play set **Settings → Platform** to `http://localhost:3001/api/v1` (or `http://<PC LAN IP>:3001/api/v1` from a phone).
 
 **Online play (dev server, no platform)** — start a server (above, e.g. `--players 2 --fast`) and one bot, then in Unity open `Assets/Scenes/Online.unity` (or Practice → Esc → Play online) and connect to `127.0.0.1:7777`. Bots can simulate bad networks: `--loss 0.05 --latency 75 --jitter 40`.
 

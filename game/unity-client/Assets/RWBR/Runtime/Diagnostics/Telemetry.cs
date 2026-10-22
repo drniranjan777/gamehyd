@@ -36,7 +36,7 @@ namespace RWBR.Client.Diagnostics
         /// <summary>Events waiting to be sent (for tests and the debug overlay).</summary>
         public static int Pending => _instance != null ? _instance._queue.Count : 0;
 
-        public static string PlatformUrl => PlayerPrefs.GetString("rwbr.platform", "http://localhost:3001/api/v1");
+        public static string PlatformUrl => PlayerPrefs.GetString("rwbr.platform", RWBR.Client.Online.OnlineGame.DefaultPlatform);
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Boot()
