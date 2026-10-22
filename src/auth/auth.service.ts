@@ -189,6 +189,8 @@ export class AuthService {
   }
 }
 
+/** Accounts pending deletion can still sign in, so the player can cancel within the grace period. */
 export function assertActive(status: string): void {
-  if (status !== 'ACTIVE') throw Forbidden('ACCOUNT_RESTRICTED', 'This account cannot sign in');
+  if (status !== 'ACTIVE' && status !== 'PENDING_DELETION')
+    throw Forbidden('ACCOUNT_RESTRICTED', 'This account cannot sign in');
 }

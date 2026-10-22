@@ -10,6 +10,7 @@ const CODES: Record<number, string> = {
   409: 'CONFLICT',
   413: 'PAYLOAD_TOO_LARGE',
   422: 'VALIDATION_ERROR',
+  423: 'LOCKED',
   429: 'RATE_LIMITED',
   501: 'NOT_IMPLEMENTED',
   503: 'SERVICE_UNAVAILABLE',
@@ -35,7 +36,8 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
         : 'An unexpected error occurred';
     const details = exception instanceof ApiError ? exception.details : [];
 
-    if (status >= 500) {
+    // Deliberate 5xx (kill switches, platform not configured) carry an ApiError code and are not failures.
+    if (status >= 500 && !(exception instanceof ApiError)) {
       console.error(
         JSON.stringify({
           level: 'error',
