@@ -3568,15 +3568,23 @@ export interface components {
         /** @description Weapon catalog ids switched off by live ops; no loot of them spawns in this match. */
         disabledWeapons: string[];
         lootTable?: components['schemas']['LootTable'];
+        fillBots?: boolean;
+        /** @enum {unknown} */
+        botDifficulty?: 'EASY' | 'NORMAL' | 'HARD';
       };
     };
     ResultSubmission: {
       mapVersion: string;
       /** @enum {unknown} */
       reason: 'WINNER' | 'TIMEOUT' | 'CANCELLED';
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description The player in 1st place; null when a fill bot won (bots > 0, no listed player 1st).
+       */
       winnerAccountId?: string | null;
       durationSeconds: number;
+      /** @description Fill bots that played. Not listed; placements and rewards count the whole field. */
+      bots?: number;
       participants: {
         /** Format: uuid */
         accountId: string;
@@ -3719,6 +3727,13 @@ export interface components {
       /** @description Match XP multiplier for events (default 1) */
       xpMultiplier?: number;
       lootTable?: components['schemas']['LootTable'];
+      /** @description Fill empty seats with bots when a match starts (default false) */
+      fillBots?: boolean;
+      /**
+       * @description Skill of fill bots (default NORMAL)
+       * @enum {unknown}
+       */
+      botDifficulty?: 'EASY' | 'NORMAL' | 'HARD';
     };
     /** @description Loot weights for matches (Phase C). Shares are percents of the spots of that kind; the rest goes to the last option. Sent to the match server with each assignment and from there to every player. */
     LootTable: {

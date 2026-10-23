@@ -148,6 +148,8 @@ const resultBody = z
     reason: z.enum(['WINNER', 'TIMEOUT', 'CANCELLED']),
     winnerAccountId: z.string().uuid().nullable().optional(),
     durationSeconds: z.number().int().min(0).max(7200),
+    /** Fill bots in the match: not listed, but they count towards placements and the field size. */
+    bots: z.number().int().min(0).max(99).default(0),
     participants: z
       .array(
         z
@@ -267,6 +269,9 @@ export class InternalController {
               disabledWeapons: (await this.gameConfig.current()).config.disabledWeapons,
               // Live-ops loot weights for this match.
               lootTable: (await this.gameConfig.current()).config.lootTable,
+              // Live ops: empty seats go to bots when the countdown starts.
+              fillBots: (await this.gameConfig.current()).config.fillBots,
+              botDifficulty: (await this.gameConfig.current()).config.botDifficulty,
             }
           : null,
       };

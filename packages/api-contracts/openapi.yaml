@@ -1851,6 +1851,8 @@ components:
                   items: { type: string }
                   description: Weapon catalog ids switched off by live ops; no loot of them spawns in this match.
                 lootTable: { $ref: '#/components/schemas/LootTable' }
+                fillBots: { type: boolean }
+                botDifficulty: { enum: [EASY, NORMAL, HARD] }
     ResultSubmission:
       type: object
       additionalProperties: false
@@ -1858,8 +1860,16 @@ components:
       properties:
         mapVersion: { type: string }
         reason: { enum: [WINNER, TIMEOUT, CANCELLED] }
-        winnerAccountId: { type: [string, 'null'], format: uuid }
+        winnerAccountId:
+          type: [string, 'null']
+          format: uuid
+          description: The player in 1st place; null when a fill bot won (bots > 0, no listed player 1st).
         durationSeconds: { type: integer, minimum: 0, maximum: 7200 }
+        bots:
+          type: integer
+          minimum: 0
+          maximum: 99
+          description: Fill bots that played. Not listed; placements and rewards count the whole field.
         participants:
           type: array
           minItems: 1
@@ -2059,6 +2069,13 @@ components:
             description: Match XP multiplier for events (default 1),
           }
         lootTable: { $ref: '#/components/schemas/LootTable' }
+        fillBots:
+          {
+            type: boolean,
+            description: Fill empty seats with bots when a match starts (default false),
+          }
+        botDifficulty:
+          { enum: [EASY, NORMAL, HARD], description: Skill of fill bots (default NORMAL) }
     LootTable:
       type: object
       description: >-

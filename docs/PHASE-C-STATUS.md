@@ -370,6 +370,82 @@ heading, speed, health or occupants changed since the baseline. Parked cars cost
 same as without cars (8.0 / 11.5), so parked cars don't trip the bots up. The simulator runs at 122× real time with
 eight cars.
 
+## Part C5 (23 October 2026): bots everywhere
+
+**Skill levels** (`BotSkill`): Easy, Normal and Hard.
+
+| | Reaction | Aim error | Engage range | Grenades | Picks weapons by range | Heals below |
+| --- | --- | --- | --- | --- | --- | --- |
+| Easy | 0.9 s | ±4° | 30 m | no | no | 50 |
+| Normal | 0.45 s | ±1.7° | 45 m | yes | yes | 70 |
+| Hard | 0.2 s | ±0.7° | 70 m | yes | yes | 80 |
+
+**New behaviour** (`BotBrain`):
+
+- **Reaction time:** a newly seen enemy is shot at only after the bot's reaction time.
+- **Range:** the engage range is also capped at 80 % of the weapon's own range.
+- **Weapon choice:** the bot swaps to the other slot when that weapon clearly suits the range better (shotgun and SMG
+  close, rifle in the middle, DMR and sniper far), or when the one in hand is out of ammo. At most once a second.
+- **At range, like players do:** beyond 20 m bots aim down sights. Beyond 35 m, Normal and Hard bots stop strafing and
+  crouch. Before this, Hard bots fired at 70 m while strafing and hit only 28 % of their shots.
+- **Frags:** when an enemy seen in the last 3 s ducks out of sight 7–22 m away, the bot lobs a frag where they were.
+  The throw pitch comes from a table built with the server's own grenade physics, so it lands on target. A test throws
+  real server grenades at 8, 14 and 20 m.
+- **Smoke:** hurt (under 40) and under fire within 40 m, the bot throws smoke between them, then retreats to heal as
+  before. One grenade every 6 s at most.
+
+**Fill bots on the server:**
+
+- **Topping up:** `MatchConfig.FillBotsTo` tops a match up to that many players with bots, at
+  `MatchConfig.BotDifficulty`, when the countdown starts.
+- **Inside the match:** the bots live in `Match`. They join without a ticket, even on ticket-only servers, through
+  an internal path, not a Hello packet. They send inputs and receive snapshots through the same packet code, handled
+  in memory and removed from the outbox, so the network host never sends them anything.
+- **Live ops:** the admin portal (Live operations) gets "Fill empty seats with bots" and the bot difficulty. These are
+  versioned and audited, travel in each match assignment, and are **off by default**.
+- **Results:** the server lists players only, plus `bots: N`. Each player keeps their place in the whole field (5th
+  behind four bots is 5th, not 1st). Kills on bots count, and a bot can win: a WINNER result with no winner named.
+- **API:** validates placements within the whole field and the kill cap against it. Rewards scale with the whole
+  field (XP for players outlasted includes bots).
+
+**Offline bot match:** the main menu has a difficulty button next to "Bot match", which cycles Easy, Normal and Hard
+and is remembered.
+
+**Simulator** (city, 20 bots, loot-first, 6 matches each; `--difficulty easy|normal|hard`):
+
+| Bots   | Active play | Shots | Hit rate | Player kills | Zone eliminations |
+| ------ | ----------- | ----- | -------- | ------------ | ----------------- |
+| Easy   | 7.4 min     | 64    | 46 %     | 6.3          | 12.8              |
+| Normal | 7.4 min     | 86    | 46 %     | 8.0          | 11.2              |
+| Hard   | 7.2 min     | 85    | 58 %     | 9.5          | 9.5               |
+
+**Not built in C5:**
+
+- **Driving:** bots don't drive. A useful driving bot needs road-following and getting out at fights, a project of
+  its own. Cars are still there for players.
+- **Squads:** bots don't revive or team up. Teams come with Duo and Squad in C6.
+- **Large lobbies:** fill bots make every online match full, but 20+ bots on the 900 m map still mostly meet the zone
+  rather than each other. The plane drop (C6) spreads everyone across the map and is the next lever.
+
+### Changed files (C5)
+
+- Shared: `Bots/BotSkill.cs` (new), `Bots/BotBrain.cs`, `MatchConfig.cs`, `Server/Match.cs` (fill bots),
+  `Server/PlayerState.cs` (`IsBot`), `Server/LocalMatch.cs` (difficulty, `InProcessBot.Attach`).
+- Server: `Platform/ManagedServer.cs` (fill bots from the assignment, results with bots),
+  `Platform/PlatformClient.cs`, `Program.cs` (`--difficulty`), `Simulation/MatchSimulator.cs`.
+- Platform: `apps/api/src/matchmaking/{matchmaking.controller,results.service}.ts`,
+  `apps/api/src/store/game-config.service.ts`, admin live-ops page and action, OpenAPI contract and generated types.
+- Unity: `MainMenu.cs`, `OnlineGame.cs` (remembered difficulty).
+
+### Tests (C5)
+
+| Suite          | Result                                                                                                                                                                                                                                        |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| .NET           | 127/127. New: harder bots react sooner and reach further; bots switch to the shotgun up close and the sniper far away, not when the rifle is fine, and easy bots don't switch; a frag lobbed at an enemy who ducked out of sight, then not again straight away, and never by easy bots; throw pitches land server grenades near 8, 14 and 20 m; offline matches use the chosen difficulty; on a ticket-only server five fill bots join one ticketed player, fight, never put traffic on the network, and the result lists the player at their real place with `bots: 5` |
+| API            | 130/130. New: a player 3rd behind bots keeps 3rd and is rewarded for a field of six; a bot winner names no one; results naming no winner while a player was 1st, placing outside the field, or with more kills than opponents are refused; assignments carry the bot settings (off by default) |
+| Unity EditMode | 65/65. New: the bot difficulty is remembered, and garbage is clamped                                                                                                                                                                          |
+| Unity PlayMode | 23/23, including both full-platform tests                                                                                                                                                                                                     |
+
 ### Not done in C1
 
 - Bots are the Phase 8 bots: no difficulty levels or weapon choice by range yet (C5).

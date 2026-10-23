@@ -39,7 +39,7 @@ using var sigterm = System.Runtime.InteropServices.PosixSignalRegistration.Creat
         Stop();
     });
 
-// In-process balance simulation: RWBR.MatchServer --simulate 3 [--map hyd-city-v1] [--players 30] [--loot-start]
+// In-process balance simulation: RWBR.MatchServer --simulate 3 [--map hyd-city-v1] [--players 30] [--loot-start] [--difficulty easy|normal|hard]
 int simulate = IntArg("--simulate", 0);
 if (simulate > 0)
 {
@@ -51,6 +51,12 @@ if (simulate > 0)
     {
         var simCfg = new MatchConfig { MinPlayers = simPlayers, MaxPlayers = simPlayers, Map = simMap, ZoneStages = MatchConfig.ZonesFor(simMap), CountdownSeconds = 3, ZoneSeed = i };
         if (args.Contains("--loot-start")) simCfg.StartWithWeapon = false; // design option: everyone starts unarmed and loots
+        simCfg.BotDifficulty = (StrArg("--difficulty") ?? "normal").ToLowerInvariant() switch
+        {
+            "easy" => RWBR.Shared.Bots.BotDifficulty.Easy,
+            "hard" => RWBR.Shared.Bots.BotDifficulty.Hard,
+            _ => RWBR.Shared.Bots.BotDifficulty.Normal,
+        };
         var r = RWBR.MatchServer.Sim.MatchSimulator.Run(simCfg, i);
         results.Add(r);
         Console.WriteLine(JsonSerializer.Serialize(r));

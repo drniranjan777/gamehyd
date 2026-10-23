@@ -202,6 +202,8 @@ export async function saveConfig(
         disabledWeapons: list('disabledWeapons'),
         xpMultiplier: Number(text(d, 'xpMultiplier') || '1'),
         lootTable: lootTable(d),
+        fillBots: d.get('fillBots') === 'on',
+        botDifficulty: text(d, 'botDifficulty') || 'NORMAL',
       },
     }),
   );

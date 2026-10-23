@@ -299,7 +299,11 @@ namespace RWBR.Client.Menu
             if (GUI.Button(new Rect(40, y, 250, 52), TutorialDirector.Done ? "Training ground" : "Training ground (tutorial)", _button)) PlayTrainingGround();
             if (GUI.Button(new Rect(296, y, 184, 52), "Firing range", _button)) PlayTrainingRange();
             if (Button(y += 56, "City practice: Hyderabad-inspired map")) PlayCityPractice();
-            if (Button(y += 56, $"Bot match: Solo vs {OnlineGame.DefaultBots} bots (offline)")) PlayBotMatch();
+            if (GUI.Button(new Rect(40, y += 56, 330, 52), $"Bot match: Solo vs {OnlineGame.DefaultBots} bots", _button)) PlayBotMatch();
+            // Difficulty: tap to cycle Easy → Normal → Hard.
+            RWBR.Shared.Bots.BotDifficulty d = OnlineGame.BotDifficultySetting;
+            if (GUI.Button(new Rect(376, y, 104, 52), d.ToString(), _button))
+                OnlineGame.BotDifficultySetting = (RWBR.Shared.Bots.BotDifficulty)(((int)d + 1) % 3);
             if (Button(y += 56, "Play online")) PlayOnline();
             if (Button(y += 66, "Profile & match history")) OpenPlatformScreen(Screen.Profile);
             if (Button(y += 56, "Loadout")) OpenPlatformScreen(Screen.Loadout);

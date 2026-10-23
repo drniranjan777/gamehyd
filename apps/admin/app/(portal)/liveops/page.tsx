@@ -54,6 +54,18 @@ export default async function LiveOpsPage() {
                   defaultValue={c.xpMultiplier ?? 1}
                 />
               </label>
+              <label className="check">
+                <input type="checkbox" name="fillBots" defaultChecked={c.fillBots ?? false} /> Fill
+                empty seats with bots
+              </label>
+              <label>
+                Bot difficulty
+                <select name="botDifficulty" defaultValue={c.botDifficulty ?? 'NORMAL'}>
+                  <option value="EASY">Easy</option>
+                  <option value="NORMAL">Normal</option>
+                  <option value="HARD">Hard</option>
+                </select>
+              </label>
               <details>
                 <summary>Loot table (version {lt.version ?? 1})</summary>
                 <p className="muted" style={{ fontSize: 12 }}>

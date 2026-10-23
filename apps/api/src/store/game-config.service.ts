@@ -41,6 +41,9 @@ export const gameConfigSchema = z
     /** Event multiplier for match XP (and so season XP), e.g. 2 for a double-XP weekend. Coins are unaffected. */
     xpMultiplier: z.number().min(1).max(5).default(1),
     lootTable: lootTableSchema.default({}),
+    /** Fill empty seats with bots when a match starts its countdown (Phase C part 5). */
+    fillBots: z.boolean().default(false),
+    botDifficulty: z.enum(['EASY', 'NORMAL', 'HARD']).default('NORMAL'),
   })
   .passthrough();
 

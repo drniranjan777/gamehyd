@@ -27,7 +27,7 @@ public sealed record HeartbeatRequest(
     bool Draining = false);
 
 public sealed record MatchAssignment(Guid MatchId, string MapVersion, int Capacity, int MinPlayers, int FillWaitSeconds, string[]? DisabledWeapons = null,
-    LootTableConfig? LootTable = null);
+    LootTableConfig? LootTable = null, bool FillBots = false, string? BotDifficulty = null);
 
 public sealed record HeartbeatResponse(Guid ServerId, MatchAssignment? Assignment);
 
@@ -38,7 +38,8 @@ public sealed record ResultSubmission(
     string Reason,
     Guid? WinnerAccountId,
     int DurationSeconds,
-    ResultParticipant[] Participants);
+    ResultParticipant[] Participants,
+    int Bots = 0);
 
 /// <summary>
 /// Signed HTTP calls to the platform API's /internal endpoints (packages/api-contracts/openapi.yaml,

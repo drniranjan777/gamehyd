@@ -102,6 +102,8 @@ describeDb('matchmaking, servers and results (PostgreSQL)', () => {
       mediumRounds: 45,
       upgradePercent: 40,
     });
+    // Fill bots are off unless live ops turns them on.
+    expect(a).toMatchObject({ fillBots: false, botDifficulty: 'NORMAL' });
 
     const hosting = await signed(
       h,

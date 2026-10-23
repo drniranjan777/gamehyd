@@ -35,7 +35,8 @@ public static class MatchSimulator
         var match = new Match(cfg);
         int n = cfg.MaxPlayers;
         var bots = new List<InProcessBot>();
-        for (int i = 0; i < n; i++) bots.Add(new InProcessBot(new IPEndPoint(IPAddress.Loopback, 10_000 + i), seed * 100 + i, cfg.Map, $"sim{10_000 + i}"));
+        BotSkill skill = BotSkill.For(cfg.BotDifficulty);
+        for (int i = 0; i < n; i++) bots.Add(new InProcessBot(new IPEndPoint(IPAddress.Loopback, 10_000 + i), seed * 100 + i, cfg.Map, $"sim{10_000 + i}", skill));
         foreach (InProcessBot b in bots) b.Join(match);
         var index = bots.ToDictionary(b => b.EndPoint);
         var wall = Stopwatch.StartNew();

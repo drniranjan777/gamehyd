@@ -272,9 +272,39 @@ namespace RWBR.Client.Online
             int seed = Environment.TickCount & 0xFFFF;
             MatchConfig cfg = config ?? LocalMatch.BotMatchConfig(CityMap.BuildV2(), bots);
             if (config == null) cfg.ZoneSeed = seed | 1; // a different zone every match
-            Local = new LocalMatch(cfg, bots, seed);
+            Local = new LocalMatch(cfg, bots, seed, BotDifficultySetting);
             Net.ConnectLocal(Local, PlayerName);
             ResetMatchView();
+        }
+
+        private const string BotDifficultyKey = "rwbr.botDifficulty";
+
+        /// <summary>The offline bot match's difficulty, remembered between sessions.</summary>
+        public static RWBR.Shared.Bots.BotDifficulty BotDifficultySetting
+        {
+            get
+            {
+                try
+                {
+                    return (RWBR.Shared.Bots.BotDifficulty)Mathf.Clamp(PlayerPrefs.GetInt(BotDifficultyKey, 1), 0, 2);
+                }
+                catch (Exception)
+                {
+                    return RWBR.Shared.Bots.BotDifficulty.Normal;
+                }
+            }
+            set
+            {
+                try
+                {
+                    PlayerPrefs.SetInt(BotDifficultyKey, (int)value);
+                    PlayerPrefs.Save();
+                }
+                catch (Exception)
+                {
+                    // Storage unavailable: this session only.
+                }
+            }
         }
 
         /// <summary>Another bot match with the same number of bots (the results screen's Play again).</summary>

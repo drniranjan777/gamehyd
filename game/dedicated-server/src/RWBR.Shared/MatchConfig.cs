@@ -38,6 +38,12 @@ namespace RWBR.Shared
         /// value moves each new circle to a random spot inside the previous one, the same for everyone in the match.
         /// </summary>
         public int ZoneSeed { get; set; }
+        /// <summary>
+        /// When the countdown starts, bots fill the match up to this many players (0 = no bots). They play through the
+        /// same packets as everyone else and are left out of the platform result except as a count.
+        /// </summary>
+        public int FillBotsTo { get; set; }
+        public Bots.BotDifficulty BotDifficulty { get; set; } = Bots.BotDifficulty.Normal;
         /// <summary>Cars at the map's vehicle spawns (<see cref="VehicleSpawns"/>; the small maps have none).</summary>
         public bool Vehicles { get; set; } = true;
         /// <summary>Live-ops loot weights; sent to every client in Welcome.</summary>

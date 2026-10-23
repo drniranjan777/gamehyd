@@ -12,6 +12,8 @@ export interface ResultSubmission {
   reason: 'WINNER' | 'TIMEOUT' | 'CANCELLED';
   winnerAccountId?: string | null;
   durationSeconds: number;
+  /** Fill bots that played (not listed; they count towards placements and the field size). */
+  bots?: number;
   participants: { accountId: string; placement: number; kills: number; survivalSeconds: number }[];
 }
 
@@ -94,23 +96,30 @@ export class ResultsService {
       [matchId],
     );
     const roster = new Set(rows.map((x) => x.user_id));
-    const n = r.participants.length;
+    const bots = r.bots ?? 0;
+    const n = r.participants.length + bots; // the whole field, players and bots
     const ids = new Set(r.participants.map((p) => p.accountId));
     const placements = new Set(r.participants.map((p) => p.placement));
 
     const problems: string[] = [];
-    if (ids.size !== n) problems.push('duplicate accountId');
+    if (ids.size !== r.participants.length) problems.push('duplicate accountId');
     for (const p of r.participants)
       if (!roster.has(p.accountId))
         problems.push(`account ${p.accountId} was not assigned to this match`);
-    if (placements.size !== n || [...placements].some((x) => x < 1 || x > n))
-      problems.push('placements must be 1..n, each once');
+    if (placements.size !== r.participants.length || [...placements].some((x) => x < 1 || x > n))
+      problems.push('placements must be within 1..n (players and bots), each once');
     if (r.participants.reduce((s, p) => s + p.kills, 0) > n - 1)
       problems.push('more eliminations than opponents');
     if (r.participants.some((p) => p.survivalSeconds > r.durationSeconds))
       problems.push('survival longer than the match');
     const first = r.participants.find((p) => p.placement === 1);
-    if (r.reason === 'WINNER' && (!r.winnerAccountId || first?.accountId !== r.winnerAccountId))
+    // A WINNER result names the player in 1st place, or (with bots) no one when a bot won and no player is 1st.
+    const botWon = r.reason === 'WINNER' && !r.winnerAccountId && bots > 0 && !first;
+    if (
+      r.reason === 'WINNER' &&
+      !botWon &&
+      (!r.winnerAccountId || first?.accountId !== r.winnerAccountId)
+    )
       problems.push('winner must hold placement 1');
     if (r.reason !== 'WINNER' && r.winnerAccountId)
       problems.push('only WINNER results name a winner');
@@ -129,7 +138,7 @@ export class ResultsService {
     r: ResultSubmission,
     hash: Buffer,
   ): Promise<void> {
-    const n = r.participants.length;
+    const n = r.participants.length + (r.bots ?? 0); // rewards scale with the whole field
     await c.query(
       `UPDATE matches SET status = 'COMPLETED', completion_reason = $2, winner_user_id = $3, duration_seconds = $4::int,
               result_sha256 = $5, ended_at = now(), started_at = COALESCE(started_at, now() - make_interval(secs => $4::int))

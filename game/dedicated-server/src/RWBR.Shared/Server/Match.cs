@@ -145,8 +145,15 @@ namespace RWBR.Shared.Server
             }
         }
 
-        /// <summary>Advances the simulation by exactly one tick.</summary>
+        /// <summary>Advances the simulation by exactly one tick (and runs the match's own fill bots).</summary>
         public void Advance()
+        {
+            ActFillBots();
+            AdvanceCore();
+            RouteFillBotPackets();
+        }
+
+        private void AdvanceCore()
         {
             Tick++;
             UpdateConnections();
@@ -159,6 +166,7 @@ namespace RWBR.Shared.Server
                     {
                         Phase = MatchPhase.Countdown;
                         _phaseEndTick = Tick + _cfg.Ticks(_cfg.CountdownSeconds);
+                        AddFillBots();
                     }
                     break;
                 case MatchPhase.Countdown:
@@ -275,19 +283,68 @@ namespace RWBR.Shared.Server
                 return;
             }
 
-            var player = new PlayerState(_nextId++, ticket?.DisplayName ?? hello.Name, from, _historyLength) { LastHeardTick = Tick };
+            PlayerState player = AddPlayer(from, ticket?.DisplayName ?? hello.Name);
             if (ticket != null)
             {
                 player.AccountId = ticket.AccountId;
                 player.Auth = new PacketAuth(JoinTicket.DeriveSessionKey(_cfg.TicketSecret!, ticket.TicketId));
             }
+            SendWelcome(player);
+        }
+
+        private PlayerState AddPlayer(IPEndPoint from, string name)
+        {
+            var player = new PlayerState(_nextId++, name, from, _historyLength) { LastHeardTick = Tick };
             player.Motor = MotorState.StandingAt(_cfg.Map.SpawnPoint(_players.Count, _cfg.MaxPlayers));
             player.Combat.Balance = _cfg.WeaponDef;
             player.Combat.Reset(_cfg.Weapon, _cfg.StartWithWeapon, _cfg.StartingReserveAmmo, _cfg.StartingWeaponIndex);
             _players.Add(player);
             _byEndpoint[from] = player;
             Stats.PeakPlayers = Math.Max(Stats.PeakPlayers, _players.Count);
-            SendWelcome(player);
+            return player;
+        }
+
+        // ---- Fill bots ----
+
+        private readonly Dictionary<IPEndPoint, InProcessBot> _fillBots = new();
+
+        public int FillBotCount => _fillBots.Count;
+
+        /// <summary>Tops the match up to <see cref="MatchConfig.FillBotsTo"/> with bots, without tickets.</summary>
+        private void AddFillBots()
+        {
+            int wanted = Math.Min(_cfg.FillBotsTo, _cfg.MaxPlayers) - _players.Count;
+            for (int i = 0; i < wanted; i++)
+            {
+                // A loopback address real clients never use, so bot traffic can't be confused with a player's.
+                var endPoint = new IPEndPoint(IPAddress.Parse("127.0.0.2"), 40_000 + _fillBots.Count);
+                var bot = new InProcessBot(endPoint, _cfg.ZoneSeed * 31 + _fillBots.Count, _cfg.Map, $"Bot {_fillBots.Count + 1}",
+                    Bots.BotSkill.For(_cfg.BotDifficulty));
+                bot.Attach(this);
+                PlayerState p = AddPlayer(endPoint, bot.Name);
+                p.IsBot = true;
+                _fillBots[endPoint] = bot;
+                SendWelcome(p);
+            }
+        }
+
+        private void ActFillBots()
+        {
+            if (_fillBots.Count == 0 || Phase == MatchPhase.Completed) return;
+            double time = Tick * (double)_dt;
+            foreach (InProcessBot bot in _fillBots.Values) bot.Act(this, time);
+        }
+
+        /// <summary>Hands the fill bots their packets and keeps them out of the outbox the network host sends.</summary>
+        private void RouteFillBotPackets()
+        {
+            if (_fillBots.Count == 0) return;
+            Outbox.RemoveAll(o =>
+            {
+                if (!_fillBots.TryGetValue(o.To, out InProcessBot? bot)) return false;
+                bot.Receive(o.Data);
+                return true;
+            });
         }
 
         private RejectReason? CheckTicket(byte[] bytes, out JoinTicket? ticket)

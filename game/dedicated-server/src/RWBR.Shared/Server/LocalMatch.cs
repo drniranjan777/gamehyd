@@ -19,16 +19,20 @@ namespace RWBR.Shared.Server
         private SnapshotPacket? _last;
         private uint _seq;
 
-        public InProcessBot(IPEndPoint endPoint, int seed, MapLayout map, string name)
+        public InProcessBot(IPEndPoint endPoint, int seed, MapLayout map, string name, BotSkill? skill = null)
         {
             EndPoint = endPoint;
             Name = name;
-            _brain = new BotBrain(seed, map);
+            _brain = new BotBrain(seed, map, skill);
         }
+
+        /// <summary>Sets up a bot the match created itself (fill bots): its loot list; the Welcome arrives by packet.</summary>
+        public void Attach(Match match) => _brain.Loot = match.Loot;
 
         public IPEndPoint EndPoint { get; }
         public string Name { get; }
         public ushort PlayerId { get; private set; } = ProtocolInfo.NoPlayer;
+        public BotSkill Skill => _brain.Skill;
 
         public void Join(Match match)
         {
@@ -80,14 +84,14 @@ namespace RWBR.Shared.Server
         private readonly double _tickSeconds;
         private double _pending;
 
-        public LocalMatch(MatchConfig config, int bots, int seed)
+        public LocalMatch(MatchConfig config, int bots, int seed, BotDifficulty difficulty = BotDifficulty.Normal)
         {
             if (bots < 1 || bots + 1 > config.MaxPlayers) throw new ArgumentOutOfRangeException(nameof(bots));
             Match = new Match(config);
             _tickSeconds = 1.0 / config.TickRate;
             for (int i = 0; i < bots; i++)
             {
-                var bot = new InProcessBot(new IPEndPoint(IPAddress.Loopback, 10_000 + i), seed * 100 + i, config.Map, $"Bot {i + 1}");
+                var bot = new InProcessBot(new IPEndPoint(IPAddress.Loopback, 10_000 + i), seed * 100 + i, config.Map, $"Bot {i + 1}", BotSkill.For(difficulty));
                 Bots.Add(bot);
                 _botsByEndPoint[bot.EndPoint] = bot;
                 bot.Join(Match);

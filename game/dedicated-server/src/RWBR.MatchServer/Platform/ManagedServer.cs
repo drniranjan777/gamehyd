@@ -104,6 +104,16 @@ public sealed class ManagedServer
         cfg.MatchId = a.MatchId;
         cfg.ZoneSeed = a.MatchId.GetHashCode() | 1; // the circles move, differently every match
         cfg.LootTable = a.LootTable?.Clamped() ?? LootTableConfig.Default; // live-ops loot weights
+        if (a.FillBots)
+        {
+            cfg.FillBotsTo = a.Capacity; // empty seats go to bots when the countdown starts
+            cfg.BotDifficulty = a.BotDifficulty switch
+            {
+                "EASY" => RWBR.Shared.Bots.BotDifficulty.Easy,
+                "HARD" => RWBR.Shared.Bots.BotDifficulty.Hard,
+                _ => RWBR.Shared.Bots.BotDifficulty.Normal,
+            };
+        }
         if (a.DisabledWeapons is { Length: > 0 } off)
         {
             var unknown = cfg.DisableWeapons(off);
@@ -134,21 +144,27 @@ public sealed class ManagedServer
         await SubmitAsync(a.MatchId, result, ct);
     }
 
-    /// <summary>The server's authoritative outcome for every ticketed player who played.</summary>
+    /// <summary>
+    /// The server's authoritative outcome for every ticketed player who played. Fill bots are counted (Bots) but not
+    /// listed: each player keeps their place in the whole field, so 5th behind four bots is 5th, not 1st.
+    /// </summary>
     public static ResultSubmission? BuildResult(Match match, string mapVersion)
     {
         MatchCompletedPacket? r = match.Result;
         if (r == null) return null;
-        var players = match.Players.Where(p => p.AccountId != Guid.Empty && p.Placement > 0).OrderBy(p => p.Placement).ToList();
+        // Everyone who placed (players and bots), renumbered 1..n in case anyone left the roster without a placement.
+        var field = match.Players.Where(p => p.Placement > 0 && (p.AccountId != Guid.Empty || p.IsBot)).OrderBy(p => p.Placement).ToList();
+        var placeOf = field.Select((p, i) => (p, i + 1)).ToDictionary(x => x.p, x => x.Item2);
+        var players = field.Where(p => !p.IsBot).ToList();
         if (players.Count == 0) return null;
 
-        // Renumber 1..n in case anyone left the roster without a placement (e.g. removed before the start).
         var participants = players
-            .Select((p, i) => new ResultParticipant(p.AccountId, i + 1, p.Kills, match.SurvivalSeconds(p)))
+            .Select(p => new ResultParticipant(p.AccountId, placeOf[p], p.Kills, match.SurvivalSeconds(p)))
             .ToArray();
-        PlayerState? winner = r.Reason == CompletionReason.Winner ? players.FirstOrDefault(p => p.Id == r.WinnerId) : null;
+        PlayerState? winner = r.Reason == CompletionReason.Winner ? field.FirstOrDefault(p => p.Id == r.WinnerId) : null;
         string reason = winner != null ? "WINNER" : r.Reason == CompletionReason.Timeout ? "TIMEOUT" : "CANCELLED";
-        return new ResultSubmission(mapVersion, reason, winner?.AccountId, match.DurationSeconds, participants);
+        Guid? winnerAccount = winner != null && !winner.IsBot ? winner.AccountId : null; // a bot winner is named by no one
+        return new ResultSubmission(mapVersion, reason, winnerAccount, match.DurationSeconds, participants, field.Count(p => p.IsBot));
     }
 
     private async Task SubmitAsync(Guid matchId, ResultSubmission result, CancellationToken ct)

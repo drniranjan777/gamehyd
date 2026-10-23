@@ -7,16 +7,17 @@ using RWBR.Shared.Protocol;
 namespace RWBR.Shared.Bots
 {
     /// <summary>
-    /// Test-player behaviour from server snapshots, used by the UDP bot client and the in-process match simulator.
-    /// With a map (<see cref="NavGrid"/>) bots navigate around buildings on the ground, go for weapons and ammo when
-    /// they need them, fight enemies they can actually see, and roam inside the safe zone. Without a map they fall back
-    /// to the original straight-line behaviour.
+    /// Bot behaviour from server snapshots, used by offline bot matches, server fill bots, the UDP bot client and the
+    /// match simulator. With a map (<see cref="NavGrid"/>) bots navigate around buildings on the ground, go for weapons
+    /// and ammo when they need them, fight enemies they can actually see after a reaction time, pick the better of their
+    /// weapons for the range, throw frags at enemies who just ducked behind cover and smoke when hurt under fire, and
+    /// roam inside the safe zone. How well they do it comes from <see cref="BotSkill"/>. Without a map they fall back to
+    /// the original straight-line behaviour.
     /// </summary>
     public sealed class BotBrain
     {
         private const float RepathSeconds = 2f;
         private const float WaypointReached = 1.2f;
-        private const float EngageRange = 45f;
         private const float LootDetour = 60f;
         private static readonly float[] PartWay = { 0.6f, 0.35f, 0.15f };
 
@@ -35,13 +36,24 @@ namespace RWBR.Shared.Bots
         private Vector3 _roamTarget;
         private double _roamUntil;
         private double _goalSince;
+        private readonly BotSkill _skill;
+        // Reaction: whom we are looking at and since when.
+        private ushort _seenId = ProtocolInfo.NoPlayer;
+        private double _seenSince;
+        // The last enemy we saw (for grenades when they duck out of sight).
+        private Vector3 _lastSeenAt;
+        private double _lastSeenTime = -100;
+        private double _nextThrow, _nextSwitch;
 
-        public BotBrain(int seed, MapLayout? map = null)
+        public BotBrain(int seed, MapLayout? map = null, BotSkill? skill = null)
         {
             _rng = new Random(seed);
             _map = map;
             _nav = map != null ? NavGrid.For(map) : null;
+            _skill = skill ?? BotSkill.For(BotDifficulty.Normal);
         }
+
+        public BotSkill Skill => _skill;
 
         /// <summary>The match's loot spots (its loot table); the map's default items when not set.</summary>
         public IReadOnlyList<LootSpawn>? Loot { get; set; }
@@ -85,13 +97,29 @@ namespace RWBR.Shared.Bots
             bool outOfAmmo = armed && self.Ammo == 0 && snap.SelfReserveAmmo == 0;
             bool canFight = armed && !outOfAmmo;
 
+            // Reaction time: a newly seen enemy is only shot at after a moment.
+            if (!hasTarget) _seenId = ProtocolInfo.NoPlayer;
+            else
+            {
+                if (target.PlayerId != _seenId)
+                {
+                    _seenId = target.PlayerId;
+                    _seenSince = time;
+                }
+                _lastSeenAt = new Vector3(target.X, target.Y, target.Z);
+                _lastSeenTime = time;
+            }
+            bool reacted = hasTarget && time - _seenSince >= _skill.ReactionSeconds;
+            // Never further than the weapon in hand carries usefully.
+            float engage = WeaponCatalog.IsValid(self.Weapon) ? Math.Min(_skill.EngageRange, WeaponCatalog.Get(self.Weapon).Range * 0.8f) : _skill.EngageRange;
+
             float yaw = self.Yaw, pitch = 0;
             if (hasTarget && canFight)
             {
                 float dx = target.X - me.X, dz = target.Z - me.Z;
                 float dy = (target.Y + 1.2f) - (me.Y + GameRules.EyeHeight);
-                yaw = (float)Math.Atan2(dx, dz) + (float)(_rng.NextDouble() - 0.5) * 0.04f;
-                pitch = (float)Math.Atan2(dy, Math.Sqrt(dx * dx + dz * dz));
+                yaw = (float)Math.Atan2(dx, dz) + (float)(_rng.NextDouble() * 2 - 1) * _skill.AimError;
+                pitch = (float)Math.Atan2(dy, Math.Sqrt(dx * dx + dz * dz)) + (float)(_rng.NextDouble() * 2 - 1) * _skill.AimError * 0.5f;
             }
 
             Vector3 worldMove;
@@ -105,10 +133,15 @@ namespace RWBR.Shared.Bots
                     ? Vector3.Normalize(new Vector3(snap.ZoneX - me.X, 0, snap.ZoneZ - me.Z))
                     : (hasTarget && best > 12 ? Simulation.Forward(yaw) : Vector3.Zero) + Simulation.Right(yaw) * (float)Math.Sin(time * 2 + selfId);
             }
-            else if (hasTarget && canFight && best < EngageRange && !OutsideZone(snap, me, 0.85f))
+            else if (hasTarget && canFight && best < engage && !OutsideZone(snap, me, 0.85f))
             {
-                // Fight: strafe, and close in when far (the target is visible, so the line is mostly open).
-                worldMove = Simulation.Right(yaw) * (float)Math.Sin(time * 2 + selfId) + (best > 15 ? Simulation.Forward(yaw) : Vector3.Zero);
+                // Fight. Up close: strafe, and close in a little. At range: aim down sights; skilled bots also stop
+                // and crouch for the tighter spread, as players do.
+                bool steady = _skill.ChoosesWeapons && best > 35;
+                worldMove = steady ? Vector3.Zero
+                    : Simulation.Right(yaw) * (float)Math.Sin(time * 2 + selfId) + (best > 15 ? Simulation.Forward(yaw) : Vector3.Zero);
+                if (best > 20) buttons |= InputButtons.Aim;
+                if (steady) buttons |= InputButtons.Crouch;
                 _path = null;
             }
             else
@@ -123,13 +156,39 @@ namespace RWBR.Shared.Bots
                     else if (time - _goalSince > 3) ClearGoal(); // no room for it: look for something else
                 }
                 // Heal when nobody is in sight.
-                if (!hasTarget && self.Health < 70 && (self.Flags & PlayerFlags.Healing) == 0 && HasHeal(snap)) buttons |= InputButtons.Heal;
+                if (!hasTarget && self.Health < _skill.HealBelow && (self.Flags & PlayerFlags.Healing) == 0 && HasHeal(snap)) buttons |= InputButtons.Heal;
                 if (!hasTarget || !canFight) yaw = worldMove.LengthSquared() > 0.01f ? (float)Math.Atan2(worldMove.X, worldMove.Z) : yaw;
                 Unstick(me, time, ref buttons);
             }
 
-            if (hasTarget && canFight && best < EngageRange) buttons |= InputButtons.Fire;
+            if (reacted && canFight && best < engage) buttons |= InputButtons.Fire;
             if (armed && self.Ammo == 0 && snap.SelfReserveAmmo > 0) buttons |= InputButtons.Reload;
+            if (_skill.ChoosesWeapons && hasTarget && ShouldSwitch(snap, self, best, time)) buttons |= InputButtons.SwitchWeapon;
+
+            ItemKind item = ItemKind.None;
+            if (_skill.UsesGrenades && time >= _nextThrow && (self.Flags & (PlayerFlags.Reloading | PlayerFlags.Healing)) == 0)
+            {
+                float hidden = Vector3.Distance(me, _lastSeenAt);
+                if (!hasTarget && time - _lastSeenTime < 3 && hidden >= 7 && hidden <= 22 && snap.SelfCount(ItemKind.Frag) > 0)
+                {
+                    // They ducked behind cover: lob a frag where they were.
+                    yaw = (float)Math.Atan2(_lastSeenAt.X - me.X, _lastSeenAt.Z - me.Z);
+                    pitch = BotSkill.ThrowPitch(hidden);
+                    item = ItemKind.Frag;
+                }
+                else if (hasTarget && self.Health < 40 && best < 40 && snap.SelfCount(ItemKind.Smoke) > 0)
+                {
+                    // Hurt and under fire: smoke between us, then the usual retreat to heal.
+                    yaw = (float)Math.Atan2(target.X - me.X, target.Z - me.Z);
+                    pitch = BotSkill.ThrowPitch(6);
+                    item = ItemKind.Smoke;
+                }
+                if (item != ItemKind.None)
+                {
+                    buttons = (buttons & ~(InputButtons.Fire | InputButtons.SwitchWeapon)) | InputButtons.Throw;
+                    _nextThrow = time + 6;
+                }
+            }
             float mz = Vector3.Dot(worldMove, Simulation.Forward(yaw));
             if (mz > 0.7f && (buttons & InputButtons.Fire) == 0) buttons |= InputButtons.Sprint;
 
@@ -141,7 +200,25 @@ namespace RWBR.Shared.Bots
                 Pitch = pitch,
                 Buttons = buttons,
                 Target = pickUp,
+                Item = item,
             };
+        }
+
+        /// <summary>Whether the other slot's weapon suits this range clearly better (and has rounds), at most once a second.</summary>
+        private bool ShouldSwitch(SnapshotPacket snap, SnapshotEntry self, float distance, double time)
+        {
+            if (time < _nextSwitch || (self.Flags & PlayerFlags.Reloading) != 0) return false;
+            int active = snap.SelfActiveSlot, other = 1 - active;
+            byte a = snap.SelfSlotWeapon[active], o = snap.SelfSlotWeapon[other];
+            if (!WeaponCatalog.IsValid(o)) return false;
+            bool otherLoaded = snap.SelfSlotAmmo[other] > 0;
+            if (!WeaponCatalog.IsValid(a)) return otherLoaded;
+            if (self.Ammo == 0 && snap.SelfReserveAmmo == 0) return otherLoaded; // the one in hand is dry
+            float now = BotSkill.Suitability(WeaponCatalog.Get(a).Class, distance);
+            float alt = BotSkill.Suitability(WeaponCatalog.Get(o).Class, distance);
+            if (!otherLoaded || alt < now + 2) return false;
+            _nextSwitch = time + 1;
+            return true;
         }
 
         private ushort PickUpTarget() =>
