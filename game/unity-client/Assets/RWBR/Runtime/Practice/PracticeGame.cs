@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using RWBR.Client.Audio;
+using RWBR.Client.Combat;
 using RWBR.Client.Greybox;
 using RWBR.Client.Player;
 using RWBR.Client.Settings;
@@ -23,6 +24,15 @@ namespace RWBR.Client.Practice
             public float Time;
         }
 
+        /// <summary>Damage shown where a shot landed (training range and practice).</summary>
+        public struct DamageNumber
+        {
+            public Vector3 Position;
+            public float Amount;
+            public bool Headshot;
+            public float Time;
+        }
+
         private const float MaxAimDistance = 150f;
 
         private readonly DeviceInputSource _device = new DeviceInputSource();
@@ -37,7 +47,8 @@ namespace RWBR.Client.Practice
         /// <summary>Run the onboarding steps on the next training-ground run (set by the main menu).</summary>
         public static bool TutorialRequested { get; set; }
         public TutorialDirector Tutorial { get; private set; }
-        private int _recoilSign = 1;
+        private bool _aimToggle;
+        private readonly List<SVector3> _hitPoints = new List<SVector3>();
         private readonly FootstepTracker _footsteps = new FootstepTracker();
         private readonly HashSet<ushort> _shotThisTick = new HashSet<ushort>();
         private bool _wasReloading;
@@ -74,6 +85,14 @@ namespace RWBR.Client.Practice
 
         public float YawDegrees => ViewYaw;
         public float PitchDegrees => ViewPitch;
+        public AimState Aim { get; } = new AimState();
+
+        /// <summary>Trigger pulls this run, and pulls where at least one pellet hit (accuracy readout).</summary>
+        public int ShotsFired { get; private set; }
+        public int ShotsHit { get; private set; }
+        /// <summary>Distance of the last target hit (range: from the firing line), in metres.</summary>
+        public float LastHitDistance { get; private set; }
+        public List<DamageNumber> DamageNumbers { get; } = new List<DamageNumber>();
 
         private void Awake()
         {
@@ -104,8 +123,15 @@ namespace RWBR.Client.Practice
             InventoryOpen = false;
             RunStartTime = Time.time;
             ViewYaw = Sim.Player.Yaw * Mathf.Rad2Deg;
-            Tutorial = TutorialRequested && !Sim.IsCity ? new TutorialDirector(Sim) : null;
-            Feed.Add(new FeedEntry { Text = Sim.IsCity ? "Find a weapon: shops and houses have loot inside" : "Find a rifle in the building ahead", Time = Time.time });
+            Aim.Reset();
+            _aimToggle = false;
+            ShotsFired = ShotsHit = 0;
+            LastHitDistance = 0;
+            DamageNumbers.Clear();
+            Tutorial = TutorialRequested && !Sim.IsCity && !Sim.IsRange ? new TutorialDirector(Sim) : null;
+            string hint = Sim.IsRange ? "Training range: every weapon is on the bench. Targets at 10 to 200 m stand up again"
+                : Sim.IsCity ? "Find a weapon: shops and houses have loot inside" : "Find a rifle in the building ahead";
+            Feed.Add(new FeedEntry { Text = hint, Time = Time.time });
         }
 
         private void Update()
@@ -116,9 +142,14 @@ namespace RWBR.Client.Practice
             UpdateCursor();
 
             bool playing = !Paused && Sim.Outcome == PracticeOutcome.InProgress;
+            Combatant combat = Sim.Player.Combat;
+            if (playing && frame.AimToggled) _aimToggle = !_aimToggle;
+            if (!combat.HasWeapon || !combat.Alive) _aimToggle = false;
+            bool aiming = playing && (frame.Aim || _aimToggle) && combat.HasWeapon && combat.Alive && !combat.Reloading && !InventoryOpen;
+            Aim.Update(aiming, combat.HasWeapon ? Sim.PlayerWeapon.AimZoom : 1f, Time.deltaTime);
             if (playing)
             {
-                float sens = GameSettings.Sensitivity;
+                float sens = GameSettings.Sensitivity * Aim.SensitivityScale(GameSettings.AimSensitivity);
                 ViewYaw = Mathf.Repeat(ViewYaw + frame.Look.x * sens, 360f);
                 ViewPitch = Mathf.Clamp(ViewPitch - frame.Look.y * sens, -70f, 75f);
                 _jumpLatched |= frame.JumpPressed;
@@ -145,8 +176,10 @@ namespace RWBR.Client.Practice
 
             Touch.InteractAvailable = Sim.NearestPickup(Sim.Player) >= 0;
             Tutorial?.Update(Sim, ViewYaw);
+            _views.SetPlayerView(ViewPitch + Aim.KickPitch, Aim.Eased, Aim.Scoped);
             _views.Render(Sim, Mathf.Clamp01(_accumulator / PracticeSimulation.Dt), Time.time);
             Feed.RemoveAll(e => Time.time - e.Time > 5f);
+            DamageNumbers.RemoveAll(d => Time.time - d.Time > 1.2f);
         }
 
         private PlayerInputFrame ReadInput()
@@ -189,6 +222,7 @@ namespace RWBR.Client.Practice
             if (_interactLatched) buttons |= InputButtons.Interact;
             if (_healLatched) buttons |= InputButtons.Heal;
             if (_switchLatched) buttons |= InputButtons.SwitchWeapon;
+            if (Aim.Aiming) buttons |= InputButtons.Aim;
             _jumpLatched = _reloadLatched = _interactLatched = _healLatched = _switchLatched = false;
             if (buttons.HasFlag(InputButtons.Jump)) _crouchToggle = false;
 
@@ -196,7 +230,7 @@ namespace RWBR.Client.Practice
             // (shoulder offset), so rotate the stick into the aim frame: movement follows the camera, shots
             // follow the crosshair, and nothing drifts.
             Vector2 move = InventoryOpen ? Vector2.zero : frame.Move;
-            float delta = ViewYaw * Mathf.Deg2Rad - yaw;
+            float delta = (ViewYaw + Aim.KickYaw) * Mathf.Deg2Rad - yaw;
             float cos = Mathf.Cos(delta), sin = Mathf.Sin(delta);
 
             return new InputCommand
@@ -213,11 +247,11 @@ namespace RWBR.Client.Practice
 
         /// <summary>
         /// Third-person aim: find what the crosshair (camera centre) points at, then aim from the character's eye at
-        /// that point. The shared rules shoot from the eye, so this keeps shots on the crosshair.
+        /// that point. The shared rules shoot from the eye, so this keeps shots on the crosshair (including recoil kick).
         /// </summary>
         private void AimAngles(Fighter p, out float yaw, out float pitch)
         {
-            Quaternion view = Quaternion.Euler(ViewPitch, ViewYaw, 0);
+            Quaternion view = Quaternion.Euler(ViewPitch + Aim.KickPitch, ViewYaw + Aim.KickYaw, 0);
             Vector3 camForward = view * Vector3.forward;
             Camera cam = Camera.main;
             Vector3 camPos = cam != null ? cam.transform.position : CameraPivot - camForward * 3.6f;
@@ -254,27 +288,50 @@ namespace RWBR.Client.Practice
         private void ProcessEvents()
         {
             _shotThisTick.Clear();
+            _hitPoints.Clear();
             GameAudio audio = GameAudio.Instance;
+            CombatEffects effects = _views.Effects;
+            bool playerHit = false;
+            foreach (SimEvent e in Sim.Events)
+                if (e.Type == SimEventType.Hit) _hitPoints.Add(e.To);
+
             foreach (SimEvent e in Sim.Events)
             {
                 bool byPlayer = e.Actor == PracticeSimulation.PlayerId;
                 switch (e.Type)
                 {
                     case SimEventType.Shot:
-                        _views.AddTracer(e.From, e.To, byPlayer, Time.time);
-                        if (!_shotThisTick.Add(e.Actor)) break; // one sound and one kick per trigger pull, not per pellet
-                        audio.Gunshot(Sim.WeaponOf(FighterOf(e.Actor)), e.From.ToUnity(), byPlayer);
+                        WeaponDefinition weapon = Sim.WeaponOf(FighterOf(e.Actor));
+                        WeaponHolder holder = _views.WeaponOf(e.Actor);
+                        Vector3? muzzle = holder?.Current != null ? holder.MuzzlePosition : (Vector3?)null;
+                        _views.AddTracer(e.From, e.To, byPlayer, Time.time, muzzle);
+                        if (SVector3.Distance(e.From, e.To) < weapon.Range - 0.05f && !_hitPoints.Contains(e.To))
+                            effects.Impact(e.To.ToUnity(), (e.From - e.To).ToUnity().normalized, player: false);
+                        if (!_shotThisTick.Add(e.Actor)) break; // one sound, flash and kick per trigger pull, not per pellet
+                        audio.Gunshot(weapon, e.From.ToUnity(), byPlayer);
+                        if (holder?.Current != null)
+                        {
+                            holder.Fired(weapon.RecoilPitchDegrees);
+                            effects.MuzzleFlash(holder.MuzzlePosition, holder.Forward, byPlayer, Time.time);
+                            if (weapon.Class != WeaponClass.Shotgun) effects.Shell(holder.EjectorPosition, holder.Right, holder.Forward);
+                        }
                         if (byPlayer)
                         {
-                            ViewPitch -= Sim.PlayerWeapon.RecoilPitchDegrees;
-                            ViewYaw += Sim.PlayerWeapon.RecoilYawDegrees * (_recoilSign = -_recoilSign);
+                            ShotsFired++;
+                            Vector2 climb = Aim.Recoil(weapon.RecoilPitchDegrees, weapon.RecoilYawDegrees);
+                            ViewPitch = Mathf.Clamp(ViewPitch + climb.x, -70f, 75f);
+                            ViewYaw = Mathf.Repeat(ViewYaw + climb.y, 360f);
                         }
                         break;
                     case SimEventType.Hit:
+                        effects.Impact(e.To.ToUnity(), (e.From - e.To).ToUnity().normalized, player: true);
                         if (byPlayer)
                         {
                             LastHitTime = Time.time;
                             LastHitWasKill = false;
+                            playerHit = true;
+                            LastHitDistance = Sim.TargetDistance(FighterOf(e.Target));
+                            DamageNumbers.Add(new DamageNumber { Position = e.To.ToUnity(), Amount = e.Damage, Headshot = e.Headshot, Time = Time.time });
                             audio.PlayUi(e.Headshot ? Sfx.Headshot : Sfx.HitMarker);
                             if (Tutorial != null) Tutorial.EnemyHit = true;
                         }
@@ -289,7 +346,9 @@ namespace RWBR.Client.Practice
                             LastHitWasKill = true;
                             Kills++;
                             audio.PlayUi(Sfx.Kill);
-                            Feed.Add(new FeedEntry { Text = $"You eliminated {NameOf(e.Target)}{(e.Headshot ? " (headshot)" : "")} with the {Sim.PlayerWeapon.DisplayName}", Time = Time.time });
+                            Feed.Add(new FeedEntry { Text = Sim.IsRange
+                                ? $"{NameOf(e.Target)} down{(e.Headshot ? " (headshot)" : "")}: {Sim.PlayerWeapon.DisplayName}"
+                                : $"You eliminated {NameOf(e.Target)}{(e.Headshot ? " (headshot)" : "")} with the {Sim.PlayerWeapon.DisplayName}", Time = Time.time });
                         }
                         else
                         {
@@ -305,6 +364,7 @@ namespace RWBR.Client.Practice
                         break;
                 }
             }
+            if (playerHit) ShotsHit++;
         }
 
         private Fighter FighterOf(ushort id)

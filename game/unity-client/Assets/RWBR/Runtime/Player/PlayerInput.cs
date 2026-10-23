@@ -11,6 +11,10 @@ namespace RWBR.Client.Player
         public Vector2 Look;
         public bool Sprint;
         public bool Fire;
+        /// <summary>Aim held this frame (right mouse button, left trigger).</summary>
+        public bool Aim;
+        /// <summary>Aim toggled on or off (touch AIM button).</summary>
+        public bool AimToggled;
 
         // One-frame presses; the game latches them until the next simulation tick consumes them.
         public bool JumpPressed;
@@ -31,6 +35,8 @@ namespace RWBR.Client.Player
             Look += other.Look;
             Sprint |= other.Sprint;
             Fire |= other.Fire;
+            Aim |= other.Aim;
+            AimToggled |= other.AimToggled;
             JumpPressed |= other.JumpPressed;
             CrouchToggled |= other.CrouchToggled;
             ReloadPressed |= other.ReloadPressed;
@@ -82,6 +88,7 @@ namespace RWBR.Client.Player
             {
                 f.Look += mouse.delta.ReadValue() * MouseDegreesPerPixel;
                 f.Fire |= mouse.leftButton.isPressed;
+                f.Aim |= mouse.rightButton.isPressed;
                 f.SwitchPressed |= Mathf.Abs(mouse.scroll.ReadValue().y) > 0.1f;
             }
             Gamepad pad = Gamepad.current;
@@ -91,6 +98,7 @@ namespace RWBR.Client.Player
                 f.Look += pad.rightStick.ReadValue() * StickDegreesPerSecond * Time.unscaledDeltaTime;
                 f.Sprint |= pad.leftStickButton.isPressed;
                 f.Fire |= pad.rightTrigger.isPressed;
+                f.Aim |= pad.leftTrigger.isPressed;
                 f.JumpPressed |= pad.buttonSouth.wasPressedThisFrame;
                 f.CrouchToggled |= pad.buttonEast.wasPressedThisFrame;
                 f.ReloadPressed |= pad.buttonWest.wasPressedThisFrame;

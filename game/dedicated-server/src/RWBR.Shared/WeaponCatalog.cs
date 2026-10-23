@@ -20,7 +20,7 @@ namespace RWBR.Shared
     /// </summary>
     public static class WeaponCatalog
     {
-        public const int BalanceVersion = 3;
+        public const int BalanceVersion = 4;
         public const byte None = 255;
 
         public const byte Pistol = 0;
@@ -39,6 +39,7 @@ namespace RWBR.Shared
                 FireIntervalSeconds = 0.22f, MagazineSize = 12, ReloadSeconds = 1.4f,
                 SpreadDegrees = 0.9f, MovingSpreadDegrees = 1.0f, AirborneSpreadDegrees = 3f,
                 RecoilPitchDegrees = 1.1f, RecoilYawDegrees = 0.3f, SwitchSeconds = 0.3f,
+                AimSpreadMultiplier = 0.6f, AimZoom = 1.25f,
             },
             new WeaponDefinition
             {
@@ -47,6 +48,7 @@ namespace RWBR.Shared
                 FireIntervalSeconds = 0.07f, MagazineSize = 32, ReloadSeconds = 1.8f,
                 SpreadDegrees = 1.4f, MovingSpreadDegrees = 0.8f, AirborneSpreadDegrees = 3f,
                 RecoilPitchDegrees = 0.45f, RecoilYawDegrees = 0.35f, SwitchSeconds = 0.4f,
+                AimSpreadMultiplier = 0.65f, AimZoom = 1.25f,
             },
             new WeaponDefinition
             {
@@ -55,6 +57,7 @@ namespace RWBR.Shared
                 FireIntervalSeconds = 0.12f, MagazineSize = 30, ReloadSeconds = 2.0f,
                 SpreadDegrees = 0.8f, MovingSpreadDegrees = 1.5f, AirborneSpreadDegrees = 4f,
                 RecoilPitchDegrees = 0.7f, RecoilYawDegrees = 0.25f, SwitchSeconds = 0.5f,
+                AimSpreadMultiplier = 0.5f, AimZoom = 1.5f,
             },
             new WeaponDefinition
             {
@@ -63,6 +66,7 @@ namespace RWBR.Shared
                 FireIntervalSeconds = 0.75f, MagazineSize = 6, ReloadSeconds = 2.6f,
                 SpreadDegrees = 4.5f, CrouchSpreadMultiplier = 0.9f, MovingSpreadDegrees = 0.5f, AirborneSpreadDegrees = 1.5f,
                 RecoilPitchDegrees = 3f, RecoilYawDegrees = 0.6f, SwitchSeconds = 0.5f,
+                AimSpreadMultiplier = 0.85f, AimZoom = 1.15f,
             },
             new WeaponDefinition
             {
@@ -71,6 +75,7 @@ namespace RWBR.Shared
                 FireIntervalSeconds = 0.35f, MagazineSize = 10, ReloadSeconds = 2.4f,
                 SpreadDegrees = 0.25f, MovingSpreadDegrees = 2.5f, AirborneSpreadDegrees = 6f,
                 RecoilPitchDegrees = 1.8f, RecoilYawDegrees = 0.3f, SwitchSeconds = 0.6f,
+                AimSpreadMultiplier = 0.35f, AimZoom = 3f,
             },
             new WeaponDefinition
             {
@@ -79,6 +84,7 @@ namespace RWBR.Shared
                 FireIntervalSeconds = 1.4f, MagazineSize = 5, ReloadSeconds = 3.0f,
                 SpreadDegrees = 0.05f, MovingSpreadDegrees = 4f, AirborneSpreadDegrees = 8f,
                 RecoilPitchDegrees = 4f, RecoilYawDegrees = 0.5f, SwitchSeconds = 0.8f,
+                AimSpreadMultiplier = 0.2f, AimZoom = 6f,
             },
         };
 

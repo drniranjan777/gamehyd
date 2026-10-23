@@ -13,6 +13,7 @@ namespace RWBR.Client.Settings
     public static class GameSettings
     {
         private const string SensitivityKey = "rwbr.sensitivity";
+        private const string AimSensitivityKey = "rwbr.aimSensitivity";
         private const string QualityKey = "rwbr.quality";
         private const string ShowPerfKey = "rwbr.showPerf";
         private const string MasterKey = "rwbr.volume.master";
@@ -26,8 +27,12 @@ namespace RWBR.Client.Settings
 
         public const float MinSensitivity = 0.2f;
         public const float MaxSensitivity = 3f;
+        public const float MinAimSensitivity = 0.3f;
+        public const float MaxAimSensitivity = 2f;
 
         public static float Sensitivity { get; private set; } = 1f;
+        /// <summary>Look speed while aiming, relative to hip look speed already slowed by the weapon's zoom (1 = matched).</summary>
+        public static float AimSensitivity { get; private set; } = 1f;
         public static QualityPreset Quality { get; private set; } = QualityPreset.Medium;
         public static bool ShowPerformance { get; private set; } = true;
         public static float MasterVolume { get; private set; } = 0.8f;
@@ -47,6 +52,7 @@ namespace RWBR.Client.Settings
             try
             {
                 Sensitivity = Mathf.Clamp(PlayerPrefs.GetFloat(SensitivityKey, 1f), MinSensitivity, MaxSensitivity);
+                AimSensitivity = Mathf.Clamp(PlayerPrefs.GetFloat(AimSensitivityKey, 1f), MinAimSensitivity, MaxAimSensitivity);
                 Quality = (QualityPreset)Mathf.Clamp(PlayerPrefs.GetInt(QualityKey, DefaultQuality()), 0, 2);
                 ShowPerformance = PlayerPrefs.GetInt(ShowPerfKey, 1) == 1;
                 MasterVolume = Mathf.Clamp01(PlayerPrefs.GetFloat(MasterKey, 0.8f));
@@ -66,6 +72,12 @@ namespace RWBR.Client.Settings
         public static void SetSensitivity(float value)
         {
             Sensitivity = Mathf.Clamp(value, MinSensitivity, MaxSensitivity);
+            Save();
+        }
+
+        public static void SetAimSensitivity(float value)
+        {
+            AimSensitivity = Mathf.Clamp(value, MinAimSensitivity, MaxAimSensitivity);
             Save();
         }
 
@@ -147,6 +159,7 @@ namespace RWBR.Client.Settings
             try
             {
                 PlayerPrefs.SetFloat(SensitivityKey, Sensitivity);
+                PlayerPrefs.SetFloat(AimSensitivityKey, AimSensitivity);
                 PlayerPrefs.SetInt(QualityKey, (int)Quality);
                 PlayerPrefs.SetInt(ShowPerfKey, ShowPerformance ? 1 : 0);
                 PlayerPrefs.SetFloat(MasterKey, MasterVolume);

@@ -60,7 +60,7 @@ namespace RWBR.Shared.Protocol
 
     public static class ProtocolInfo
     {
-        public const ushort Version = 4;
+        public const ushort Version = 5;
         public const ushort NoPlayer = ushort.MaxValue;
         public const int MaxInputsPerPacket = 3;
         public const int MaxNameBytes = 24;
@@ -192,7 +192,7 @@ namespace RWBR.Shared.Protocol
                 w.F32(c.MoveZ);
                 w.F32(c.Yaw);
                 w.F32(c.Pitch);
-                w.U8((byte)c.Buttons);
+                w.U16((ushort)c.Buttons);
             }
             return w.ToArray();
         }
@@ -212,7 +212,7 @@ namespace RWBR.Shared.Protocol
                     MoveZ = r.F32(),
                     Yaw = r.F32(),
                     Pitch = r.F32(),
-                    Buttons = (InputButtons)r.U8(),
+                    Buttons = (InputButtons)r.U16(),
                 });
             }
             return list;

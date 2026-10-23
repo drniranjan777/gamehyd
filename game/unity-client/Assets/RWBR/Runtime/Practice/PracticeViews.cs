@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using RWBR.Client.Combat;
 using RWBR.Shared;
 using UnityEngine;
 using SVector3 = System.Numerics.Vector3;
@@ -11,7 +12,10 @@ namespace RWBR.Client.Practice
         public static SVector3 ToShared(this Vector3 v) => new SVector3(v.x, v.y, v.z);
     }
 
-    /// <summary>Greybox presentation for the practice simulation: capsules, loot cubes and shot tracers.</summary>
+    /// <summary>
+    /// Presentation for the practice simulation: placeholder capsule characters holding 3D weapon models, loot,
+    /// shot tracers and pooled shot effects.
+    /// </summary>
     public sealed class PracticeViews
     {
         private static readonly Color PlayerColor = new Color(0.2f, 0.5f, 0.95f);
@@ -23,12 +27,28 @@ namespace RWBR.Client.Practice
         private readonly Dictionary<ushort, (SVector3 Prev, SVector3 Cur)> _positions = new Dictionary<ushort, (SVector3, SVector3)>();
         private readonly List<GameObject> _loot = new List<GameObject>();
         private readonly List<(LineRenderer Line, float Until)> _tracers = new List<(LineRenderer, float)>();
+        private readonly Dictionary<ushort, WeaponHolder> _weapons = new Dictionary<ushort, WeaponHolder>();
         private Material _tracerMaterial;
+        private float _playerPitch, _playerAim;
+        private bool _playerHidden;
+        private Renderer[] _playerRenderers;
 
         public PracticeViews(Transform root) => _root = root;
 
         /// <summary>Tracers created since the views were built (diagnostics and tests).</summary>
         public int TracersCreated { get; private set; }
+
+        public CombatEffects Effects { get; private set; }
+
+        public WeaponHolder WeaponOf(ushort id) => _weapons.TryGetValue(id, out WeaponHolder h) ? h : null;
+
+        /// <summary>The local player's view pitch (degrees), aim blend, and whether the body is hidden (scoped).</summary>
+        public void SetPlayerView(float pitchDegrees, float aim, bool hidden)
+        {
+            _playerPitch = pitchDegrees;
+            _playerAim = aim;
+            _playerHidden = hidden;
+        }
 
         public Transform PlayerTransform => _bodies.TryGetValue(PracticeSimulation.PlayerId, out GameObject go) ? go.transform : null;
 
@@ -49,6 +69,7 @@ namespace RWBR.Client.Practice
                 visor.transform.localPosition = new Vector3(0, 0.55f, 0.42f);
                 visor.transform.localScale = new Vector3(0.7f, 0.12f, 0.2f);
                 _bodies[f.Id] = root;
+                _weapons[f.Id] = new WeaponHolder(root.transform);
             }
 
             for (int i = 0; i < sim.Map.Loot.Count; i++)
@@ -60,6 +81,7 @@ namespace RWBR.Client.Practice
             }
 
             _tracerMaterial = new Material(Shader.Find("Sprites/Default"));
+            Effects = new CombatEffects(_root);
             Sync(sim);
         }
 
@@ -107,7 +129,33 @@ namespace RWBR.Client.Practice
                     body.localRotation = Quaternion.Euler(90, 0, 0);
                     SetColor(body.gameObject, DeadColor);
                 }
+
+                bool hidden = f.IsPlayer && _playerHidden;
+                if (f.IsPlayer)
+                {
+                    _playerRenderers ??= body.GetComponentsInChildren<Renderer>();
+                    foreach (Renderer r in _playerRenderers)
+                        if (r.enabled == hidden) r.enabled = !hidden;
+                }
+                WeaponDefinition weapon = sim.WeaponOf(f);
+                float reload = -1;
+                if (f.Combat.Reloading)
+                {
+                    float total = Combatant.Ticks(weapon.ReloadSeconds, PracticeSimulation.TickRate);
+                    reload = 1f - (f.Combat.ReloadDoneTick - sim.Tick) / total;
+                }
+                _weapons[f.Id].Update(new WeaponPose
+                {
+                    Weapon = f.Combat.ActiveWeaponIndex,
+                    PitchDegrees = f.IsPlayer ? _playerPitch : -f.Pitch * Mathf.Rad2Deg,
+                    Aim = f.IsPlayer ? _playerAim : 0,
+                    Reload = reload,
+                    Alive = f.Combat.Alive,
+                    Crouched = f.Motor.Crouched,
+                    Hidden = hidden,
+                }, f.Motor.EyeHeight, time, Time.deltaTime);
             }
+            Effects?.Update(time);
 
             for (int i = 0; i < _loot.Count; i++)
             {
@@ -134,10 +182,16 @@ namespace RWBR.Client.Practice
                 SetColor(_bodies[f.Id].transform.GetChild(0).gameObject, f.IsPlayer ? PlayerColor : EnemyColor);
         }
 
-        public void AddTracer(SVector3 from, SVector3 to, bool byPlayer, float time)
+        /// <summary>A shot tracer from <paramref name="start"/> (the muzzle) or, without one, from just ahead of the eye.</summary>
+        public void AddTracer(SVector3 from, SVector3 to, bool byPlayer, float time, Vector3? start = null)
         {
             Vector3 a = from.ToUnity(), b = to.ToUnity();
             Vector3 dir = (b - a).normalized;
+            if (start.HasValue)
+            {
+                a = start.Value;
+                dir = Vector3.zero;
+            }
             var go = new GameObject("Tracer");
             go.transform.SetParent(_root, false);
             LineRenderer line = go.AddComponent<LineRenderer>();

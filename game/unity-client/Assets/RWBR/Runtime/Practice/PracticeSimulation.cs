@@ -64,6 +64,12 @@ namespace RWBR.Client.Practice
         public const ushort PlayerId = 1;
 
         private readonly List<EnemyBrain> _brains = new List<EnemyBrain>();
+        /// <summary>Training range: where each target stands, whether it strafes, and when it went down.</summary>
+        private readonly List<(SVector3 Home, bool Moving)> _targetsHome = new List<(SVector3, bool)>();
+        private readonly List<long> _downSince = new List<long>();
+
+        /// <summary>Seconds before a downed range target stands up again.</summary>
+        public const float TargetRespawnSeconds = 2f;
 
         public PracticeSimulation(MapLayout map)
         {
@@ -99,6 +105,8 @@ namespace RWBR.Client.Practice
         public static SVector3 PlayerSpawn => new SVector3(0, 0, -25);
 
         public bool IsCity => Map.Version == CityMap.Version;
+        /// <summary>Training range: passive targets that stand up again, every weapon on the bench, endless ammo.</summary>
+        public bool IsRange => Map.Version == MapLayout.TrainingRangeVersion;
         /// <summary>While true (tutorial), enemies hold fire.</summary>
         public bool EnemiesPassive { get; set; }
 
@@ -116,14 +124,21 @@ namespace RWBR.Client.Practice
             Events.Clear();
             Array.Clear(LootTaken, 0, LootTaken.Length);
 
-            SVector3 spawn = IsCity ? Map.Spawns[0] : PlayerSpawn;
+            SVector3 spawn = IsCity || IsRange ? Map.Spawns[0] : PlayerSpawn;
             Player.Motor = MotorState.StandingAt(spawn);
             Player.Yaw = IsCity ? (float)Math.Atan2(-spawn.X, -spawn.Z) : 0; // city: face the centre
             Player.Pitch = 0;
-            Player.Combat.Reset(WeaponCatalog.Get(WeaponCatalog.Rifle), withWeapon: false, reserveAmmo: 0);
+            Player.Combat.Reset(WeaponCatalog.Get(WeaponCatalog.Rifle), withWeapon: IsRange, reserveAmmo: IsRange ? GameRules.MaxReserveAmmo : 0);
 
             Enemies.Clear();
             _brains.Clear();
+            _targetsHome.Clear();
+            _downSince.Clear();
+            if (IsRange)
+            {
+                ResetRange();
+                return;
+            }
             SVector3[] homes = IsCity ? CityHomes() : new[]
             {
                 new SVector3(0, MapLayout.RoofTop, 3),   // on the roof
@@ -140,6 +155,53 @@ namespace RWBR.Client.Practice
                 e.Combat.Reset(EnemyWeapon, withWeapon: true, reserveAmmo: 9999);
                 Enemies.Add(e);
                 _brains.Add(new EnemyBrain(homes[i], phase: i * 1.7f));
+            }
+        }
+
+        private void ResetRange()
+        {
+            for (int lane = 0; lane < MapLayout.RangeDistances.Length; lane++)
+                _targetsHome.Add((new SVector3(MapLayout.RangeLaneX(lane), 0, MapLayout.RangeFiringLine + MapLayout.RangeDistances[lane]), false));
+            _targetsHome.Add((new SVector3(-26, 0, MapLayout.RangeFiringLine + 28), true));
+            _targetsHome.Add((new SVector3(26, 0, MapLayout.RangeFiringLine + 53), true));
+            for (int i = 0; i < _targetsHome.Count; i++)
+            {
+                (SVector3 home, bool moving) = _targetsHome[i];
+                float distance = home.Z - MapLayout.RangeFiringLine;
+                var t = new Fighter((ushort)(PlayerId + 1 + i), moving ? $"Moving target {distance:0} m" : $"Target {distance:0} m", isPlayer: false);
+                t.Motor = MotorState.StandingAt(home);
+                t.Yaw = (float)Math.PI; // facing the firing line
+                t.Combat.Reset(EnemyWeapon, withWeapon: false, reserveAmmo: 0);
+                Enemies.Add(t);
+                _downSince.Add(-1);
+            }
+        }
+
+        /// <summary>Distance from the firing line to a range target (or from the player for other modes).</summary>
+        public float TargetDistance(Fighter target) =>
+            IsRange ? target.Motor.Position.Z - MapLayout.RangeFiringLine : SVector3.Distance(target.Motor.Position, Player.Motor.Position);
+
+        private void StepRange()
+        {
+            Player.Combat.ReserveAmmo = GameRules.MaxReserveAmmo;
+            long respawnTicks = (long)(TargetRespawnSeconds * TickRate);
+            float t = Tick * Dt;
+            for (int i = 0; i < Enemies.Count; i++)
+            {
+                Fighter target = Enemies[i];
+                (SVector3 home, bool moving) = _targetsHome[i];
+                if (!target.Combat.Alive)
+                {
+                    if (_downSince[i] < 0) _downSince[i] = Tick;
+                    if (Tick - _downSince[i] < respawnTicks) continue;
+                    _downSince[i] = -1;
+                    target.Motor = MotorState.StandingAt(home);
+                    target.Combat.Reset(EnemyWeapon, withWeapon: false, reserveAmmo: 0);
+                    continue;
+                }
+                // Strafe across the lane: 5 m/s peak, about 6 m either side of home (the integral of the sine).
+                var cmd = new InputCommand { Yaw = (float)Math.PI, MoveX = moving ? (float)Math.Sin(t * 0.8f + i) : 0 };
+                Simulation.Step(ref target.Motor, cmd, Dt, Map);
             }
         }
 
@@ -174,6 +236,11 @@ namespace RWBR.Client.Practice
             Tick++;
 
             if (Player.Combat.Alive) Act(Player, playerInput);
+            if (IsRange)
+            {
+                StepRange();
+                return; // no win or loss on the range
+            }
             for (int i = 0; i < Enemies.Count; i++)
             {
                 Fighter e = Enemies[i];
@@ -231,7 +298,7 @@ namespace RWBR.Client.Practice
         {
             int i = NearestPickup(f);
             if (i < 0) return;
-            LootTaken[i] = true;
+            if (!(IsRange && Map.Loot[i].WeaponIndex >= 0)) LootTaken[i] = true; // the range's weapon rack never empties
             int w = Map.Loot[i].WeaponIndex;
             f.Combat.PickUp(Map.Loot[i], w >= 0 ? WeaponCatalog.Get(w) : WeaponOf(f));
             Events.Add(new SimEvent { Type = SimEventType.Pickup, Actor = f.Id, Loot = Map.Loot[i].Type, To = Map.Loot[i].Position });
@@ -240,7 +307,7 @@ namespace RWBR.Client.Practice
         public float CurrentSpread(Fighter f, InputCommand cmd, WeaponDefinition weapon)
         {
             bool moving = cmd.MoveX * cmd.MoveX + cmd.MoveZ * cmd.MoveZ > 0.01f;
-            return weapon.SpreadFor(moving, f.Motor.Crouched, !f.Motor.Grounded);
+            return weapon.SpreadFor(moving, f.Motor.Crouched, !f.Motor.Grounded, cmd.Has(InputButtons.Aim));
         }
 
         private readonly List<TargetCapsule> _targets = new List<TargetCapsule>();
@@ -271,7 +338,7 @@ namespace RWBR.Client.Practice
                 if (!hit.Combat.Alive) continue;
                 float lost = hit.Combat.ApplyDamage(p.Damage);
                 hit.Combat.CancelHeal();
-                Events.Add(new SimEvent { Type = SimEventType.Hit, Actor = shooter.Id, Target = hit.Id, To = p.End, Damage = lost, Headshot = p.Headshot });
+                Events.Add(new SimEvent { Type = SimEventType.Hit, Actor = shooter.Id, Target = hit.Id, From = origin, To = p.End, Damage = lost, Headshot = p.Headshot });
                 if (!hit.Combat.Alive)
                     Events.Add(new SimEvent { Type = SimEventType.Kill, Actor = shooter.Id, Target = hit.Id, To = hit.Motor.Position, Headshot = p.Headshot });
             }

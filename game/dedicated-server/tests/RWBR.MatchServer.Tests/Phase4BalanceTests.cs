@@ -13,7 +13,7 @@ using Xunit.Abstractions;
 namespace RWBR.MatchServer.Tests;
 
 /// <summary>
-/// Time-to-kill for the whole roster (balance v3), generated into docs/balance/TTK.md. The doc must match the
+/// Time-to-kill for the whole roster (current balance version; hip fire), generated into docs/balance/TTK.md. The doc must match the
 /// catalog: after changing balance, regenerate with UPDATE_DOCS=1 dotnet test ... and review the diff.
 /// </summary>
 public class TimeToKillTests

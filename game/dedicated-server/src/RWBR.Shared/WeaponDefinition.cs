@@ -30,12 +30,18 @@ namespace RWBR.Shared
         public float RecoilPitchDegrees { get; set; } = 0.7f;
         public float RecoilYawDegrees { get; set; } = 0.25f;
 
+        // Aiming down sights: standing/moving spread is multiplied by this (airborne spread is not), and the
+        // client zooms the camera by AimZoom (field of view divided by it). 3x and above uses a scope view.
+        public float AimSpreadMultiplier { get; set; } = 0.5f;
+        public float AimZoom { get; set; } = 1.5f;
+
         public static WeaponDefinition DefaultRifle() => new WeaponDefinition();
 
-        public float SpreadFor(bool moving, bool crouched, bool airborne)
+        public float SpreadFor(bool moving, bool crouched, bool airborne, bool aiming = false)
         {
             float spread = SpreadDegrees * (crouched ? CrouchSpreadMultiplier : 1f);
             if (moving) spread += MovingSpreadDegrees;
+            if (aiming) spread *= AimSpreadMultiplier;
             if (airborne) spread += AirborneSpreadDegrees;
             return spread;
         }

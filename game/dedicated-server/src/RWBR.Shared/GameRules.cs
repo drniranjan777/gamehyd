@@ -7,6 +7,8 @@ namespace RWBR.Shared
         public const float WalkSpeed = 5.0f;
         public const float SprintSpeed = 7.0f;
         public const float CrouchSpeed = 2.5f;
+        /// <summary>Movement speed multiplier while aiming down sights (sprint is not possible while aiming).</summary>
+        public const float AimMoveSpeedFactor = 0.7f;
         public const float JumpSpeed = 5.5f;
         public const float Gravity = 15f;
         public const float MaxFallSpeed = 30f;

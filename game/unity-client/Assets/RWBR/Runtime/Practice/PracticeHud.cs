@@ -2,6 +2,7 @@ using System.Linq;
 using RWBR.Client.Diagnostics;
 using RWBR.Client.Player;
 using RWBR.Client.Accessibility;
+using RWBR.Client.Combat;
 using RWBR.Client.Settings;
 using RWBR.Shared;
 using UnityEngine;
@@ -55,8 +56,11 @@ namespace RWBR.Client.Practice
             Fighter p = sim.Player;
 
             DrawEnemyBars(sim);
+            if (sim.IsRange) DrawRangeMarkers(sim);
+            DrawDamageNumbers();
             DrawDamageFlash();
-            if (sim.Outcome == PracticeOutcome.InProgress && !_game.Paused) DrawCrosshair(p);
+            if (_game.Aim.Scoped) ScopeOverlay.Draw(_w, VirtualHeight, Time.time - _game.LastHitTime, _game.LastHitWasKill);
+            if (sim.Outcome == PracticeOutcome.InProgress && !_game.Paused && !_game.Aim.Scoped) DrawCrosshair(p);
             SoundCues.Draw(_w, VirtualHeight, Camera.main);
             DrawVitals(p);
             DrawWeapon(sim, p);
@@ -66,7 +70,7 @@ namespace RWBR.Client.Practice
             DrawPerf();
             if (_game.Touch.Visible && _game.InputOverride == null) DrawTouch();
             else if (!_game.MenusOpen && Cursor.lockState != CursorLockMode.Locked)
-                GUI.Label(new Rect(0, VirtualHeight * 0.62f, _w, 30), "Click to play · WASD move · Shift sprint · Space jump · C crouch · E pick up · R reload · H heal · Tab bag · Esc menu", _center);
+                GUI.Label(new Rect(0, VirtualHeight * 0.62f, _w, 30), "Click to play · WASD move · Shift sprint · Right mouse aim · Space jump · C crouch · E pick up · R reload · Q swap · H heal · Esc menu", _center);
 
             if (_game.InventoryOpen) DrawInventory(sim, p);
             if (_game.Paused) DrawPause();
@@ -107,6 +111,39 @@ namespace RWBR.Client.Practice
                 Fill(new Rect(cx - 12, cy - 1.5f, 24, 3), hit);
                 Fill(new Rect(cx - 1.5f, cy - 12, 3, 24), hit);
                 GUI.matrix = m;
+            }
+        }
+
+        private void DrawDamageNumbers()
+        {
+            Camera cam = Camera.main;
+            if (cam == null) return;
+            foreach (PracticeGame.DamageNumber n in _game.DamageNumbers)
+            {
+                float age = Time.time - n.Time;
+                Vector3 sp = cam.WorldToScreenPoint(n.Position + Vector3.up * (0.3f + age * 0.6f));
+                if (sp.z <= 0) continue;
+                float x = sp.x / _scale, y = (Screen.height - sp.y) / _scale;
+                var style = new GUIStyle(_label) { fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+                style.normal.textColor = new Color(n.Headshot ? 1f : 1f, n.Headshot ? 0.8f : 1f, n.Headshot ? 0.2f : 1f, 1f - age / 1.2f);
+                GUI.Label(new Rect(x - 40, y - 12, 80, 24), Mathf.RoundToInt(n.Amount).ToString(), style);
+            }
+        }
+
+        /// <summary>Distance labels over each lane's post.</summary>
+        private void DrawRangeMarkers(PracticeSimulation sim)
+        {
+            Camera cam = Camera.main;
+            if (cam == null) return;
+            for (int lane = 0; lane < MapLayout.RangeDistances.Length; lane++)
+            {
+                float d = MapLayout.RangeDistances[lane];
+                var world = new Vector3(MapLayout.RangeLaneX(lane) - 2.5f, 3f, MapLayout.RangeFiringLine + d);
+                Vector3 sp = cam.WorldToScreenPoint(world);
+                if (sp.z <= 0) continue;
+                float x = sp.x / _scale, y = (Screen.height - sp.y) / _scale;
+                Fill(new Rect(x - 30, y - 11, 60, 22), new Color(0, 0, 0, 0.5f));
+                GUI.Label(new Rect(x - 30, y - 11, 60, 22), $"{d:0} m", new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter });
             }
         }
 
@@ -187,8 +224,18 @@ namespace RWBR.Client.Practice
         private void DrawObjective(PracticeSimulation sim)
         {
             float x = 24, y = 20;
-            Fill(new Rect(x, y, 250, 34), new Color(0, 0, 0, 0.45f));
-            GUI.Label(new Rect(x + 10, y + 5, 240, 26), $"Enemies left: {sim.EnemiesAlive} / {sim.Enemies.Count}", _label);
+            if (sim.IsRange)
+            {
+                Fill(new Rect(x, y, 420, 34), new Color(0, 0, 0, 0.45f));
+                int pct = _game.ShotsFired > 0 ? Mathf.RoundToInt(100f * _game.ShotsHit / _game.ShotsFired) : 0;
+                string last = _game.LastHitDistance > 0 ? $"   Last hit {_game.LastHitDistance:0} m" : "";
+                GUI.Label(new Rect(x + 10, y + 5, 410, 26), $"Accuracy {pct}% ({_game.ShotsHit}/{_game.ShotsFired}){last}", _label);
+            }
+            else
+            {
+                Fill(new Rect(x, y, 250, 34), new Color(0, 0, 0, 0.45f));
+                GUI.Label(new Rect(x + 10, y + 5, 240, 26), $"Enemies left: {sim.EnemiesAlive} / {sim.Enemies.Count}", _label);
+            }
             string area = sim.Map.DistrictAt(sim.Player.Motor.Position.X, sim.Player.Motor.Position.Z);
             if (area.Length > 0) GUI.Label(new Rect(x + 260, y + 5, 300, 26), area, _label);
             float fy = y + 44;
@@ -248,7 +295,8 @@ namespace RWBR.Client.Practice
             {
                 if (b.Button == TouchButton.Interact && !t.InteractAvailable) continue;
                 Vector2 c = new Vector2(b.Center.x * _w, (1 - b.Center.y) * h);
-                float alpha = t.IsHeld(b.Button) ? 0.45f : 0.22f;
+                bool on = t.IsHeld(b.Button) || (b.Button == TouchButton.Aim && _game.Aim.Aiming);
+                float alpha = on ? 0.45f : 0.22f;
                 Circle(c, b.Radius * h, new Color(1, 1, 1, alpha));
                 GUI.Label(new Rect(c.x - 50, c.y - 12, 100, 24), b.Label, new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter });
             }
@@ -294,12 +342,16 @@ namespace RWBR.Client.Practice
 
         private void DrawPause()
         {
-            Rect r = Panel(520, 530, "Paused");
+            Rect r = Panel(520, 590, "Paused");
             float x = r.x + 30, y = r.y + 70;
 
             GUI.Label(new Rect(x, y, 200, 26), $"Look sensitivity  {GameSettings.Sensitivity:0.00}", _label);
             float s = GUI.HorizontalSlider(new Rect(x, y + 32, 460, 24), GameSettings.Sensitivity, GameSettings.MinSensitivity, GameSettings.MaxSensitivity);
             if (!Mathf.Approximately(s, GameSettings.Sensitivity)) GameSettings.SetSensitivity(s);
+            y += 60;
+            GUI.Label(new Rect(x, y, 300, 26), $"Aim sensitivity  {GameSettings.AimSensitivity:0.00}", _label);
+            float a = GUI.HorizontalSlider(new Rect(x, y + 32, 460, 24), GameSettings.AimSensitivity, GameSettings.MinAimSensitivity, GameSettings.MaxAimSensitivity);
+            if (!Mathf.Approximately(a, GameSettings.AimSensitivity)) GameSettings.SetAimSensitivity(a);
 
             GUI.Label(new Rect(x, y + 70, 200, 26), "Graphics quality", _label);
             string[] names = { "Low", "Medium", "High" };

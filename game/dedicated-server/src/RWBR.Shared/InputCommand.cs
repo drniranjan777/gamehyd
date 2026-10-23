@@ -3,7 +3,7 @@ using System;
 namespace RWBR.Shared
 {
     [Flags]
-    public enum InputButtons : byte
+    public enum InputButtons : ushort
     {
         None = 0,
         Fire = 1,
@@ -18,6 +18,8 @@ namespace RWBR.Shared
         Heal = 64,
         /// <summary>Swap to the weapon in the other slot.</summary>
         SwitchWeapon = 128,
+        /// <summary>Held state: aiming down sights. Tighter spread, slower movement, no sprint.</summary>
+        Aim = 256,
     }
 
     /// <summary>One client input sample. Clients send inputs, never positions, damage or results (BRD 7.2).</summary>

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using RWBR.Client.Combat;
 using RWBR.Client.Practice;
 using RWBR.Shared;
 using RWBR.Shared.Protocol;
@@ -7,7 +8,10 @@ using SVector3 = System.Numerics.Vector3;
 
 namespace RWBR.Client.Online
 {
-    /// <summary>Greybox presentation for an online match: predicted self, interpolated others, loot, tracers, zone ring.</summary>
+    /// <summary>
+    /// Presentation for an online match: predicted self, interpolated others (placeholder capsules holding 3D weapon
+    /// models), loot, tracers, shot effects and the zone ring.
+    /// </summary>
     public sealed class OnlineViews
     {
         private static readonly Color SelfColor = new Color(0.2f, 0.5f, 0.95f);
@@ -24,6 +28,24 @@ namespace RWBR.Client.Online
         private Material _lineMaterial;
         private LineRenderer _zoneRing;
         private MapLayout _map;
+        private readonly Dictionary<ushort, WeaponHolder> _weapons = new Dictionary<ushort, WeaponHolder>();
+        private float _selfPitch, _selfAim;
+        private bool _selfHidden;
+        private int _tickRate = 30;
+        private Renderer[] _selfRenderers;
+
+        public CombatEffects Effects { get; private set; }
+
+        public WeaponHolder WeaponOf(ushort id) => _weapons.TryGetValue(id, out WeaponHolder h) ? h : null;
+
+        /// <summary>The local player's view pitch (degrees), aim blend, and whether the body is hidden (scoped).</summary>
+        public void SetSelfView(float pitchDegrees, float aim, bool hidden, int tickRate)
+        {
+            _selfPitch = pitchDegrees;
+            _selfAim = aim;
+            _selfHidden = hidden;
+            _tickRate = tickRate;
+        }
 
         public OnlineViews(Transform root) => _root = root;
 
@@ -40,6 +62,7 @@ namespace RWBR.Client.Online
             Clear();
             _map = map;
             _lineMaterial = new Material(Shader.Find("Sprites/Default"));
+            Effects = new CombatEffects(_root);
             for (int i = 0; i < map.Loot.Count; i++)
             {
                 LootSpawn item = map.Loot[i];
@@ -76,6 +99,10 @@ namespace RWBR.Client.Online
                         root.transform.SetPositionAndRotation(ToUnity(selfPosition), Quaternion.Euler(0, selfYawDegrees, 0));
                         Pose(root, alive, selfMotor.Height, SelfColor, e.PlayerId);
                         SelfTransform = root.transform;
+                        _selfRenderers ??= root.transform.GetChild(0).GetComponentsInChildren<Renderer>();
+                        foreach (Renderer r in _selfRenderers)
+                            if (r.enabled == _selfHidden) r.enabled = !_selfHidden;
+                        UpdateWeapon(e, selfMotor.EyeHeight, _selfPitch, _selfAim, _selfHidden, time);
                         continue;
                     }
 
@@ -83,6 +110,7 @@ namespace RWBR.Client.Online
                     root.transform.SetPositionAndRotation(ToUnity(p), Quaternion.Euler(0, yaw * Mathf.Rad2Deg, 0));
                     float h = (sampled.Flags & PlayerFlags.Crouched) != 0 ? GameRules.CrouchHeight : GameRules.PlayerHeight;
                     Pose(root, alive, h, OtherColor, e.PlayerId);
+                    UpdateWeapon(sampled, (sampled.Flags & PlayerFlags.Crouched) != 0 ? GameRules.CrouchEyeHeight : GameRules.EyeHeight, 0, 0, false, time);
                 }
             }
 
@@ -94,6 +122,7 @@ namespace RWBR.Client.Online
             {
                 Object.Destroy(_bodies[id]);
                 _bodies.Remove(id);
+                _weapons.Remove(id);
                 _deadShown.Remove(id);
             }
 
@@ -120,6 +149,7 @@ namespace RWBR.Client.Online
                 }
             }
 
+            Effects?.Update(time);
             for (int i = _tracers.Count - 1; i >= 0; i--)
             {
                 if (time < _tracers[i].Until) continue;
@@ -128,10 +158,16 @@ namespace RWBR.Client.Online
             }
         }
 
-        public void AddTracer(SVector3 from, SVector3 to, float time)
+        /// <summary>A shot tracer from <paramref name="start"/> (the muzzle) or, without one, from just ahead of the eye.</summary>
+        public void AddTracer(SVector3 from, SVector3 to, float time, Vector3? start = null)
         {
             Vector3 a = ToUnity(from), b = ToUnity(to);
             Vector3 dir = (b - a).normalized;
+            if (start.HasValue)
+            {
+                a = start.Value;
+                dir = Vector3.zero;
+            }
             var go = new GameObject("Tracer");
             go.transform.SetParent(_root, false);
             LineRenderer line = go.AddComponent<LineRenderer>();
@@ -152,7 +188,11 @@ namespace RWBR.Client.Online
             foreach (GameObject go in _loot) Object.Destroy(go);
             foreach ((LineRenderer line, float _) in _tracers) Object.Destroy(line.gameObject);
             if (_zoneRing != null) Object.Destroy(_zoneRing.gameObject);
+            if (Effects != null) Effects.Destroy();
+            Effects = null;
             _bodies.Clear();
+            _weapons.Clear();
+            _selfRenderers = null;
             _deadShown.Clear();
             _loot.Clear();
             _tracers.Clear();
@@ -169,6 +209,7 @@ namespace RWBR.Client.Online
             visor.transform.localPosition = new Vector3(0, 0.55f, 0.42f);
             visor.transform.localScale = new Vector3(0.7f, 0.12f, 0.2f);
             _bodies[id] = root;
+            _weapons[id] = new WeaponHolder(root.transform);
             return root;
         }
 
@@ -191,6 +232,27 @@ namespace RWBR.Client.Online
                 if (!shownDead) PracticeViews.SetColor(body.gameObject, DeadColor);
                 _deadShown[id] = true;
             }
+        }
+
+        private void UpdateWeapon(SnapshotEntry e, float eyeHeight, float pitch, float aim, bool hidden, float time)
+        {
+            float reload = -1;
+            if ((e.Flags & PlayerFlags.Reloading) != 0)
+            {
+                // Snapshots say "reloading" but not how far; animate a loop at the weapon's reload length.
+                float length = WeaponCatalog.IsValid(e.Weapon) ? WeaponCatalog.Get(e.Weapon).ReloadSeconds : 2f;
+                reload = Mathf.Repeat(time / length, 1f);
+            }
+            _weapons[e.PlayerId].Update(new WeaponPose
+            {
+                Weapon = (e.Flags & PlayerFlags.HasWeapon) != 0 ? e.Weapon : -1,
+                PitchDegrees = pitch,
+                Aim = aim,
+                Reload = reload,
+                Alive = (e.Flags & PlayerFlags.Alive) != 0,
+                Crouched = (e.Flags & PlayerFlags.Crouched) != 0,
+                Hidden = hidden,
+            }, eyeHeight, time, Time.deltaTime);
         }
 
         private static Vector3 ToUnity(SVector3 v) => new Vector3(v.X, v.Y, v.Z);

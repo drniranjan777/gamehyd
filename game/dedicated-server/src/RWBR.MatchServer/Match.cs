@@ -480,7 +480,7 @@ public sealed class Match
 
         MotorState m = shooter.Motor;
         bool moving = cmd.MoveX * cmd.MoveX + cmd.MoveZ * cmd.MoveZ > 0.01f;
-        float spread = w.SpreadFor(moving, m.Crouched, !m.Grounded);
+        float spread = w.SpreadFor(moving, m.Crouched, !m.Grounded, cmd.Has(InputButtons.Aim));
 
         // Lag compensation: test targets where the shooter saw them, but never further back than MaxRewind.
         long maxRewind = _historyLength - 2;

@@ -17,11 +17,12 @@ namespace RWBR.Client.Player
         Inventory,
         Pause,
         Switch,
+        Aim,
     }
 
     /// <summary>
     /// Mobile controls: floating move stick on the left, drag-to-look on the right (also while holding Fire),
-    /// and on-screen buttons. Layout is in screen fractions so it scales with resolution. Drawn by the HUD.
+    /// AIM toggles aiming down sights, and on-screen buttons. Layout is in screen fractions so it scales with resolution. Drawn by the HUD.
     /// </summary>
     public sealed class TouchControls : IPlayerInputSource
     {
@@ -64,6 +65,7 @@ namespace RWBR.Client.Player
             new ButtonLayout { Button = TouchButton.Inventory, Label = "BAG", Center = new Vector2(0.05f, 0.90f), Radius = 0.05f },
             new ButtonLayout { Button = TouchButton.Pause, Label = "| |", Center = new Vector2(0.96f, 0.90f), Radius = 0.045f },
             new ButtonLayout { Button = TouchButton.Switch, Label = "SWAP", Center = new Vector2(0.80f, 0.55f), Radius = 0.05f },
+            new ButtonLayout { Button = TouchButton.Aim, Label = "AIM", Center = new Vector2(0.73f, 0.27f), Radius = 0.06f },
         };
 
         private readonly Dictionary<int, Tracked> _touches = new Dictionary<int, Tracked>();
@@ -158,6 +160,7 @@ namespace RWBR.Client.Player
                     case TouchButton.Inventory: f.InventoryToggled = true; break;
                     case TouchButton.Pause: f.PausePressed = true; break;
                     case TouchButton.Switch: f.SwitchPressed = true; break;
+                    case TouchButton.Aim: f.AimToggled = true; break;
                 }
                 return new Tracked { Role = Role.Button, Button = b.Button, Origin = pos, Last = pos };
             }

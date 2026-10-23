@@ -32,14 +32,14 @@ public class WeaponCatalogTests
         Assert.Equal(WeaponCatalog.Sniper, WeaponCatalog.IndexOf("longshot_sr"));
     }
 
-    /// <summary>The database's balance rows (migration 0006) must equal the runtime catalog, value by value.</summary>
+    /// <summary>The database's latest balance rows (migration 0010, v4) must equal the runtime catalog, value by value.</summary>
     [Fact]
     public void Database_balance_rows_match_the_catalog()
     {
         string dir = AppContext.BaseDirectory;
         while (dir != null && !Directory.Exists(Path.Combine(dir, "database", "migrations"))) dir = Path.GetDirectoryName(dir)!;
         Assert.NotNull(dir);
-        string sql = File.ReadAllText(Path.Combine(dir!, "database", "migrations", "0006_weapons_and_city_map.sql"));
+        string sql = File.ReadAllText(Path.Combine(dir!, "database", "migrations", "0010_weapon_balance_v4.sql"));
         var rows = Regex.Matches(sql, @"\((\d+), '([a-z0-9_]+)', '(\{[^']*\})'\)");
         Assert.Equal(WeaponCatalog.Count, rows.Count);
         foreach (System.Text.RegularExpressions.Match row in rows)
@@ -61,8 +61,11 @@ public class WeaponCatalogTests
             Same("spreadDegrees", w.SpreadDegrees);
             Same("movingSpreadDegrees", w.MovingSpreadDegrees);
             Same("airborneSpreadDegrees", w.AirborneSpreadDegrees);
+            Same("aimSpreadMultiplier", w.AimSpreadMultiplier);
+            Same("aimZoom", w.AimZoom);
         }
-        Assert.Contains("767DC0BCF7944070946E4FDC2A6D7C7CFBABCB7A5CC818EC32295409EF7089D3", sql); // city geometry pin
+        string v3 = File.ReadAllText(Path.Combine(dir!, "database", "migrations", "0006_weapons_and_city_map.sql"));
+        Assert.Contains("767DC0BCF7944070946E4FDC2A6D7C7CFBABCB7A5CC818EC32295409EF7089D3", v3); // city geometry pin
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using RWBR.Client.Audio;
+using RWBR.Client.Combat;
 using RWBR.Client.Greybox;
 using RWBR.Client.Player;
 using RWBR.Client.Settings;
@@ -58,7 +59,7 @@ namespace RWBR.Client.Online
         private long _nextLocalShotTick;
         private bool _crouchToggle;
         private bool _jumpLatched, _reloadLatched, _interactLatched, _healLatched;
-        private int _recoilSign = 1;
+        private bool _aimToggle;
         private bool _mapReady;
         private double _lastReconnectAttempt;
         private float _lastShotTime = -10f;
@@ -125,6 +126,7 @@ namespace RWBR.Client.Online
 
         public float YawDegrees => ViewYaw;
         public float PitchDegrees => ViewPitch;
+        public AimState Aim { get; } = new AimState();
 
         private void Awake()
         {
@@ -325,9 +327,14 @@ namespace RWBR.Client.Online
             if (frame.PausePressed) Paused = !Paused;
             UpdateCursor();
 
+            bool armed = SelfAlive && Self is { } me && (me.Flags & PlayerFlags.HasWeapon) != 0;
+            bool reloading = Self is { } self && (self.Flags & PlayerFlags.Reloading) != 0;
+            if (!Paused && frame.AimToggled) _aimToggle = !_aimToggle;
+            if (!armed) _aimToggle = false;
+            Aim.Update(!Paused && armed && !reloading && (frame.Aim || _aimToggle), armed ? SelfWeapon.AimZoom : 1f, Time.deltaTime);
             if (!Paused)
             {
-                float sens = GameSettings.Sensitivity;
+                float sens = GameSettings.Sensitivity * Aim.SensitivityScale(GameSettings.AimSensitivity);
                 ViewYaw = Mathf.Repeat(ViewYaw + frame.Look.x * sens, 360f);
                 ViewPitch = Mathf.Clamp(ViewPitch - frame.Look.y * sens, -70f, 75f);
                 _jumpLatched |= frame.JumpPressed;
@@ -355,6 +362,7 @@ namespace RWBR.Client.Online
             {
                 Prediction.DecayOffset(Time.deltaTime);
                 Touch.InteractAvailable = SelfAlive && NearestLoot() >= 0;
+                _views.SetSelfView(ViewPitch + Aim.KickPitch, Aim.Eased, Aim.Scoped, _tickRate);
                 _views.Render(Net.PlayerId, Prediction.RenderPosition, ViewYaw, Prediction.Predicted, Interp, Net.Latest, Time.time);
                 MatchSounds();
             }
@@ -475,13 +483,14 @@ namespace RWBR.Client.Online
             if (_interactLatched) buttons |= InputButtons.Interact;
             if (_healLatched) buttons |= InputButtons.Heal;
             if (_switchLatched) buttons |= InputButtons.SwitchWeapon;
+            if (Aim.Aiming) buttons |= InputButtons.Aim;
             _switchLatched = false;
             _jumpLatched = _reloadLatched = _interactLatched = _healLatched = false;
             if ((buttons & InputButtons.Jump) != 0) _crouchToggle = false;
 
             // Same trick as practice mode: rotate the stick into the aim frame so movement follows the camera.
             Vector2 move = Paused ? Vector2.zero : frame.Move;
-            float delta = ViewYaw * Mathf.Deg2Rad - yaw;
+            float delta = (ViewYaw + Aim.KickYaw) * Mathf.Deg2Rad - yaw;
             float cos = Mathf.Cos(delta), sin = Mathf.Sin(delta);
             return new InputCommand
             {
@@ -497,7 +506,7 @@ namespace RWBR.Client.Online
 
         private void AimAngles(out float yaw, out float pitch)
         {
-            Quaternion view = Quaternion.Euler(ViewPitch, ViewYaw, 0);
+            Quaternion view = Quaternion.Euler(ViewPitch + Aim.KickPitch, ViewYaw + Aim.KickYaw, 0);
             Vector3 camForward = view * Vector3.forward;
             Camera cam = Camera.main;
             Vector3 camPos = cam != null ? cam.transform.position : CameraPivot - camForward * 3.6f;
@@ -546,23 +555,38 @@ namespace RWBR.Client.Online
 
             MotorState m = Prediction.Predicted;
             bool moving = cmd.MoveX * cmd.MoveX + cmd.MoveZ * cmd.MoveZ > 0.01f;
-            CurrentSpreadDegrees = weapon.SpreadFor(moving, m.Crouched, !m.Grounded);
+            CurrentSpreadDegrees = weapon.SpreadFor(moving, m.Crouched, !m.Grounded, cmd.Has(InputButtons.Aim));
             SVector3 origin = m.Eye;
             uint seed = Simulation.ShotSeed(Net.PlayerId, cmd.Sequence);
+            WeaponHolder holder = _views.WeaponOf(Net.PlayerId);
+            Vector3? muzzle = holder?.Current != null ? holder.MuzzlePosition : (Vector3?)null;
+            CombatEffects effects = _views.Effects;
             for (int p = 0; p < Math.Max(1, weapon.Pellets); p++)
             {
                 // Same pellet seeds as Ballistics.Fire, so the tracers follow the server's rays.
                 SVector3 dir = Simulation.SpreadDirection(cmd.Yaw, cmd.Pitch, CurrentSpreadDegrees, p == 0 ? seed : seed + (uint)p * 0x9E3779B9u);
                 float t = Simulation.WallDistance(origin, dir, weapon.Range, Map);
                 float? hit = RemoteHit(origin, dir, weapon.Range, out _);
-                if (hit.HasValue && hit.Value < t) t = hit.Value;
-                _views.AddTracer(origin, origin + dir * t, Time.time);
+                bool player = hit.HasValue && hit.Value < t;
+                if (player) t = hit.Value;
+                SVector3 end = origin + dir * t;
+                _views.AddTracer(origin, end, Time.time, muzzle);
+                // Cosmetic: the server decides real hits (hit markers come from its snapshots).
+                if (effects != null && t < weapon.Range - 0.05f)
+                    effects.Impact(new Vector3(end.X, end.Y, end.Z), -new Vector3(dir.X, dir.Y, dir.Z), player);
             }
             _lastShotTime = Time.time;
             ShotsFiredLocally++;
             GameAudio.Instance.Gunshot(weapon, new Vector3(origin.X, origin.Y, origin.Z), local: true);
-            ViewPitch -= weapon.RecoilPitchDegrees;
-            ViewYaw += weapon.RecoilYawDegrees * (_recoilSign = -_recoilSign);
+            if (holder?.Current != null && effects != null)
+            {
+                holder.Fired(weapon.RecoilPitchDegrees);
+                effects.MuzzleFlash(holder.MuzzlePosition, holder.Forward, true, Time.time);
+                if (weapon.Class != WeaponClass.Shotgun) effects.Shell(holder.EjectorPosition, holder.Right, holder.Forward);
+            }
+            Vector2 climb = Aim.Recoil(weapon.RecoilPitchDegrees, weapon.RecoilYawDegrees);
+            ViewPitch = Mathf.Clamp(ViewPitch + climb.x, -70f, 75f);
+            ViewYaw = Mathf.Repeat(ViewYaw + climb.y, 360f);
         }
 
         public int ShotsFiredLocally { get; private set; }
@@ -583,11 +607,18 @@ namespace RWBR.Client.Online
                     WeaponDefinition w = WeaponCatalog.Get(e.Weapon);
                     float eye = (seen.Flags & PlayerFlags.Crouched) != 0 ? GameRules.CrouchEyeHeight : GameRules.EyeHeight;
                     SVector3 origin = pos + new SVector3(0, eye, 0);
+                    WeaponHolder holder = _views.WeaponOf(e.PlayerId);
+                    Vector3? muzzle = holder?.Current != null ? holder.MuzzlePosition : (Vector3?)null;
+                    if (muzzle.HasValue && _views.Effects != null)
+                    {
+                        holder.Fired(w.RecoilPitchDegrees);
+                        _views.Effects.MuzzleFlash(muzzle.Value, holder.Forward, false, Time.time);
+                    }
                     for (int i = 0; i < shots; i++)
                     {
                         SVector3 dir = Simulation.SpreadDirection(yaw, 0, w.SpreadDegrees + 1f, (uint)(e.ShotCounter * 31 + i));
                         float range = Simulation.WallDistance(origin, dir, Math.Min(w.Range, 150f), Map);
-                        _views.AddTracer(origin, origin + dir * range, Time.time);
+                        _views.AddTracer(origin, origin + dir * range, Time.time, muzzle);
                         RemoteShotsSeen++;
                         RemoteShotFired?.Invoke(e.PlayerId, origin, w);
                     }

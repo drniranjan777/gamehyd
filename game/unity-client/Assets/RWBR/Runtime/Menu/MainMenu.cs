@@ -92,6 +92,14 @@ namespace RWBR.Client.Menu
             SceneManager.LoadScene(PracticeScene);
         }
 
+        /// <summary>Firing range: every weapon, targets from 10 to 200 m, accuracy and damage readouts.</summary>
+        public static void PlayTrainingRange()
+        {
+            PracticeGame.RequestedMap = MapLayout.TrainingRangeVersion;
+            PracticeGame.TutorialRequested = false;
+            SceneManager.LoadScene(PracticeScene);
+        }
+
         public static void PlayCityPractice()
         {
             PracticeGame.RequestedMap = CityMap.Version;
@@ -276,7 +284,8 @@ namespace RWBR.Client.Menu
         private void DrawHome()
         {
             float y = 170;
-            if (Button(y, TutorialDirector.Done ? "Training ground" : "Training ground (tutorial)")) PlayTrainingGround();
+            if (GUI.Button(new Rect(40, y, 250, 52), TutorialDirector.Done ? "Training ground" : "Training ground (tutorial)", _button)) PlayTrainingGround();
+            if (GUI.Button(new Rect(296, y, 184, 52), "Firing range", _button)) PlayTrainingRange();
             if (Button(y += 56, "City practice: Hyderabad-inspired map")) PlayCityPractice();
             if (Button(y += 56, "Play online")) PlayOnline();
             if (Button(y += 66, "Profile & match history")) OpenPlatformScreen(Screen.Profile);
@@ -539,6 +548,9 @@ namespace RWBR.Client.Menu
             GUI.Label(new Rect(40, y += 56, 440, 30), $"Look sensitivity {GameSettings.Sensitivity:0.00}", _small);
             float s = GUI.HorizontalSlider(new Rect(40, y += 28, 440, 20), GameSettings.Sensitivity, GameSettings.MinSensitivity, GameSettings.MaxSensitivity);
             if (!Mathf.Approximately(s, GameSettings.Sensitivity)) GameSettings.SetSensitivity(s);
+            GUI.Label(new Rect(40, y += 26, 440, 30), $"Aim sensitivity {GameSettings.AimSensitivity:0.00}", _small);
+            float a = GUI.HorizontalSlider(new Rect(40, y += 28, 440, 20), GameSettings.AimSensitivity, GameSettings.MinAimSensitivity, GameSettings.MaxAimSensitivity);
+            if (!Mathf.Approximately(a, GameSettings.AimSensitivity)) GameSettings.SetAimSensitivity(a);
             int q = GUI.Toolbar(new Rect(40, y += 34, 440, 36), (int)GameSettings.Quality, new[] { "Low", "Medium", "High" }, _button);
             if (q != (int)GameSettings.Quality) GameSettings.SetQuality((QualityPreset)q);
             GUI.Label(new Rect(40, y += 50, 440, 26), "Volume: master / effects / interface", _small);

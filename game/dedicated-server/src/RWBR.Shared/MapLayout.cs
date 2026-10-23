@@ -179,12 +179,61 @@ namespace RWBR.Shared
             }
         }
 
+        public const string TrainingRangeVersion = "training-range-v1";
+        /// <summary>Training range firing line (z); target distances are measured from here.</summary>
+        public const float RangeFiringLine = -110f;
+        /// <summary>Target distances in metres from the firing line, one lane each (west to east).</summary>
+        public static readonly float[] RangeDistances = { 10, 25, 50, 100, 200 };
+        public static float RangeLaneX(int lane) => -16f + lane * 8f;
+
+        /// <summary>
+        /// Offline training range: a bench at the firing line with every catalog weapon and armour behind it (ammo is endless), five lanes
+        /// with a target and a distance post at 10, 25, 50, 100 and 200 m, side walls and a high backstop.
+        /// Client-only (no match server hosts it); the geometry is still fixed per version like every map.
+        /// </summary>
+        public static MapLayout TrainingRange()
+        {
+            const float line = RangeFiringLine;
+            var boxes = new List<Aabb>();
+            var kinds = new List<BoxKind>();
+            void Add(Aabb box, BoxKind kind)
+            {
+                boxes.Add(box);
+                kinds.Add(kind);
+            }
+
+            Add(Aabb.FromCenter(0, line + 1.5f, 16, 0.8f, 0.9f), BoxKind.Cover);      // bench
+            Add(Aabb.FromCenter(0, 112, 90, 4, 12), BoxKind.Wall);                     // backstop
+            Add(Aabb.FromCenter(-42, 0, 1, 230, 3), BoxKind.CompoundWall);            // side walls
+            Add(Aabb.FromCenter(42, 0, 1, 230, 3), BoxKind.CompoundWall);
+            Add(Aabb.FromCenter(0, -116, 85, 1, 3), BoxKind.CompoundWall);           // behind the firing line
+            for (int lane = 0; lane < RangeDistances.Length; lane++)
+            {
+                float z = line + RangeDistances[lane];
+                Add(Aabb.FromCenter(RangeLaneX(lane) - 2.5f, z, 0.25f, 0.25f, 2.6f), BoxKind.Pillar); // distance post
+            }
+            Add(Aabb.FromCenter(-26, line + 25, 4, 1, 1.2f), BoxKind.Cover);          // low cover for the moving targets
+            Add(Aabb.FromCenter(26, line + 50, 4, 1, 1.2f), BoxKind.Cover);
+
+            var loot = new List<LootSpawn>();
+            for (int w = 0; w < WeaponCatalog.Count; w++)
+                loot.Add(new LootSpawn((ushort)loot.Count, LootType.Weapon, new Vector3(-6.25f + w * 2.5f, 0, line - 1f), w));
+            loot.Add(new LootSpawn((ushort)loot.Count, LootType.Armor, new Vector3(-9, 0, line - 1f), (int)GameRules.MaxArmor));
+
+            return new MapLayout(TrainingRangeVersion, 140, boxes, loot, kinds, spawns: new[] { new Vector3(0, 0, line - 3.5f) });
+        }
+
         /// <summary>Resolves a published map version ("greybox-block-40-v2", "hyd-city-v1"); false when unknown.</summary>
         public static bool TryFromVersion(string version, out MapLayout layout)
         {
             if (version == CityMap.Version)
             {
                 layout = CityMap.Build();
+                return true;
+            }
+            if (version == TrainingRangeVersion)
+            {
+                layout = TrainingRange();
                 return true;
             }
             layout = GreyboxBlock(100f);

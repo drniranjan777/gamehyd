@@ -1,4 +1,5 @@
 using RWBR.Client.Diagnostics;
+using RWBR.Client.Combat;
 using RWBR.Client.Player;
 using RWBR.Client.Accessibility;
 using RWBR.Client.Settings;
@@ -65,7 +66,8 @@ namespace RWBR.Client.Online
             {
                 DrawZone(s, self.Value);
                 DrawPhase(s);
-                if (_game.SelfAlive && !_game.Paused) DrawCrosshair();
+                if (_game.Aim.Scoped) ScopeOverlay.Draw(_w, VirtualHeight, Time.time - _game.LastHitTime, _game.LastHitWasKill);
+                else if (_game.SelfAlive && !_game.Paused) DrawCrosshair();
             SoundCues.Draw(_w, VirtualHeight, Camera.main);
                 DrawVitals(s, self.Value);
                 DrawPrompt();
@@ -74,7 +76,7 @@ namespace RWBR.Client.Online
             DrawNet(net);
             if (_game.Touch.Visible && _game.InputOverride == null) DrawTouch();
             else if (!_game.MenusOpen && Cursor.lockState != CursorLockMode.Locked)
-                GUI.Label(new Rect(0, VirtualHeight * 0.62f, _w, 30), "Click to play · Esc menu", _center);
+                GUI.Label(new Rect(0, VirtualHeight * 0.62f, _w, 30), "Click to play · Right mouse aim · Esc menu", _center);
             if (_game.Paused) DrawPause();
             if (net.Result != null) DrawResult(net);
         }
@@ -273,7 +275,7 @@ namespace RWBR.Client.Online
                 if (b.Button == TouchButton.Inventory) continue; // no inventory screen online yet
                 var c = new Vector2(b.Center.x * _w, (1 - b.Center.y) * VirtualHeight);
                 float r = b.Radius * VirtualHeight;
-                Fill(new Rect(c.x - r, c.y - r, r * 2, r * 2), new Color(1, 1, 1, t.IsHeld(b.Button) ? 0.45f : 0.22f));
+                Fill(new Rect(c.x - r, c.y - r, r * 2, r * 2), new Color(1, 1, 1, t.IsHeld(b.Button) || (b.Button == TouchButton.Aim && _game.Aim.Aiming) ? 0.45f : 0.22f));
                 GUI.Label(new Rect(c.x - 50, c.y - 12, 100, 24), b.Label, new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter });
             }
         }
@@ -283,11 +285,15 @@ namespace RWBR.Client.Online
 
         private void DrawPause()
         {
-            Rect r = Panel(520, 410, "Paused");
+            Rect r = Panel(520, 470, "Paused");
             float x = r.x + 30, y = r.y + 70;
             GUI.Label(new Rect(x, y, 300, 26), $"Look sensitivity  {GameSettings.Sensitivity:0.00}", _label);
             float sens = GUI.HorizontalSlider(new Rect(x, y + 32, 460, 24), GameSettings.Sensitivity, GameSettings.MinSensitivity, GameSettings.MaxSensitivity);
             if (!Mathf.Approximately(sens, GameSettings.Sensitivity)) GameSettings.SetSensitivity(sens);
+            y += 60;
+            GUI.Label(new Rect(x, y, 300, 26), $"Aim sensitivity  {GameSettings.AimSensitivity:0.00}", _label);
+            float aim = GUI.HorizontalSlider(new Rect(x, y + 32, 460, 24), GameSettings.AimSensitivity, GameSettings.MinAimSensitivity, GameSettings.MaxAimSensitivity);
+            if (!Mathf.Approximately(aim, GameSettings.AimSensitivity)) GameSettings.SetAimSensitivity(aim);
             GUI.Label(new Rect(x, y + 70, 300, 26), "Graphics quality", _label);
             int q = GUI.Toolbar(new Rect(x, y + 100, 460, 36), (int)GameSettings.Quality, new[] { "Low", "Medium", "High" }, _button);
             if (q != (int)GameSettings.Quality) GameSettings.SetQuality((QualityPreset)q);

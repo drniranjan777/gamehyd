@@ -68,8 +68,10 @@ namespace RWBR.Shared
             else if (s.Crouched && HasHeadroom(s.Position, GameRules.PlayerHeight, map)) s.Crouched = false;
 
             float yaw = WrapYaw(input.Yaw);
-            bool sprint = input.Has(InputButtons.Sprint) && mz > 0.5f && !s.Crouched;
+            bool aiming = input.Has(InputButtons.Aim);
+            bool sprint = input.Has(InputButtons.Sprint) && mz > 0.5f && !s.Crouched && !aiming;
             float speed = s.Crouched ? GameRules.CrouchSpeed : sprint ? GameRules.SprintSpeed : GameRules.WalkSpeed;
+            if (aiming) speed *= GameRules.AimMoveSpeedFactor;
             Vector3 p = s.Position + (Right(yaw) * mx + Forward(yaw) * mz) * speed * dt;
             p = ResolveHorizontal(p, s.Position.Y, s.Height, map);
 

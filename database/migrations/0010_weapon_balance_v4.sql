@@ -1,0 +1,12 @@
+-- Weapon balance v4: aiming down sights. Damage, rate of fire and hip-fire spread are unchanged from v3; each weapon
+-- gains an aim spread multiplier (applied to standing and moving spread while aiming) and an aim zoom (the client's
+-- field of view is divided by it; 3x and above shows a scope). Aiming also slows movement to 70 % and blocks sprint.
+-- The match server's WeaponCatalog (balance v4) is the runtime source; these rows must equal it value by value.
+
+INSERT INTO weapon_balance_versions (version, weapon_id, balance) VALUES
+  (4, 'sidearm_p9', '{"damage":22,"pellets":1,"headshotMultiplier":1.8,"range":50,"falloffStart":15,"minDamageFactor":0.6,"fireIntervalSeconds":0.22,"magazineSize":12,"reloadSeconds":1.4,"switchSeconds":0.3,"spreadDegrees":0.9,"movingSpreadDegrees":1.0,"airborneSpreadDegrees":3,"aimSpreadMultiplier":0.6,"aimZoom":1.25}'),
+  (4, 'kestrel_smg', '{"damage":15,"pellets":1,"headshotMultiplier":1.5,"range":60,"falloffStart":12,"minDamageFactor":0.5,"fireIntervalSeconds":0.07,"magazineSize":32,"reloadSeconds":1.8,"switchSeconds":0.4,"spreadDegrees":1.4,"movingSpreadDegrees":0.8,"airborneSpreadDegrees":3,"aimSpreadMultiplier":0.65,"aimZoom":1.25}'),
+  (4, 'rifle_standard', '{"damage":20,"pellets":1,"headshotMultiplier":1.8,"range":120,"falloffStart":40,"minDamageFactor":0.7,"fireIntervalSeconds":0.12,"magazineSize":30,"reloadSeconds":2.0,"switchSeconds":0.5,"spreadDegrees":0.8,"movingSpreadDegrees":1.5,"airborneSpreadDegrees":4,"aimSpreadMultiplier":0.5,"aimZoom":1.5}'),
+  (4, 'pump_12', '{"damage":12,"pellets":8,"headshotMultiplier":1.25,"range":30,"falloffStart":6,"minDamageFactor":0.2,"fireIntervalSeconds":0.75,"magazineSize":6,"reloadSeconds":2.6,"switchSeconds":0.5,"spreadDegrees":4.5,"movingSpreadDegrees":0.5,"airborneSpreadDegrees":1.5,"aimSpreadMultiplier":0.85,"aimZoom":1.15}'),
+  (4, 'marksman_dmr', '{"damage":42,"pellets":1,"headshotMultiplier":2,"range":250,"falloffStart":120,"minDamageFactor":0.8,"fireIntervalSeconds":0.35,"magazineSize":10,"reloadSeconds":2.4,"switchSeconds":0.6,"spreadDegrees":0.25,"movingSpreadDegrees":2.5,"airborneSpreadDegrees":6,"aimSpreadMultiplier":0.35,"aimZoom":3}'),
+  (4, 'longshot_sr', '{"damage":85,"pellets":1,"headshotMultiplier":2.5,"range":400,"falloffStart":300,"minDamageFactor":0.9,"fireIntervalSeconds":1.4,"magazineSize":5,"reloadSeconds":3.0,"switchSeconds":0.8,"spreadDegrees":0.05,"movingSpreadDegrees":4,"airborneSpreadDegrees":8,"aimSpreadMultiplier":0.2,"aimZoom":6}');
