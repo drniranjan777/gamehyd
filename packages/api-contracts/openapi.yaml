@@ -244,6 +244,110 @@ paths:
         '204': { description: Left the queue (no-op when not queued) }
         '401': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
+  /parties/current:
+    get:
+      tags: [Parties]
+      security: [{ bearer: [] }]
+      description: The player's party (Duo/Squad), or null. Members poll this and matchmaking status while in a party.
+      responses:
+        '200':
+          description: Current party
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [party]
+                properties:
+                  party:
+                    oneOf:
+                      - type: 'null'
+                      - $ref: '#/components/schemas/Party'
+        '401': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Parties]
+      security: [{ bearer: [] }]
+      description: Leave the party (and its queue). The longest-standing member leads next; an empty party is deleted.
+      responses:
+        '204': { description: Left (no-op when not in a party) }
+        '401': { $ref: '#/components/responses/Error' }
+  /parties:
+    post:
+      tags: [Parties]
+      security: [{ bearer: [] }]
+      description: Create a party and lead it (leaves any current party). Share its code with friends.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                mode: { enum: [DUO, SQUAD], default: DUO }
+      responses:
+        '201':
+          description: The new party
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Party' }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /parties/join:
+    post:
+      tags: [Parties]
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string, pattern: '^[A-Za-z0-9]{6}$' }
+      responses:
+        '200':
+          description: The joined party
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Party' }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          {
+            description: Party full (PARTY_FULL) or already looking for a match (PARTY_QUEUED),
+            content:
+              { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } },
+          }
+        '422': { $ref: '#/components/responses/Error' }
+  /parties/current/mode:
+    put:
+      tags: [Parties]
+      security: [{ bearer: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [mode]
+              properties:
+                mode: { enum: [DUO, SQUAD] }
+      responses:
+        '200':
+          description: The party with its new mode
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Party' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
   /matchmaking/status:
     get:
       tags: [Matchmaking]
@@ -1645,7 +1749,7 @@ components:
       properties:
         matchId: { type: string, format: uuid }
         mapVersion: { type: string }
-        mode: { const: SOLO }
+        mode: { enum: [SOLO, DUO, SQUAD] }
         completedAt: { type: string, format: date-time }
         placement: { type: integer, minimum: 1 }
         players: { type: integer, minimum: 1 }
@@ -1686,10 +1790,36 @@ components:
       additionalProperties: false
       required: [mode, region, clientVersion]
       properties:
-        mode: { const: SOLO }
+        mode:
+          enum: [SOLO, DUO, SQUAD]
+          description: >-
+            In a party only the leader queues, for the whole party, in DUO or SQUAD (the party must fit the team).
+            Solo players in DUO/SQUAD are teamed up with other solo players.
         region: { type: string, pattern: '^[A-Z]{2}-[A-Z]{2,10}$', examples: [IN-SOUTH] }
         clientVersion: { type: string, pattern: '^[0-9]+\.[0-9]+\.[0-9]+$' }
         partyId: { type: 'null' }
+    PartyMember:
+      type: object
+      additionalProperties: false
+      required: [accountId, displayName, leader]
+      properties:
+        accountId: { type: string, format: uuid }
+        displayName: { type: string }
+        leader: { type: boolean }
+    Party:
+      type: object
+      additionalProperties: false
+      required: [id, code, mode, leaderId, members]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, pattern: '^[A-HJ-NP-Z2-9]{6}$' }
+        mode: { enum: [DUO, SQUAD] }
+        leaderId: { type: string, format: uuid }
+        members:
+          type: array
+          minItems: 1
+          maxItems: 4
+          items: { $ref: '#/components/schemas/PartyMember' }
     Seat:
       type: object
       additionalProperties: false
@@ -1853,6 +1983,11 @@ components:
                 lootTable: { $ref: '#/components/schemas/LootTable' }
                 fillBots: { type: boolean }
                 botDifficulty: { enum: [EASY, NORMAL, HARD] }
+                teamSize:
+                  type: integer
+                  minimum: 1
+                  maximum: 4
+                  description: Players per team (Solo 1, Duo 2, Squad 4); each seat ticket names the player's team.
     ResultSubmission:
       type: object
       additionalProperties: false
@@ -1870,6 +2005,13 @@ components:
           minimum: 0
           maximum: 99
           description: Fill bots that played. Not listed; placements and rewards count the whole field.
+        teams:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: >-
+            Teams in the field (Duo/Squad, players' and bots'). Teammates share a placement, placements run 1..teams
+            and every participant names their team. Without it every player and bot is ranked alone.
         participants:
           type: array
           minItems: 1
@@ -1881,6 +2023,7 @@ components:
             properties:
               accountId: { type: string, format: uuid }
               placement: { type: integer, minimum: 1, maximum: 100 }
+              team: { type: integer, minimum: 0, maximum: 99 }
               kills: { type: integer, minimum: 0, maximum: 99 }
               survivalSeconds: { type: integer, minimum: 0, maximum: 7200 }
     ResultAccepted:

@@ -535,6 +535,213 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/parties/current': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description The player's party (Duo/Squad), or null. Members poll this and matchmaking status while in a party. */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Current party */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': {
+              party: null | components['schemas']['Party'];
+            };
+          };
+        };
+        401: components['responses']['Error'];
+      };
+    };
+    put?: never;
+    post?: never;
+    /** @description Leave the party (and its queue). The longest-standing member leads next; an empty party is deleted. */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Left (no-op when not in a party) */
+        204: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content?: never;
+        };
+        401: components['responses']['Error'];
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/parties': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** @description Create a party and lead it (leaves any current party). Share its code with friends. */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': {
+            /**
+             * @default DUO
+             * @enum {unknown}
+             */
+            mode?: 'DUO' | 'SQUAD';
+          };
+        };
+      };
+      responses: {
+        /** @description The new party */
+        201: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Party'];
+          };
+        };
+        401: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/parties/join': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': {
+            code: string;
+          };
+        };
+      };
+      responses: {
+        /** @description The joined party */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Party'];
+          };
+        };
+        401: components['responses']['Error'];
+        404: components['responses']['Error'];
+        /** @description Party full (PARTY_FULL) or already looking for a match (PARTY_QUEUED) */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ErrorEnvelope'];
+          };
+        };
+        422: components['responses']['Error'];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/parties/current/mode': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': {
+            /** @enum {unknown} */
+            mode: 'DUO' | 'SQUAD';
+          };
+        };
+      };
+      responses: {
+        /** @description The party with its new mode */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Party'];
+          };
+        };
+        401: components['responses']['Error'];
+        403: components['responses']['Error'];
+        404: components['responses']['Error'];
+        409: components['responses']['Error'];
+        422: components['responses']['Error'];
+      };
+    };
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/matchmaking/status': {
     parameters: {
       query?: never;
@@ -3409,8 +3616,8 @@ export interface components {
       /** Format: uuid */
       matchId: string;
       mapVersion: string;
-      /** @constant */
-      mode: 'SOLO';
+      /** @enum {unknown} */
+      mode: 'SOLO' | 'DUO' | 'SQUAD';
       /** Format: date-time */
       completedAt: string;
       placement: number;
@@ -3437,12 +3644,31 @@ export interface components {
       manifest: Record<string, never>;
     };
     QueueRequest: {
-      /** @constant */
-      mode: 'SOLO';
+      /**
+       * @description In a party only the leader queues, for the whole party, in DUO or SQUAD (the party must fit the team). Solo players in DUO/SQUAD are teamed up with other solo players.
+       * @enum {unknown}
+       */
+      mode: 'SOLO' | 'DUO' | 'SQUAD';
       /** @example IN-SOUTH */
       region: string;
       clientVersion: string;
       partyId?: null;
+    };
+    PartyMember: {
+      /** Format: uuid */
+      accountId: string;
+      displayName: string;
+      leader: boolean;
+    };
+    Party: {
+      /** Format: uuid */
+      id: string;
+      code: string;
+      /** @enum {unknown} */
+      mode: 'DUO' | 'SQUAD';
+      /** Format: uuid */
+      leaderId: string;
+      members: components['schemas']['PartyMember'][];
     };
     Seat: {
       /** Format: uuid */
@@ -3571,6 +3797,8 @@ export interface components {
         fillBots?: boolean;
         /** @enum {unknown} */
         botDifficulty?: 'EASY' | 'NORMAL' | 'HARD';
+        /** @description Players per team (Solo 1, Duo 2, Squad 4); each seat ticket names the player's team. */
+        teamSize?: number;
       };
     };
     ResultSubmission: {
@@ -3585,10 +3813,13 @@ export interface components {
       durationSeconds: number;
       /** @description Fill bots that played. Not listed; placements and rewards count the whole field. */
       bots?: number;
+      /** @description Teams in the field (Duo/Squad, players' and bots'). Teammates share a placement, placements run 1..teams and every participant names their team. Without it every player and bot is ranked alone. */
+      teams?: number;
       participants: {
         /** Format: uuid */
         accountId: string;
         placement: number;
+        team?: number;
         kills: number;
         survivalSeconds: number;
       }[];

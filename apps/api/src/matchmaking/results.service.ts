@@ -14,7 +14,20 @@ export interface ResultSubmission {
   durationSeconds: number;
   /** Fill bots that played (not listed; they count towards placements and the field size). */
   bots?: number;
-  participants: { accountId: string; placement: number; kills: number; survivalSeconds: number }[];
+  /** Teams in the field (Duo/Squad); teammates share a placement and placements run 1..teams. */
+  teams?: number;
+  participants: {
+    accountId: string;
+    placement: number;
+    kills: number;
+    survivalSeconds: number;
+    team?: number;
+  }[];
+}
+
+/** Places to be ranked over: teams in Duo/Squad, else every player and bot. */
+function fieldSize(r: ResultSubmission): number {
+  return r.teams ?? r.participants.length + (r.bots ?? 0);
 }
 
 type Outcome = 'ACCEPTED' | 'DUPLICATE' | 'REJECTED';
@@ -91,24 +104,46 @@ export class ResultsService {
     matchId: string,
     r: ResultSubmission,
   ): Promise<void> {
-    const { rows } = await c.query<{ user_id: string }>(
-      'SELECT user_id FROM match_participants WHERE match_id = $1',
+    const { rows } = await c.query<{ user_id: string; team: number | null }>(
+      'SELECT user_id, team FROM match_participants WHERE match_id = $1',
       [matchId],
     );
-    const roster = new Set(rows.map((x) => x.user_id));
+    const roster = new Map(rows.map((x) => [x.user_id, x.team]));
     const bots = r.bots ?? 0;
-    const n = r.participants.length + bots; // the whole field, players and bots
+    const people = r.participants.length + bots; // the whole field, players and bots
+    const n = fieldSize(r);
     const ids = new Set(r.participants.map((p) => p.accountId));
-    const placements = new Set(r.participants.map((p) => p.placement));
 
     const problems: string[] = [];
     if (ids.size !== r.participants.length) problems.push('duplicate accountId');
     for (const p of r.participants)
       if (!roster.has(p.accountId))
         problems.push(`account ${p.accountId} was not assigned to this match`);
-    if (placements.size !== r.participants.length || [...placements].some((x) => x < 1 || x > n))
-      problems.push('placements must be within 1..n (players and bots), each once');
-    if (r.participants.reduce((s, p) => s + p.kills, 0) > n - 1)
+    if (r.participants.some((p) => p.placement < 1 || p.placement > n))
+      problems.push('placements must be within 1..n (the field)');
+    if (r.teams === undefined) {
+      if (new Set(r.participants.map((p) => p.placement)).size !== r.participants.length)
+        problems.push('each placement once');
+    } else {
+      // Teams: the platform's team for every player; teammates share a placement, teams never do.
+      const placeOfTeam = new Map<number, number>();
+      const teamOfPlace = new Map<number, number>();
+      for (const p of r.participants) {
+        const assigned = roster.get(p.accountId);
+        if (p.team === undefined) problems.push(`account ${p.accountId} has no team`);
+        else if (assigned !== undefined && assigned !== null && assigned !== p.team)
+          problems.push(`account ${p.accountId} was not in team ${p.team}`);
+        if (p.team === undefined) continue;
+        if ((placeOfTeam.get(p.team) ?? p.placement) !== p.placement)
+          problems.push(`team ${p.team} has different placements`);
+        if ((teamOfPlace.get(p.placement) ?? p.team) !== p.team)
+          problems.push(`placement ${p.placement} is held by two teams`);
+        placeOfTeam.set(p.team, p.placement);
+        teamOfPlace.set(p.placement, p.team);
+      }
+      if (placeOfTeam.size > n) problems.push('more teams than the field');
+    }
+    if (r.participants.reduce((s, p) => s + p.kills, 0) > people - 1)
       problems.push('more eliminations than opponents');
     if (r.participants.some((p) => p.survivalSeconds > r.durationSeconds))
       problems.push('survival longer than the match');
@@ -118,7 +153,8 @@ export class ResultsService {
     if (
       r.reason === 'WINNER' &&
       !botWon &&
-      (!r.winnerAccountId || first?.accountId !== r.winnerAccountId)
+      (!r.winnerAccountId ||
+        r.participants.find((p) => p.accountId === r.winnerAccountId)?.placement !== 1)
     )
       problems.push('winner must hold placement 1');
     if (r.reason !== 'WINNER' && r.winnerAccountId)
@@ -138,7 +174,8 @@ export class ResultsService {
     r: ResultSubmission,
     hash: Buffer,
   ): Promise<void> {
-    const n = r.participants.length + (r.bots ?? 0); // rewards scale with the whole field
+    const n = fieldSize(r); // rewards scale with the whole field (teams in Duo/Squad)
+    const botWon = r.reason === 'WINNER' && !r.winnerAccountId;
     await c.query(
       `UPDATE matches SET status = 'COMPLETED', completion_reason = $2, winner_user_id = $3, duration_seconds = $4::int,
               result_sha256 = $5, ended_at = now(), started_at = COALESCE(started_at, now() - make_interval(secs => $4::int))
@@ -149,7 +186,8 @@ export class ResultsService {
     // Double-XP events: the multiplier in force when the result arrives (retries are duplicates and pay nothing).
     const { xpMultiplier } = (await this.gameConfig.current()).config;
     for (const p of r.participants) {
-      const won = r.reason === 'WINNER' && p.accountId === r.winnerAccountId;
+      // The winner's whole team wins (in Solo that is the winner alone).
+      const won = r.reason === 'WINNER' && !botWon && p.placement === 1;
       const base = matchReward(p.placement, n, p.kills, won);
       const reward = { ...base, xp: Math.round(base.xp * xpMultiplier) };
       await c.query(

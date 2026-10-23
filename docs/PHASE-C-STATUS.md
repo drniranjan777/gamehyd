@@ -34,10 +34,10 @@ A full Solo battle royale on the city against bots, offline, from the main menu:
 
 ### Tests
 
-| Suite          | Result                                                                                                                                                                                                                                                                         |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| .NET           | 84/84. New: a 12-player bot match on the city, hosted in-process, runs to a result with the local player placed, bots looting and fighting; pausing stops ticks and a 5 s frame runs only 4 ticks                                                                       |
-| Unity EditMode | 57/57                                                                                                                                                                                                                                                                          |
+| Suite          | Result                                                                                                                                                                                                                                                                       |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| .NET           | 84/84. New: a 12-player bot match on the city, hosted in-process, runs to a result with the local player placed, bots looting and fighting; pausing stops ticks and a 5 s frame runs only 4 ticks                                                                            |
+| Unity EditMode | 57/57                                                                                                                                                                                                                                                                        |
 | Unity PlayMode | 18 passed, 2 skipped (the two platform tests that need `TEST_ADMIN_DATABASE_URL`). New, end to end in the game: load the bot match, join, countdown, pause stops the match, walk 1 s and the authoritative match moves the player, play to the result, back to the main menu |
 
 ### Performance
@@ -56,20 +56,20 @@ the same code, and practice uses the same inventory rules.
 
 **Items** (item balance version 1, `Items.cs`):
 
-| Item                                 | What it does                                                                                                                  |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| Ammo: light, medium, shells, heavy   | Light for the pistol and SMG, medium for the rifle and DMR, shells for the shotgun, heavy for the sniper. Each weapon reloads only from its own |
-| Bandage                              | +15 health, only up to 75, in 2.5 s                                                                                           |
-| Medkit                               | +75 health in 5 s (was +50 in 3 s)                                                                                            |
-| Energy drink                         | 2 s to drink, then +25 health a little at a time over 10 s                                                                    |
-| Vest, level 1 to 3                   | 40, 70 or 100 points; absorbs half of body damage while it has points                                                         |
-| Helmet, level 1 to 3                 | 40, 70 or 100 points; absorbs half of head damage while it has points, then breaks                                            |
-| Backpack, level 1 to 3               | Carrying capacity 200, 250 or 300 (100 without one)                                                                          |
-| 4x scope                             | Rifle, SMG, DMR: aims at 4x zoom (or more) with 20 % tighter aimed spread                                                    |
-| Extended magazine                    | Everything but shotgun and sniper: 50 % more rounds                                                                          |
-| Grip                                 | Rifle, SMG, DMR: 25 % less moving spread, 30 % less recoil                                                                   |
-| Frag grenade                         | 3.5 s fuse, bounces off walls and floors, up to 110 damage falling to 0 at 6 m, blocked by walls between                      |
-| Smoke grenade                        | A 5.5 m cloud after 1.5 s that lasts 14 s; you can't see through it, and bots can't either                                   |
+| Item                               | What it does                                                                                                                                    |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ammo: light, medium, shells, heavy | Light for the pistol and SMG, medium for the rifle and DMR, shells for the shotgun, heavy for the sniper. Each weapon reloads only from its own |
+| Bandage                            | +15 health, only up to 75, in 2.5 s                                                                                                             |
+| Medkit                             | +75 health in 5 s (was +50 in 3 s)                                                                                                              |
+| Energy drink                       | 2 s to drink, then +25 health a little at a time over 10 s                                                                                      |
+| Vest, level 1 to 3                 | 40, 70 or 100 points; absorbs half of body damage while it has points                                                                           |
+| Helmet, level 1 to 3               | 40, 70 or 100 points; absorbs half of head damage while it has points, then breaks                                                              |
+| Backpack, level 1 to 3             | Carrying capacity 200, 250 or 300 (100 without one)                                                                                             |
+| 4x scope                           | Rifle, SMG, DMR: aims at 4x zoom (or more) with 20 % tighter aimed spread                                                                       |
+| Extended magazine                  | Everything but shotgun and sniper: 50 % more rounds                                                                                             |
+| Grip                               | Rifle, SMG, DMR: 25 % less moving spread, 30 % less recoil                                                                                      |
+| Frag grenade                       | 3.5 s fuse, bounces off walls and floors, up to 110 damage falling to 0 at 6 m, blocked by walls between                                        |
+| Smoke grenade                      | A 5.5 m cloud after 1.5 s that lasts 14 s; you can't see through it, and bots can't either                                                      |
 
 **Inventory:**
 
@@ -148,18 +148,18 @@ On the city:
 
 ### Tests (C2)
 
-| Suite          | Result                                                                                                                                                                                                                                                                                                                                     |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Suite          | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | .NET           | 97/97. New: weight limits and bigger backpacks; calibres per weapon; attachments fit and change balance, magazines return rounds; helmet and vest absorption, upgrades drop the old one; the three heals; drops and elimination piles; the city table holds every item and is deterministic; drop then pick up by id, partial pickups leave the rest; eliminated players' items in snapshots; ground items resent only on change; a frag bounces off a wall, hurts in the open and not behind cover; smoke blocks lines of sight and clears; heal buttons |
-| Unity EditMode | 60/60. New: the inventory mirror from a snapshot (scope zoom, calibre reserve, weight, what can be taken); practice hides grenades; the THROW button overlaps nothing at 16:9 and 19.5:9                                                                                                                                                     |
-| Unity PlayMode | 19 passed, 2 skipped (platform tests without `TEST_ADMIN_DATABASE_URL`). New, in an offline match: the inventory arrives, a dropped bandage lies on the ground and is taken back by id, the bag screen draws, a frag explodes, the next throw uses the smoke and makes a cloud                                                                |
+| Unity EditMode | 60/60. New: the inventory mirror from a snapshot (scope zoom, calibre reserve, weight, what can be taken); practice hides grenades; the THROW button overlaps nothing at 16:9 and 19.5:9                                                                                                                                                                                                                                                                                                                                                                  |
+| Unity PlayMode | 19 passed, 2 skipped (platform tests without `TEST_ADMIN_DATABASE_URL`). New, in an offline match: the inventory arrives, a dropped bandage lies on the ground and is taken back by id, the bag screen draws, a frag explodes, the next throw uses the smoke and makes a cloud                                                                                                                                                                                                                                                                            |
 
 ### Match balance with items (simulator, 20 bots, city, loot-first, 3 matches)
 
-| Build                         | Active play | Player kills | Zone eliminations |
-| ----------------------------- | ----------- | ------------ | ----------------- |
-| C1 (no items)                 | 5.5 min     | 11.5         | 7.5               |
-| C2 first try                  | 7.6 min     | 5.7          | 13.7              |
+| Build                          | Active play | Player kills | Zone eliminations |
+| ------------------------------ | ----------- | ------------ | ----------------- |
+| C1 (no items)                  | 5.5 min     | 11.5         | 7.5               |
+| C2 first try                   | 7.6 min     | 5.7          | 13.7              |
 | C2 (spare magazine, more ammo) | 6.2 min     | 12.3         | 6.7               |
 
 The first try split ammo across four calibres. Bots ran dry and wandered away looking for rounds until the zone
@@ -177,12 +177,12 @@ either way.
 **`hyd-city-v2`, a 900 m map.** v1 is untouched at the centre. It comes from the same generator, called first, so v1's
 pinned hash is unchanged. A 150 m ring is added around it:
 
-| District          | Content                                                                                                                       |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| District                  | Content                                                                                                                                                                       |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Industrial Estate (north) | Enterable warehouses (7 m walls, wide doors on two sides, racks inside as cover, loot between them), container yards stacked one to three high, a factory with a 45 m chimney |
-| Musi Riverside (east)     | A river along x = 340–368 crossed by three road bridges (deck and railings) at z = −220, 0, 220, ghat walls along the city bank, farmland and farmhouses on the far bank |
-| Outskirts (south)         | Open fields with rocks, lone trees and haystacks for cover, four farmhouses with roof stairs, loot out in the open (snipers and DMRs favoured) |
-| Logistics Park (west)     | Rows of container stacks, two warehouses, a truck depot                                                               |
+| Musi Riverside (east)     | A river along x = 340–368 crossed by three road bridges (deck and railings) at z = −220, 0, 220, ghat walls along the city bank, farmland and farmhouses on the far bank      |
+| Outskirts (south)         | Open fields with rocks, lone trees and haystacks for cover, four farmhouses with roof stairs, loot out in the open (snipers and DMRs favoured)                                |
+| Logistics Park (west)     | Rows of container stacks, two warehouses, a truck depot                                                                                                                       |
 
 - **Size:** 4,522 boxes (651 new), 443 loot spots, 40 spawns. Pinned by hash in a .NET test and in migration
   `0011_city_map_v2.sql`.
@@ -261,21 +261,21 @@ These are placeholders until recorded ambience exists.
 
 ### Tests (C3)
 
-| Suite          | Result                                                                                                                                                                                                                                                                             |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Suite          | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | .NET           | 109/109. New: v2 pinned; v1 intact inside v2 and all nine districts; spawns clear and no buried loot; the river crossed only on bridges and walking (and jumping) into it stops at the bank; 67/67 ring ground loot reachable from the centre; each circle inside the last and on the map for four seeds; snapshots carry the next circle and seed 0 stays centred; zone damage grows per stage; the loot table in Welcome gives the client the server's items; clamping; assignments parse the table |
-| API            | 127/127. New: a published loot table keeps its values and defaults the rest, and out-of-range values are refused (422); assignments carry the loot table                                                                                                                             |
-| Database       | 10/10 with migration 0011                                                                                                                                                                                                                                                         |
-| Unity EditMode | 63/63. New: v2 renders box for box with colliders on the server's box tops; the map picture is built once per version; every district has a soundscape and each loop is audible and unclipped                                                                                    |
-| Unity PlayMode | 22/22, including the two full-platform tests (API, database, a managed match server and the game, run with the dev database this time). New: an offline match on v2 has the match's loot table, an off-centre next circle, a marker that places and clears, the map screen, and the district's ambience |
+| API            | 127/127. New: a published loot table keeps its values and defaults the rest, and out-of-range values are refused (422); assignments carry the loot table                                                                                                                                                                                                                                                                                                                                              |
+| Database       | 10/10 with migration 0011                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Unity EditMode | 63/63. New: v2 renders box for box with colliders on the server's box tops; the map picture is built once per version; every district has a soundscape and each loop is audible and unclipped                                                                                                                                                                                                                                                                                                         |
+| Unity PlayMode | 22/22, including the two full-platform tests (API, database, a managed match server and the game, run with the dev database this time). New: an offline match on v2 has the match's loot table, an off-centre next circle, a marker that places and clears, the map screen, and the district's ambience                                                                                                                                                                                               |
 
 ### Performance and balance (simulator, 20 bots, loot-first, 6 matches each)
 
-| Map and zone                         | Active play | Player kills | Zone eliminations |
-| ------------------------------------ | ----------- | ------------ | ----------------- |
-| v1, centred zone (old behaviour)     | 7.6 min     | 9.3          | 10.0              |
-| v1, moving zone, damage rising       | 7.4 min     | 8.0          | 11.5              |
-| v2 (3 matches), moving zone          | 7.3 min     | 3.3          | 15.7              |
+| Map and zone                     | Active play | Player kills | Zone eliminations |
+| -------------------------------- | ----------- | ------------ | ----------------- |
+| v1, centred zone (old behaviour) | 7.6 min     | 9.3          | 10.0              |
+| v1, moving zone, damage rising   | 7.4 min     | 8.0          | 11.5              |
+| v2 (3 matches), moving zone      | 7.3 min     | 3.3          | 15.7              |
 
 - **Last part's figure:** the C2 number (12.3 kills, 6.7 zone eliminations) came from 3 matches. Over 6 matches the
   old-style zone gives about 9 kills and 10 zone eliminations, so the 3-match sample was partly luck.
@@ -360,11 +360,11 @@ heading, speed, health or occupants changed since the baseline. Parked cars cost
 
 ### Tests (C4)
 
-| Suite          | Result                                                                                                                                                                                                                                                                                    |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Suite          | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | .NET           | 119/119. New: acceleration, top speed, braking then reversing, rolling to a stop; tighter turns when slow, handbrake; a wall stops and damages the car; kerbs driven over, walls not; the river crossed only on the bridge; every car spawn clear and away from player spawns; two players get in, the driver can't shoot and the passenger can, both ride along, getting out fast hurts and lands beside the car, it rolls to a stop; a run-over kill counts for the driver and a slow nudge only pushes; a frag wrecks a car and throws its occupant out, and a wreck can't be entered; parked cars cost nothing in delta snapshots and a moving one costs under 20 bytes |
-| Unity EditMode | 64/64. New: the engine loop is audible, unclipped and seamless                                                                                                                                                                                                                             |
-| Unity PlayMode | 23/23, including both full-platform tests. New, in an offline match: walk to a car, F to get in, the stick drives it more than 6 m in 2 s, every car is drawn, you are drawn in your seat, F to get out beside it                                                                         |
+| Unity EditMode | 64/64. New: the engine loop is audible, unclipped and seamless                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Unity PlayMode | 23/23, including both full-platform tests. New, in an offline match: walk to a car, F to get in, the stick drives it more than 6 m in 2 s, every car is drawn, you are drawn in your seat, F to get out beside it                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 **Bots with cars on the map** (city, 20 bots, 6 matches): 7.4 min, 8.2 kills, 11.0 zone eliminations, essentially the
 same as without cars (8.0 / 11.5), so parked cars don't trip the bots up. The simulator runs at 122× real time with
@@ -374,11 +374,11 @@ eight cars.
 
 **Skill levels** (`BotSkill`): Easy, Normal and Hard.
 
-| | Reaction | Aim error | Engage range | Grenades | Picks weapons by range | Heals below |
-| --- | --- | --- | --- | --- | --- | --- |
-| Easy | 0.9 s | ±4° | 30 m | no | no | 50 |
-| Normal | 0.45 s | ±1.7° | 45 m | yes | yes | 70 |
-| Hard | 0.2 s | ±0.7° | 70 m | yes | yes | 80 |
+|        | Reaction | Aim error | Engage range | Grenades | Picks weapons by range | Heals below |
+| ------ | -------- | --------- | ------------ | -------- | ---------------------- | ----------- |
+| Easy   | 0.9 s    | ±4°       | 30 m         | no       | no                     | 50          |
+| Normal | 0.45 s   | ±1.7°     | 45 m         | yes      | yes                    | 70          |
+| Hard   | 0.2 s    | ±0.7°     | 70 m         | yes      | yes                    | 80          |
 
 **New behaviour** (`BotBrain`):
 
@@ -439,12 +439,12 @@ and is remembered.
 
 ### Tests (C5)
 
-| Suite          | Result                                                                                                                                                                                                                                        |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Suite          | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | .NET           | 127/127. New: harder bots react sooner and reach further; bots switch to the shotgun up close and the sniper far away, not when the rifle is fine, and easy bots don't switch; a frag lobbed at an enemy who ducked out of sight, then not again straight away, and never by easy bots; throw pitches land server grenades near 8, 14 and 20 m; offline matches use the chosen difficulty; on a ticket-only server five fill bots join one ticketed player, fight, never put traffic on the network, and the result lists the player at their real place with `bots: 5` |
-| API            | 130/130. New: a player 3rd behind bots keeps 3rd and is rewarded for a field of six; a bot winner names no one; results naming no winner while a player was 1st, placing outside the field, or with more kills than opponents are refused; assignments carry the bot settings (off by default) |
-| Unity EditMode | 65/65. New: the bot difficulty is remembered, and garbage is clamped                                                                                                                                                                          |
-| Unity PlayMode | 23/23, including both full-platform tests                                                                                                                                                                                                     |
+| API            | 130/130. New: a player 3rd behind bots keeps 3rd and is rewarded for a field of six; a bot winner names no one; results naming no winner while a player was 1st, placing outside the field, or with more kills than opponents are refused; assignments carry the bot settings (off by default)                                                                                                                                                                                                                                                                          |
+| Unity EditMode | 65/65. New: the bot difficulty is remembered, and garbage is clamped                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Unity PlayMode | 23/23, including both full-platform tests                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 ## Part C6a (23 October 2026): teams (Duo and Squad)
 
@@ -490,11 +490,11 @@ error). It now deletes the old results file first, so a failed run fails.
 
 ### Tests (C6a)
 
-| Suite          | Result                                                                                                                                                                                                                                                            |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Suite          | Result                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | .NET           | 134/134. New: teams fill in order and teammates start together; shots pass through a teammate and hit the enemy behind; a team places only when its last member is out, members share it, and the last team standing shares 1st; frags spare the team; fill bots complete a lone player's Squad, and Welcome and snapshots carry the team; bots never fire at a teammate; a whole Duo bot match gives every team one shared, distinct placement |
-| Unity EditMode | 66/66. New: the bot practice mode is remembered and only Solo, Duo or Squad                                                                                                                                                                                       |
-| Unity PlayMode | 24/24, including both full-platform tests. New: Squad bot practice gives you three bot teammates on your team                                                                                                                                                     |
+| Unity EditMode | 66/66. New: the bot practice mode is remembered and only Solo, Duo or Squad                                                                                                                                                                                                                                                                                                                                                                     |
+| Unity PlayMode | 24/24, including both full-platform tests. New: Squad bot practice gives you three bot teammates on your team                                                                                                                                                                                                                                                                                                                                   |
 
 ## Part C6b (23 October 2026): the plane and parachute drop
 
@@ -539,12 +539,12 @@ error). It now deletes the old results file first, so a failed run fails.
 
 **What the drop did to matches** (simulator, 20 bots, loot-first, 6 matches each):
 
-| Map | Start | Active play | Player kills | Zone eliminations |
-| --- | --- | --- | --- | --- |
-| v1 | spawn points | 7.4 min | 8.0 | 11.2 |
-| v1 | drop | 6.7 min | 14.3 | 4.7 |
-| v2 | spawn points | 7.3 min | 7.2 | 11.8 |
-| v2 | drop | 7.3 min | 12.8 | 6.2 |
+| Map | Start        | Active play | Player kills | Zone eliminations |
+| --- | ------------ | ----------- | ------------ | ----------------- |
+| v1  | spawn points | 7.4 min     | 8.0          | 11.2              |
+| v1  | drop         | 6.7 min     | 14.3         | 4.7               |
+| v2  | spawn points | 7.3 min     | 7.2          | 11.8              |
+| v2  | drop         | 7.3 min     | 12.8         | 6.2               |
 
 The drop fixes the problem C3 and C5 kept running into: most bots dying in the zone instead of fighting. Two earlier
 tries at the bots' landing choice did worse:
@@ -565,11 +565,87 @@ tries at the bots' landing choice did worse:
 
 ### Tests (C6b)
 
-| Suite          | Result                                                                                                                                                                                                                                                                               |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Suite          | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | .NET           | 139/139. New: free fall opens the parachute at 45 m and lands ready to walk in the expected time; Jump opens it early only above 60 m; free fall steers faster than the parachute; a landing in the lake ends on dry ground; everyone starts aboard a plane flying over the map, rides with it, can't shoot after jumping, is seen falling in snapshots, is dropped at the end of the line, and lands; bots all jump, land, and none is stranded on a roof; the full player entry is now 25 bytes |
-| Unity EditMode | 66/66                                                                                                                                                                                                                                                                                |
-| Unity PlayMode | 25/25, including both full-platform tests. New: an offline city match starts in the plane, which is drawn and ridden; Jump leaves it, a parachute opens on the way down, and you land                                                                                              |
+| Unity EditMode | 66/66                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Unity PlayMode | 25/25, including both full-platform tests. New: an offline city match starts in the plane, which is drawn and ridden; Jump leaves it, a parachute opens on the way down, and you land                                                                                                                                                                                                                                                                                                             |
+
+## Part C6c (23 October 2026): parties, Duo and Squad online, lobby
+
+Online play now has the modes the brief asks for, and the flow Main menu → Lobby → Matchmaking → Match → Results →
+Lobby.
+
+- **Parties.** In the lobby a player creates a Duo or Squad party and gets a six-character code (no 0/O or 1/I, so it
+  is easy to read out). Friends join with the code. The leader picks Duo or Squad and starts matchmaking for everyone.
+  A player is in one party at most. When the leader leaves, the member who joined first leads. An empty party is
+  deleted. A full party, or one already searching, can't be joined.
+- **Matchmaking with teams.** The queue takes `SOLO`, `DUO` or `SQUAD`. In a party only the leader queues, and the
+  whole party goes in together. It must fit the team, and it can't queue for Solo. Matchmaking puts a party in one
+  match and gives it a team of its own. Solo players in Duo or Squad are teamed up with other solo players while a team
+  has room. If any party member leaves the queue, the whole party stops searching, so a party is never split.
+- **Teams in signed tickets.** Join tickets are now version 2, which adds the player's team byte inside the signature
+  (255 = no team). The match server puts each ticketed player in that team. It still accepts version 1 tickets. The
+  assignment sends `teamSize`. Fill bots can take the empty seats in a team.
+- **Results per team.** The match server ranks teams. Teammates share a placement, placements run 1..teams, and each
+  participant says which team they were in (`teams` and `participants[].team`). The API checks every player's team
+  against matchmaking's choice, and checks that teammates share a placement and that no two teams do. The whole
+  winning team gets the win, and rewards scale with the number of teams. Solo results are unchanged.
+- **Lobby (Unity).** _Play online (lobby)_ opens the lobby, which has:
+  - the mode (the same Solo/Duo/Squad choice as bot practice);
+  - create a party, or join one by code;
+  - the members, with the leader marked;
+  - Leave party, and Find match (leader or solo).
+    The lobby checks the party every 2 s. A member's lobby notices when the leader queues and follows the party into
+    matchmaking. If the party stops searching, the member is told. After an online match the results screen has _Back
+    to lobby_, and the party is still together.
+- **Bot practice** (offline, C5/C6a) stays on the home screen with its own mode and difficulty buttons.
+
+### Changed files (C6c)
+
+- Database: `0012_parties_and_team_modes.sql`:
+  - new `parties` and `party_members` tables, granted to the app role;
+  - DUO and SQUAD modes;
+  - `matchmaking_queue.party_id`;
+  - `match_participants.team` and `party_id`;
+  - placements no longer unique per match.
+- API: `matchmaking/parties.ts` (new: `PartiesService`, `PartiesController`), `matchmaking.service.ts` (party queueing,
+  team assignment, ticket team, party-wide cancel), `matchmaking.controller.ts` (modes, `teamSize`, result `teams` and
+  `team`), `results.service.ts` (team validation and rewards), `tickets/join-ticket.ts` (v2), `app.module.ts`.
+- Contract: `openapi.yaml`:
+  - `/parties`, `/parties/current`, `/parties/join` and `/parties/current/mode`;
+  - the `Party` and `PartyMember` schemas;
+  - the queue mode enum;
+  - assignment `teamSize`;
+  - result `teams` and `team`;
+  - history mode.
+    `src/schema.ts` is regenerated.
+- Shared and server: `Protocol/JoinTicket.cs` (v2), `Server/Match.cs` (team from ticket), `Platform/PlatformClient.cs`,
+  `Platform/ManagedServer.cs` (team size, team results).
+- Unity: `Menu/MainMenu.cs` (lobby), `Online/PlatformApi.cs` (parties, queue mode), `Online/OnlineGame.cs` (requested
+  mode, following the party, back to lobby), `Online/OnlineHud.cs`.
+
+### Tests (C6c)
+
+| Suite          | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Database       | 10/10                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| API            | 137/137. New: create, join (code in any case), full party, leader-only mode change, Squad makes room and Duo refuses to shrink, the leader leaving hands over leadership, the last one out deletes the party; a member can't queue and a party can't play Solo; the leader's queue places both; party and two solo players in one Duo match with the right teams in their tickets and `teamSize` 2; split, shared and made-up team results refused; a correct team result accepted and the whole winning team gets the win |
+| .NET           | 141/141 (the signed-ticket UDP test failed once in the full run under load and passed twice on its own: a known timing flake). New: tickets carry the team, a changed team breaks the signature, v1 tickets still verify; ticketed players play in the platform's teams and the result ranks teams 1..2 with each participant's team; Solo results send no team fields                                                                                                                                                     |
+| Unity EditMode | 68/68. New: the party DTO reads a party and `"party": null`; mode keys and party codes match the API                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Unity PlayMode | 25/25, including both full-platform tests (Solo queue path)                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+
+### Not done in C6c
+
+- No friends list, invites or party chat. Friends share the code themselves (voice chat is outside this phase).
+- The lobby is the greybox IMGUI style like the rest of the menu. There is no lobby scene with characters (that needs
+  the Phase B assets).
+- If a party member misses the match (for example their app was closed), the team plays a seat short, or a fill bot
+  takes the seat when fill bots are on.
+- A full-platform Unity test of a whole Duo party flow (two clients) is not automated. The API and server sides are
+  tested separately.
+- Production needs migration 0012 and the current match server before Duo and Squad can be played online. Version 1
+  tickets from an older API still work.
 
 ### Not done in C1
 

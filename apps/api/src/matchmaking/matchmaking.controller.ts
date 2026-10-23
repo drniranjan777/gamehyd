@@ -27,11 +27,12 @@ import { MatchmakingService } from './matchmaking.service';
 import { ResultsService } from './results.service';
 import { GameConfigService } from '../store/game-config.service';
 import { OpsService } from '../ops/ops.service';
+import { Mode, TEAM_SIZE } from './parties';
 
 const region = z.string().regex(/^[A-Z]{2}-[A-Z]{2,10}$/);
 const queueBody = z
   .object({
-    mode: z.literal('SOLO'),
+    mode: z.enum(['SOLO', 'DUO', 'SQUAD']),
     region,
     clientVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
     partyId: z.null().optional(),
@@ -150,12 +151,15 @@ const resultBody = z
     durationSeconds: z.number().int().min(0).max(7200),
     /** Fill bots in the match: not listed, but they count towards placements and the field size. */
     bots: z.number().int().min(0).max(99).default(0),
+    /** Teams in the whole field (players' and bots'); without it every player and bot is their own team. */
+    teams: z.number().int().min(1).max(100).optional(),
     participants: z
       .array(
         z
           .object({
             accountId: z.string().uuid(),
             placement: z.number().int().min(1).max(100),
+            team: z.number().int().min(0).max(99).optional(),
             kills: z.number().int().min(0).max(99),
             survivalSeconds: z.number().int().min(0).max(7200),
           })
@@ -250,8 +254,8 @@ export class InternalController {
         [serverId],
       );
 
-      const next = await c.query<{ id: string; map_version: string; capacity: number }>(
-        `SELECT id, map_version, capacity FROM matches
+      const next = await c.query<{ id: string; map_version: string; capacity: number; mode: Mode }>(
+        `SELECT id, map_version, capacity, mode FROM matches
           WHERE game_server_id = $1 AND status = 'FORMING' AND hosted_at IS NULL ORDER BY created_at LIMIT 1`,
         [serverId],
       );
@@ -263,6 +267,8 @@ export class InternalController {
               matchId: m.id,
               mapVersion: m.map_version,
               capacity: m.capacity,
+              // Players per team; each seat ticket names the player's team.
+              teamSize: TEAM_SIZE[m.mode],
               minPlayers: Math.min(this.config.MATCH_MIN_PLAYERS, m.capacity),
               fillWaitSeconds: this.config.MATCH_FILL_WAIT_SECONDS,
               // Kill switch: weapons removed from this match's loot and starting kit.

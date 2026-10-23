@@ -32,6 +32,32 @@ namespace RWBR.Tests
         }
 
         [Test]
+        public void Reads_the_current_party_or_none()
+        {
+            CurrentPartyDto some = JsonUtility.FromJson<CurrentPartyDto>(
+                "{\"party\":{\"id\":\"p1\",\"code\":\"K7QW2M\",\"mode\":\"DUO\",\"leaderId\":\"u1\"," +
+                "\"members\":[{\"accountId\":\"u1\",\"displayName\":\"Asha\",\"leader\":true},{\"accountId\":\"u2\",\"displayName\":\"Ravi\",\"leader\":false}]}}");
+            Assert.IsTrue(some.party.Exists);
+            Assert.AreEqual("K7QW2M", some.party.code);
+            Assert.AreEqual(2, some.party.members.Length);
+            Assert.IsTrue(some.party.members[0].leader);
+
+            CurrentPartyDto none = JsonUtility.FromJson<CurrentPartyDto>("{\"party\":null}");
+            Assert.IsTrue(none.party == null || !none.party.Exists);
+        }
+
+        [Test]
+        public void Names_modes_and_checks_party_codes_like_the_api()
+        {
+            Assert.AreEqual("SOLO", OnlineGame.ModeKey(1));
+            Assert.AreEqual("DUO", OnlineGame.ModeKey(2));
+            Assert.AreEqual("SQUAD", OnlineGame.ModeKey(4));
+            Assert.IsTrue(PlatformApi.IsValidPartyCode("k7qw2m"));
+            Assert.IsFalse(PlatformApi.IsValidPartyCode("K7QW2"));
+            Assert.IsFalse(PlatformApi.IsValidPartyCode("K7QW2\""));
+        }
+
+        [Test]
         public void Validates_display_names_like_the_api()
         {
             Assert.IsTrue(PlatformApi.IsValidName("Ravi_07"));

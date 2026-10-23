@@ -284,7 +284,9 @@ namespace RWBR.Shared.Server
                 return;
             }
 
-            PlayerState player = AddPlayer(from, ticket?.DisplayName ?? hello.Name, ticket?.AccountId ?? default);
+            // A v2 ticket names the platform's team (parties and teamed-up solo players in Duo/Squad).
+            int? ticketTeam = ticket != null && ticket.Team != JoinTicket.NoTeam ? ticket.Team : null;
+            PlayerState player = AddPlayer(from, ticket?.DisplayName ?? hello.Name, ticket?.AccountId ?? default, ticketTeam);
             if (ticket != null)
             {
                 player.AccountId = ticket.AccountId;
@@ -293,9 +295,9 @@ namespace RWBR.Shared.Server
             SendWelcome(player);
         }
 
-        private PlayerState AddPlayer(IPEndPoint from, string name, Guid account = default)
+        private PlayerState AddPlayer(IPEndPoint from, string name, Guid account = default, int? team = null)
         {
-            var player = new PlayerState(_nextId++, name, from, _historyLength) { LastHeardTick = Tick, Team = TeamFor(account) };
+            var player = new PlayerState(_nextId++, name, from, _historyLength) { LastHeardTick = Tick, Team = team ?? TeamFor(account) };
             player.Motor = MotorState.StandingAt(_cfg.Map.SpawnPoint(_players.Count, _cfg.MaxPlayers));
             player.Combat.Balance = _cfg.WeaponDef;
             player.Combat.Reset(_cfg.Weapon, _cfg.StartWithWeapon, _cfg.StartingReserveAmmo, _cfg.StartingWeaponIndex);

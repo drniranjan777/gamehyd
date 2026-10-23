@@ -573,9 +573,10 @@ namespace RWBR.Client.Online
             }
             if (_game.Local != null)
                 GUI.Label(new Rect(r.x, r.y + 118, r.width, 30), "Offline bot match: not counted on your profile", _center);
-            if (GUI.Button(new Rect(r.x + 30, r.yMax - 70, 210, 44), "Play again", _button))
+            // Online matches go back to the lobby (where a party stays together); offline and dev matches restart.
+            if (GUI.Button(new Rect(r.x + 30, r.yMax - 70, 210, 44), _game.Platform != null ? "Back to lobby" : "Play again", _button))
             {
-                if (_game.Platform != null) _game.StartQuickPlay();
+                if (_game.Platform != null) _game.LeaveToLobby();
                 else if (_game.Local != null) _game.RestartBotMatch();
                 else _game.Connect(_game.ServerAddress);
             }

@@ -69,6 +69,14 @@ namespace RWBR.Client.Online
         public ResultParticipantDto[] participants;
     }
     [Serializable] public sealed class ReportRequestDto { public string reportedPlayerId; public string matchId; public string reason; }
+    [Serializable] public sealed class PartyMemberDto { public string accountId; public string displayName; public bool leader; }
+    [Serializable] public sealed class PartyDto
+    {
+        public string id; public string code; public string mode; public string leaderId; public PartyMemberDto[] members;
+        /// <summary>JsonUtility turns <c>"party": null</c> into an empty object; a real party has an id.</summary>
+        public bool Exists => !string.IsNullOrEmpty(id);
+    }
+    [Serializable] public sealed class CurrentPartyDto { public PartyDto party; }
     [Serializable] public sealed class ErrorDto { public ErrorBody error; }
     [Serializable] public sealed class ErrorBody { public string code; public string message; public string requestId; }
 
@@ -138,8 +146,29 @@ namespace RWBR.Client.Online
             return auth;
         }
 
-        public Task<QueueStatusDto> QueueAsync(string region, string clientVersion) =>
-            Send<QueueStatusDto>("POST", "/matchmaking/queue", $"{{\"mode\":\"SOLO\",\"region\":\"{region}\",\"clientVersion\":\"{clientVersion}\"}}");
+        /// <summary>Queues for SOLO, DUO or SQUAD. In a party only the leader queues, for the whole party.</summary>
+        public Task<QueueStatusDto> QueueAsync(string region, string clientVersion, string mode = "SOLO") =>
+            Send<QueueStatusDto>("POST", "/matchmaking/queue", $"{{\"mode\":\"{mode}\",\"region\":\"{region}\",\"clientVersion\":\"{clientVersion}\"}}");
+
+        // ---- Parties (Phase C part 6c) ----
+
+        public async Task<PartyDto> CurrentPartyAsync()
+        {
+            PartyDto p = (await Send<CurrentPartyDto>("GET", "/parties/current", null))?.party;
+            return p != null && p.Exists ? p : null;
+        }
+
+        public Task<PartyDto> CreatePartyAsync(string mode) => Send<PartyDto>("POST", "/parties", $"{{\"mode\":\"{mode}\"}}");
+
+        public Task<PartyDto> JoinPartyAsync(string code) => Send<PartyDto>("POST", "/parties/join", $"{{\"code\":\"{code}\"}}");
+
+        public Task LeavePartyAsync() => Send<PartyDto>("DELETE", "/parties/current", null);
+
+        public Task<PartyDto> SetPartyModeAsync(string mode) => Send<PartyDto>("PUT", "/parties/current/mode", $"{{\"mode\":\"{mode}\"}}");
+
+        /// <summary>Party codes: six letters and digits (the API also checks).</summary>
+        public static bool IsValidPartyCode(string code) =>
+            !string.IsNullOrEmpty(code) && System.Text.RegularExpressions.Regex.IsMatch(code, "^[A-Za-z0-9]{6}$");
 
         public Task<QueueStatusDto> StatusAsync() => Send<QueueStatusDto>("GET", "/matchmaking/status", null);
 

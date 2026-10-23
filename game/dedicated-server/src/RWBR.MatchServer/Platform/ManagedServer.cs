@@ -105,6 +105,7 @@ public sealed class ManagedServer
         cfg.ZoneSeed = a.MatchId.GetHashCode() | 1; // the circles move, differently every match
         cfg.PlaneDrop = !_o.Fast && map.Version.StartsWith("hyd-city", StringComparison.Ordinal); // city matches start with the drop
         cfg.LootTable = a.LootTable?.Clamped() ?? LootTableConfig.Default; // live-ops loot weights
+        cfg.TeamSize = Math.Clamp(a.TeamSize, 1, 4); // Duo/Squad: each ticket names the player's team
         if (a.FillBots)
         {
             cfg.FillBotsTo = a.Capacity; // empty seats go to bots when the countdown starts
@@ -136,7 +137,7 @@ public sealed class ManagedServer
         MatchesHosted++;
         Log("match finished", new { a.MatchId, report.Reason, report.Players, report.ActiveSeconds, report.KbpsOutPerPlayer, report.TickMsP99 });
 
-        ResultSubmission? result = BuildResult(match, a.MapVersion);
+        ResultSubmission? result = BuildResult(match, a.MapVersion, cfg.TeamSize);
         if (result == null)
         {
             Log("no result to submit (no ticketed players)", new { a.MatchId });
@@ -147,9 +148,10 @@ public sealed class ManagedServer
 
     /// <summary>
     /// The server's authoritative outcome for every ticketed player who played. Fill bots are counted (Bots) but not
-    /// listed: each player keeps their place in the whole field, so 5th behind four bots is 5th, not 1st.
+    /// listed: each player keeps their place in the whole field, so 5th behind four bots is 5th, not 1st. In Duo and
+    /// Squad the field is ranked by team: teammates share a placement, and each participant names their team.
     /// </summary>
-    public static ResultSubmission? BuildResult(Match match, string mapVersion)
+    public static ResultSubmission? BuildResult(Match match, string mapVersion, int teamSize = 1)
     {
         MatchCompletedPacket? r = match.Result;
         if (r == null) return null;
@@ -159,13 +161,22 @@ public sealed class ManagedServer
         var players = field.Where(p => !p.IsBot).ToList();
         if (players.Count == 0) return null;
 
+        int? teams = null;
+        if (teamSize > 1)
+        {
+            // Teams already share a placement in the match; renumber them 1..teams in the same order.
+            var rankOf = field.Select(p => p.Placement).Distinct().OrderBy(x => x).Select((x, i) => (x, i + 1)).ToDictionary(t => t.x, t => t.Item2);
+            placeOf = field.ToDictionary(p => p, p => rankOf[p.Placement]);
+            teams = rankOf.Count;
+        }
+
         var participants = players
-            .Select(p => new ResultParticipant(p.AccountId, placeOf[p], p.Kills, match.SurvivalSeconds(p)))
+            .Select(p => new ResultParticipant(p.AccountId, placeOf[p], p.Kills, match.SurvivalSeconds(p), teams != null ? p.Team : null))
             .ToArray();
         PlayerState? winner = r.Reason == CompletionReason.Winner ? field.FirstOrDefault(p => p.Id == r.WinnerId) : null;
         string reason = winner != null ? "WINNER" : r.Reason == CompletionReason.Timeout ? "TIMEOUT" : "CANCELLED";
         Guid? winnerAccount = winner != null && !winner.IsBot ? winner.AccountId : null; // a bot winner is named by no one
-        return new ResultSubmission(mapVersion, reason, winnerAccount, match.DurationSeconds, participants, field.Count(p => p.IsBot));
+        return new ResultSubmission(mapVersion, reason, winnerAccount, match.DurationSeconds, participants, field.Count(p => p.IsBot), teams);
     }
 
     private async Task SubmitAsync(Guid matchId, ResultSubmission result, CancellationToken ct)

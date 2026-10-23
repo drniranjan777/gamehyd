@@ -327,6 +327,18 @@ namespace RWBR.Client.Online
 
         public static string ModeName(int teamSize) => teamSize == 4 ? "Squad" : teamSize == 2 ? "Duo" : "Solo";
 
+        /// <summary>The platform's name for a mode: SOLO, DUO or SQUAD.</summary>
+        public static string ModeKey(int teamSize) => teamSize == 4 ? "SQUAD" : teamSize == 2 ? "DUO" : "SOLO";
+
+        /// <summary>The lobby's choice for the next online match (SOLO, DUO or SQUAD).</summary>
+        public static string RequestedMode = "SOLO";
+
+        /// <summary>
+        /// Set by the lobby for a party member: the leader has queued the party, so this player does not queue but
+        /// follows the party's search until the seat arrives.
+        /// </summary>
+        public static bool FollowParty;
+
         /// <summary>The offline bot match's difficulty, remembered between sessions.</summary>
         public static RWBR.Shared.Bots.BotDifficulty BotDifficultySetting
         {
@@ -387,11 +399,20 @@ namespace RWBR.Client.Online
                 ProfileBefore = await api.ProfileAsync();
 
                 QuickPlayStatus = "Finding a match…";
-                QueueStatusDto status = await api.QueueAsync(Region, Application.version);
+                bool following = FollowParty;
+                FollowParty = false;
+                QueueStatusDto status = following ? await api.StatusAsync() : await api.QueueAsync(Region, Application.version, RequestedMode);
                 float started = Time.realtimeSinceStartup;
                 while (status.state != "MATCHED")
                 {
                     if (_quickPlayCancelled || Platform != api) return;
+                    if (status.state == "IDLE")
+                    {
+                        // Only a party's search can stop under us: the leader (or a teammate) cancelled it.
+                        Error = "Your party stopped looking for a match.";
+                        QuickPlayActive = false;
+                        return;
+                    }
                     QuickPlayStatus = $"Finding a match… {Time.realtimeSinceStartup - started:0}s";
                     float until = Time.realtimeSinceStartup + 1f;
                     while (Time.realtimeSinceStartup < until) await System.Threading.Tasks.Task.Yield();
@@ -502,6 +523,13 @@ namespace RWBR.Client.Online
             Net.Leave();
             Cursor.lockState = CursorLockMode.None;
             SceneManager.LoadScene(MenuScene);
+        }
+
+        /// <summary>After an online match: back to the lobby, with the party (if any) still together.</summary>
+        public void LeaveToLobby()
+        {
+            RWBR.Client.Menu.MainMenu.OpenLobbyOnLoad = true;
+            LeaveToMenu();
         }
 
         private void OnDestroy() => Net.Dispose();

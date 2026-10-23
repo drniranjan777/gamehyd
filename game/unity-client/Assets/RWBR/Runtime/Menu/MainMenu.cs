@@ -10,8 +10,8 @@ using UnityEngine.SceneManagement;
 namespace RWBR.Client.Menu
 {
     /// <summary>
-    /// Front end (greybox IMGUI, ADR 0006): play modes, profile and match history, loadout (cosmetics), store,
-    /// account (deletion) and settings.
+    /// Front end (greybox IMGUI, ADR 0006): play modes, the online lobby (mode, parties), profile and match history,
+    /// loadout (cosmetics), store, account (deletion) and settings.
     /// The city orbits slowly behind it. Platform screens sign in with the stored guest account.
     /// </summary>
     public sealed class MainMenu : MonoBehaviour
@@ -25,6 +25,7 @@ namespace RWBR.Client.Menu
         private enum Screen
         {
             Home,
+            Lobby,
             Profile,
             Loadout,
             Store,
@@ -53,6 +54,12 @@ namespace RWBR.Client.Menu
         private string _platformUrl;
         private string _name;
         private Vector2 _scroll;
+        private PartyDto _party;
+        private string _partyCode = "";
+        private float _nextLobbyPoll;
+
+        /// <summary>Set before loading the menu to open the lobby (after an online match).</summary>
+        public static bool OpenLobbyOnLoad;
 
         public string Status => _status;
         public bool Busy { get; private set; }
@@ -67,6 +74,11 @@ namespace RWBR.Client.Menu
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
             LoadNews();
+            if (OpenLobbyOnLoad)
+            {
+                OpenLobbyOnLoad = false;
+                OpenPlatformScreen(Screen.Lobby);
+            }
         }
 
         /// <summary>News and events for the home screen; quietly absent when the platform is unreachable.</summary>
@@ -78,6 +90,7 @@ namespace RWBR.Client.Menu
 
         private void Update()
         {
+            UpdateLobby();
             Camera cam = Camera.main;
             if (cam == null) return;
             float a = Time.time * 0.05f;
@@ -134,6 +147,9 @@ namespace RWBR.Client.Menu
                 _profile = await _api.ProfileAsync();
                 switch (screen)
                 {
+                    case Screen.Lobby:
+                        _party = await _api.CurrentPartyAsync();
+                        break;
                     case Screen.Profile:
                         _stats = await _api.StatsAsync();
                         _history = await _api.MatchesAsync(limit: 10);
@@ -277,6 +293,7 @@ namespace RWBR.Client.Menu
             switch (_screen)
             {
                 case Screen.Home: DrawHome(); break;
+                case Screen.Lobby: DrawLobby(); break;
                 case Screen.Profile: DrawProfile(); break;
                 case Screen.Loadout: DrawLoadout(); break;
                 case Screen.Store: DrawStore(); break;
@@ -307,13 +324,149 @@ namespace RWBR.Client.Menu
             RWBR.Shared.Bots.BotDifficulty d = OnlineGame.BotDifficultySetting;
             if (GUI.Button(new Rect(378, y, 102, 52), d.ToString(), _button))
                 OnlineGame.BotDifficultySetting = (RWBR.Shared.Bots.BotDifficulty)(((int)d + 1) % 3);
-            if (Button(y += 56, "Play online")) PlayOnline();
+            if (Button(y += 56, "Play online (lobby)")) OpenPlatformScreen(Screen.Lobby);
             if (Button(y += 66, "Profile & match history")) OpenPlatformScreen(Screen.Profile);
             if (Button(y += 56, "Loadout")) OpenPlatformScreen(Screen.Loadout);
             if (Button(y += 56, "Store")) OpenPlatformScreen(Screen.Store);
             if (Button(y += 56, "Season pass")) OpenPlatformScreen(Screen.Season);
             if (Button(y += 56, "Settings")) _screen = Screen.Settings;
             DrawNews();
+        }
+
+        // ---- Lobby (Phase C part 6c): mode, party, find match ----
+
+        private bool InParty => _party != null;
+        private bool Leading => _party != null && _party.leaderId == _api?.UserId;
+
+        private string LobbyMode => _party?.mode ?? OnlineGame.ModeKey(OnlineGame.BotTeamSizeSetting);
+
+        private void DrawLobby()
+        {
+            Panel(out Rect r);
+            float x = r.x + 24, y = r.y + 20;
+            GUI.Label(new Rect(x, y, r.width - 48, 34), "Lobby", _label);
+
+            // Mode: the same choice as bot practice. In a party the leader picks Duo or Squad for everyone.
+            y += 44;
+            string[] modes = { "SOLO", "DUO", "SQUAD" };
+            for (int i = 0; i < modes.Length; i++)
+            {
+                string m = modes[i];
+                bool on = LobbyMode == m;
+                GUI.enabled = !Busy && !on && (!InParty || (Leading && m != "SOLO"));
+                string name = OnlineGame.ModeName(m == "SQUAD" ? 4 : m == "DUO" ? 2 : 1);
+                if (GUI.Button(new Rect(x + i * 150, y, 140, 46), on ? "✓ " + name : name, _button))
+                {
+                    if (InParty) RunLobby(async () => _party = await _api.SetPartyModeAsync(m));
+                    else OnlineGame.BotTeamSizeSetting = m == "SQUAD" ? 4 : m == "DUO" ? 2 : 1;
+                }
+                GUI.enabled = true;
+            }
+
+            y += 66;
+            if (!InParty)
+            {
+                GUI.Label(new Rect(x, y, r.width - 48, 50), LobbyMode == "SOLO"
+                    ? "Solo: every player for themselves."
+                    : "Play with friends: create a party and share its code, or join a friend's. Without a party, matchmaking teams you up with other players.", _small);
+                y += 58;
+                GUI.enabled = !Busy && LobbyMode != "SOLO";
+                if (GUI.Button(new Rect(x, y, 200, 44), "Create party", _button))
+                    RunLobby(async () => _party = await _api.CreatePartyAsync(LobbyMode));
+                GUI.enabled = true;
+                _partyCode = GUI.TextField(new Rect(x + 220, y + 4, 140, 36), _partyCode, 6, _field).ToUpperInvariant();
+                GUI.enabled = !Busy && PlatformApi.IsValidPartyCode(_partyCode);
+                if (GUI.Button(new Rect(x + 370, y, 120, 44), "Join", _button))
+                    RunLobby(async () => _party = await _api.JoinPartyAsync(_partyCode));
+                GUI.enabled = true;
+                y += 60;
+            }
+            else
+            {
+                GUI.Label(new Rect(x, y, r.width - 48, 30), $"Party code  {_party.code}   ·   {OnlineGame.ModeName(_party.mode == "SQUAD" ? 4 : 2)}", _label);
+                y += 36;
+                foreach (PartyMemberDto m in _party.members ?? Array.Empty<PartyMemberDto>())
+                {
+                    GUI.Label(new Rect(x, y, r.width - 48, 26), (m.leader ? "★ " : "• ") + m.displayName + (m.accountId == _api?.UserId ? "  (you)" : ""), _small);
+                    y += 26;
+                }
+                int room = (_party.mode == "SQUAD" ? 4 : 2) - (_party.members?.Length ?? 0);
+                if (room > 0) GUI.Label(new Rect(x, y, r.width - 48, 26), $"{room} open seat(s): share the code, or matchmaking fills them.", _small);
+                y += 34;
+                GUI.enabled = !Busy;
+                if (GUI.Button(new Rect(x, y, 200, 44), "Leave party", _button))
+                    RunLobby(async () =>
+                    {
+                        await _api.LeavePartyAsync();
+                        _party = null;
+                    });
+                GUI.enabled = true;
+                y += 60;
+            }
+
+            if (InParty && !Leading)
+            {
+                string leader = _party.members?.FirstOrDefault(m => m.leader)?.displayName ?? "the leader";
+                GUI.Label(new Rect(x, y, r.width - 48, 30), $"Waiting for {leader} to start matchmaking…", _label);
+            }
+            else
+            {
+                GUI.enabled = !Busy;
+                if (GUI.Button(new Rect(x, y, 300, 52), "Find match", _button))
+                {
+                    OnlineGame.RequestedMode = LobbyMode;
+                    OnlineGame.FollowParty = false;
+                    PlayOnline();
+                }
+                GUI.enabled = true;
+            }
+            Back();
+        }
+
+        private void UpdateLobby()
+        {
+            // The lobby keeps the party fresh, and a member follows the party into matchmaking once the leader queues.
+            if (_screen != Screen.Lobby || Busy || _api == null || !_api.SignedIn || Time.unscaledTime < _nextLobbyPoll) return;
+            _nextLobbyPoll = Time.unscaledTime + 2f;
+            PollLobby();
+        }
+
+        private async void PollLobby()
+        {
+            try
+            {
+                _party = await _api.CurrentPartyAsync();
+                if (_party == null || Leading || _screen != Screen.Lobby) return;
+                QueueStatusDto q = await _api.StatusAsync();
+                if (q != null && (q.state == "QUEUED" || q.state == "MATCHED") && _screen == Screen.Lobby)
+                {
+                    OnlineGame.RequestedMode = _party.mode;
+                    OnlineGame.FollowParty = true;
+                    PlayOnline();
+                }
+            }
+            catch (ApiException)
+            {
+                // Next poll tries again; the lobby shows the last known party.
+            }
+        }
+
+        private async void RunLobby(Func<System.Threading.Tasks.Task> action)
+        {
+            Busy = true;
+            _status = null;
+            try
+            {
+                await action();
+            }
+            catch (ApiException e)
+            {
+                _status = e.Code == "NETWORK" ? $"Platform not reachable ({_platformUrl})" : e.Message;
+            }
+            finally
+            {
+                Busy = false;
+            }
         }
 
         private void DrawNews()

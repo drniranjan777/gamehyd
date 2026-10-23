@@ -22,6 +22,7 @@ import {
   MatchmakingController,
 } from './matchmaking/matchmaking.controller';
 import { MatchmakingService } from './matchmaking/matchmaking.service';
+import { PartiesController, PartiesService } from './matchmaking/parties';
 import { ResultsService } from './matchmaking/results.service';
 import { PlayerController } from './player/player.controller';
 import { GameConfigService } from './store/game-config.service';
@@ -63,6 +64,7 @@ export class AppModule {
         InventoryController,
         ReportsController,
         MatchmakingController,
+        PartiesController,
         MatchesController,
         InternalController,
         StoreController,
@@ -82,6 +84,7 @@ export class AppModule {
         TokenService,
         AuthService,
         MatchmakingService,
+        PartiesService,
         ResultsService,
         GameConfigService,
         StoreService,

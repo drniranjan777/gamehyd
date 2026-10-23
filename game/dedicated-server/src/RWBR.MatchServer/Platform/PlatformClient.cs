@@ -27,11 +27,12 @@ public sealed record HeartbeatRequest(
     bool Draining = false);
 
 public sealed record MatchAssignment(Guid MatchId, string MapVersion, int Capacity, int MinPlayers, int FillWaitSeconds, string[]? DisabledWeapons = null,
-    LootTableConfig? LootTable = null, bool FillBots = false, string? BotDifficulty = null);
+    LootTableConfig? LootTable = null, bool FillBots = false, string? BotDifficulty = null, int TeamSize = 1);
 
 public sealed record HeartbeatResponse(Guid ServerId, MatchAssignment? Assignment);
 
-public sealed record ResultParticipant(Guid AccountId, int Placement, int Kills, int SurvivalSeconds);
+public sealed record ResultParticipant(Guid AccountId, int Placement, int Kills, int SurvivalSeconds,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Team = null);
 
 public sealed record ResultSubmission(
     string MapVersion,
@@ -39,7 +40,8 @@ public sealed record ResultSubmission(
     Guid? WinnerAccountId,
     int DurationSeconds,
     ResultParticipant[] Participants,
-    int Bots = 0);
+    int Bots = 0,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Teams = null);
 
 /// <summary>
 /// Signed HTTP calls to the platform API's /internal endpoints (packages/api-contracts/openapi.yaml,

@@ -4,7 +4,9 @@ import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
  * Join tickets, byte-compatible with RWBR.Shared.Protocol.JoinTicket (ADR 0007). The match server verifies
  * them with the same secret and derives the same session key; the key itself never travels in the ticket.
  */
-export const TICKET_FORMAT_VERSION = 1;
+/** v2 adds the player's team (Duo/Squad) after the name; 255 = none. The match server also accepts v1. */
+export const TICKET_FORMAT_VERSION = 2;
+export const NO_TEAM = 255;
 const MAX_NAME_BYTES = 24;
 const MAC_BYTES = 32;
 
@@ -51,6 +53,7 @@ export function issueTicket(
   displayName: string,
   expiresAt: Date,
   ticketId: string = randomUUID(),
+  team: number = NO_TEAM,
 ): IssuedTicket {
   const name = Buffer.from(displayName, 'utf8').subarray(0, MAX_NAME_BYTES);
   const expires = Buffer.alloc(4);
@@ -63,6 +66,7 @@ export function issueTicket(
     expires,
     Buffer.from([name.length]),
     name,
+    Buffer.from([team]),
   ]);
   const mac = createHmac('sha256', secret).update(body).digest();
   return {
@@ -78,6 +82,7 @@ export interface ParsedTicket {
   accountId: string;
   expiresAt: Date;
   displayName: string;
+  team: number;
 }
 
 /** Signature and format check (tests and tooling; the match server does the real verification). */
@@ -88,12 +93,13 @@ export function verifyTicket(ticket: Buffer, secret: Buffer): ParsedTicket | nul
   const mac = createHmac('sha256', secret).update(body).digest();
   if (!timingSafeEqual(mac, ticket.subarray(ticket.length - MAC_BYTES))) return null;
   const nameLength = body[53]!;
-  if (body.length !== 54 + nameLength) return null;
+  if (body.length !== 54 + nameLength + 1) return null;
   return {
     ticketId: bytesToGuid(body.subarray(1, 17)),
     matchId: bytesToGuid(body.subarray(17, 33)),
     accountId: bytesToGuid(body.subarray(33, 49)),
     expiresAt: new Date(body.readUInt32LE(49) * 1000),
-    displayName: body.subarray(54).toString('utf8'),
+    displayName: body.subarray(54, 54 + nameLength).toString('utf8'),
+    team: body[54 + nameLength]!,
   };
 }

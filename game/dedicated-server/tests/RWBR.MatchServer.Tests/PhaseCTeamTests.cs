@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Numerics;
+using RWBR.MatchServer.Platform;
 using RWBR.Shared;
 using RWBR.Shared.Bots;
 using RWBR.Shared.Protocol;
@@ -199,5 +200,80 @@ public class TeamTests
         Assert.Equal(4, byTeam.Count);
         Assert.All(byTeam, g => Assert.Single(g.Select(p => p.Placement).Distinct())); // teammates share their placement
         Assert.Equal(byTeam.Count, byTeam.Select(g => g.First().Placement).Distinct().Count());
+    }
+}
+
+/// <summary>Phase C part 6c: the platform's teams arrive in signed tickets, and results are ranked per team.</summary>
+public class PlatformTeamTests
+{
+    private static readonly byte[] Secret = Enumerable.Range(0, 32).Select(i => (byte)(i * 7)).ToArray();
+
+    [Fact]
+    public void Tickets_carry_the_team_and_old_tickets_still_verify()
+    {
+        Guid match = Guid.NewGuid(), account = Guid.NewGuid();
+        byte[] v2 = JoinTicket.Issue(Secret, match, account, "Asha", DateTimeOffset.UtcNow.AddMinutes(2), out _, team: 7);
+        Assert.True(JoinTicket.TryVerify(v2, Secret, out JoinTicket? t));
+        Assert.Equal(7, t!.Team);
+        Assert.Equal("Asha", t.DisplayName);
+
+        // A version 1 ticket (before teams): same layout without the team byte.
+        byte[] body = v2.Take(v2.Length - 32 - 1).ToArray();
+        body[0] = 1;
+        byte[] mac = new System.Security.Cryptography.HMACSHA256(Secret).ComputeHash(body);
+        Assert.True(JoinTicket.TryVerify(body.Concat(mac).ToArray(), Secret, out JoinTicket? old));
+        Assert.Equal(JoinTicket.NoTeam, old!.Team);
+        Assert.Equal(account, old.AccountId);
+
+        v2[v2.Length - 33] = 8; // a changed team breaks the signature
+        Assert.False(JoinTicket.TryVerify(v2, Secret, out _));
+    }
+
+    [Fact]
+    public void Ticketed_players_play_in_the_platforms_teams_and_the_result_ranks_teams()
+    {
+        var cfg = new MatchConfig
+        {
+            Map = new MapLayout("open", 120, Array.Empty<Aabb>()), MinPlayers = 4, MaxPlayers = 4, TeamSize = 2, CountdownSeconds = 0.1f,
+            MaxMatchSeconds = 1000, Vehicles = false, ZoneDamagePerSecond = 30, TicketSecret = Secret, MatchId = Guid.NewGuid(),
+            ZoneStages = new List<ZoneStage> { new(0, 0.05f, 20), new(900, 1, 20) },
+        };
+        var m = new Match(cfg);
+        // Join order mixes the teams: the party (team 5) and two teamed-up solo players (team 2).
+        int[] teams = { 5, 2, 5, 2 };
+        var accounts = new List<Guid>();
+        for (int i = 0; i < teams.Length; i++)
+        {
+            Guid account = Guid.NewGuid();
+            accounts.Add(account);
+            byte[] ticket = JoinTicket.Issue(Secret, cfg.MatchId, account, $"p{i}", DateTimeOffset.UtcNow.AddMinutes(2), out _, team: (byte)teams[i]);
+            byte[] hello = PacketCodec.Encode(new HelloPacket { Name = $"p{i}", Ticket = ticket });
+            m.Receive(new IPEndPoint(IPAddress.Loopback, 9700 + i), hello, hello.Length);
+        }
+        Assert.Equal(teams, m.Players.Select(p => p.Team));
+        while (m.Phase != MatchPhase.Active) m.Advance();
+
+        foreach (PlayerState p in m.Players) p.Position = Vector3.Zero;
+        foreach (PlayerState p in m.Players.Where(p => p.Team == 2))
+        {
+            p.Position = new Vector3(100, 0, 100);
+            p.Health = 0.1f;
+        }
+        for (int i = 0; i < 10 && m.Result == null; i++) m.Advance();
+        Assert.NotNull(m.Result);
+
+        ResultSubmission r = ManagedServer.BuildResult(m, cfg.Map.Version, teamSize: 2)!;
+        Assert.Equal(2, r.Teams);
+        Assert.Equal("WINNER", r.Reason);
+        foreach (ResultParticipant p in r.Participants)
+        {
+            int team = teams[accounts.IndexOf(p.AccountId)];
+            Assert.Equal(team, p.Team);
+            Assert.Equal(team == 5 ? 1 : 2, p.Placement);
+        }
+        Assert.Contains(r.WinnerAccountId!.Value, accounts.Where((_, i) => teams[i] == 5));
+        // Solo results stay as they were: no teams.
+        Assert.Null(ManagedServer.BuildResult(m, cfg.Map.Version)!.Teams);
+        Assert.DoesNotContain("\"team\"", System.Text.Json.JsonSerializer.Serialize(ManagedServer.BuildResult(m, cfg.Map.Version), PlatformClient.Json));
     }
 }
