@@ -37,9 +37,15 @@ namespace RWBR.Client.Online
         public float MaxError { get; private set; }
         public int PendingCount => _pending.Count;
 
+        /// <summary>
+        /// In a car the server moves you (the car is not predicted yet): inputs are not replayed on foot, and every
+        /// snapshot simply sets your position.
+        /// </summary>
+        public bool Frozen { get; set; }
+
         public void Apply(InputCommand cmd)
         {
-            if (!Initialized) return;
+            if (!Initialized || Frozen) return;
             Simulation.Step(ref Predicted, cmd, _dt, _map);
             _pending.Add(cmd);
             if (_pending.Count > 120) _pending.RemoveAt(0); // ~4 s without acks: stop growing
@@ -66,10 +72,15 @@ namespace RWBR.Client.Online
             };
 
             _pending.RemoveAll(c => c.Sequence <= s.AckSequence);
-            if (!Initialized)
+            if (!Initialized || Frozen)
             {
                 Predicted = server;
                 Initialized = true;
+                if (Frozen)
+                {
+                    _pending.Clear();
+                    VisualOffset = SVector3.Zero;
+                }
                 return;
             }
 

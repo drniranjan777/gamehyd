@@ -38,6 +38,8 @@ namespace RWBR.Shared
         /// value moves each new circle to a random spot inside the previous one, the same for everyone in the match.
         /// </summary>
         public int ZoneSeed { get; set; }
+        /// <summary>Cars at the map's vehicle spawns (<see cref="VehicleSpawns"/>; the small maps have none).</summary>
+        public bool Vehicles { get; set; } = true;
         /// <summary>Live-ops loot weights; sent to every client in Welcome.</summary>
         public LootTableConfig LootTable { get; set; } = LootTableConfig.Default;
         public List<ZoneStage> ZoneStages { get; set; } = new List<ZoneStage>

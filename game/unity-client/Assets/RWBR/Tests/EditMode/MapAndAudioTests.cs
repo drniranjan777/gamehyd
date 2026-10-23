@@ -20,6 +20,20 @@ namespace RWBR.Tests
         }
 
         [Test]
+        public void Engine_sound_loops_on_whole_cycles_and_is_unclipped()
+        {
+            AudioClip engine = GameAudio.EngineClip();
+            Assert.AreSame(engine, GameAudio.EngineClip());
+            Assert.Greater(GameAudio.Peak(engine), 0.2f);
+            Assert.LessOrEqual(GameAudio.Peak(engine), 1f);
+            var d = new float[engine.samples];
+            engine.GetData(d, 0);
+            float largestStep = 0;
+            for (int i = 1; i < d.Length; i++) largestStep = Mathf.Max(largestStep, Mathf.Abs(d[i] - d[i - 1]));
+            Assert.LessOrEqual(Mathf.Abs(d[0] - d[d.Length - 1]), largestStep, "the loop point is no bigger a jump than the waveform's own");
+        }
+
+        [Test]
         public void Every_district_has_a_soundscape_and_each_loop_is_audible_and_unclipped()
         {
             foreach (District d in CityMap.BuildV2().Districts)

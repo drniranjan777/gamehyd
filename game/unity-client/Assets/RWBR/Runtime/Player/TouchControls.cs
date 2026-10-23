@@ -22,6 +22,7 @@ namespace RWBR.Client.Player
         Aim,
         Throw,
         Map,
+        Vehicle,
     }
 
     /// <summary>
@@ -74,6 +75,7 @@ namespace RWBR.Client.Player
             new ButtonLayout { Button = TouchButton.Aim, Label = "AIM", Center = new Vector2(0.73f, 0.27f), Radius = 0.06f },
             new ButtonLayout { Button = TouchButton.Throw, Label = "THROW", Center = new Vector2(0.59f, 0.12f), Radius = 0.055f },
             new ButtonLayout { Button = TouchButton.Map, Label = "MAP", Center = new Vector2(0.13f, 0.90f), Radius = 0.05f },
+            new ButtonLayout { Button = TouchButton.Vehicle, Label = "GET IN", Center = new Vector2(0.55f, 0.42f), Radius = 0.06f },
         };
 
         public const float MinButtonScale = 0.7f;
@@ -212,10 +214,13 @@ namespace RWBR.Client.Player
         public bool ThrowAvailable { get; set; }
         /// <summary>Whether the MAP button is shown and works (matches have a map; practice doesn't).</summary>
         public bool MapAvailable { get; set; }
+        /// <summary>Whether GET IN / GET OUT is shown: next to a car with a free seat, or inside one.</summary>
+        public bool VehicleAvailable { get; set; }
 
         /// <summary>Whether a button is shown and responds right now.</summary>
         public bool Shows(TouchButton b) =>
-            (b != TouchButton.Interact || InteractAvailable) && (b != TouchButton.Throw || ThrowAvailable) && (b != TouchButton.Map || MapAvailable);
+            (b != TouchButton.Interact || InteractAvailable) && (b != TouchButton.Throw || ThrowAvailable) && (b != TouchButton.Map || MapAvailable) &&
+            (b != TouchButton.Vehicle || VehicleAvailable);
 
         /// <summary>Current stick origin and knob in screen pixels (bottom-left origin), for drawing.</summary>
         public Vector2? StickOrigin { get; private set; }
@@ -298,6 +303,7 @@ namespace RWBR.Client.Player
                     case TouchButton.Aim: f.AimToggled = true; break;
                     case TouchButton.Throw: f.ThrowPressed = true; break;
                     case TouchButton.Map: f.MapToggled = true; break;
+                    case TouchButton.Vehicle: f.VehiclePressed = true; break;
                 }
                 return new Tracked { Role = Role.Button, Button = b.Button, Origin = pos, Last = pos };
             }

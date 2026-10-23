@@ -115,6 +115,24 @@ namespace RWBR.Client.Audio
             return s;
         }
 
+        /// <summary>A car engine: a short loop of a low buzz with harmonics (pitch is raised with speed).</summary>
+        public static AudioClip EngineClip()
+        {
+            const string name = "engine";
+            if (Clips.TryGetValue(name, out AudioClip cached)) return cached;
+            const float baseHz = 45f;
+            int n = (int)(SampleRate / baseHz) * 20; // a whole number of cycles: loops without a click
+            var data = new float[n];
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)SampleRate;
+                float v = 0.45f * Mathf.Sin(2 * Mathf.PI * baseHz * t) + 0.25f * Mathf.Sin(2 * Mathf.PI * baseHz * 2 * t) +
+                          0.15f * Mathf.Sin(2 * Mathf.PI * baseHz * 3 * t) + 0.08f * Mathf.Sign(Mathf.Sin(2 * Mathf.PI * baseHz * 4 * t));
+                data[i] = v * 0.8f;
+            }
+            return Store(name, data);
+        }
+
         /// <summary>A 6 s loop per soundscape, synthesised once.</summary>
         public static AudioClip AmbienceClip(Ambience a)
         {

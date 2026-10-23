@@ -6,6 +6,7 @@ using RWBR.Shared;
 using RWBR.Shared.Protocol;
 using RWBR.Shared.Server;
 using RWBR.Client.Audio;
+using RWBR.Client.Settings;
 using UnityEngine;
 using SVector3 = System.Numerics.Vector3;
 
@@ -122,6 +123,84 @@ namespace RWBR.Client.Online
 
         private LineRenderer _nextRing;
         private GameObject _beacon;
+        private readonly Dictionary<byte, CarView> _cars = new Dictionary<byte, CarView>();
+
+        public int CarsShown => _cars.Count;
+        public Transform CarTransform(byte id) => _cars.TryGetValue(id, out CarView c) ? c.Root : null;
+
+        /// <summary>A car: placeholder box body, cabin and wheels until a licensed or original car model exists.</summary>
+        private sealed class CarView
+        {
+            public Transform Root;
+            public Transform[] Wheels;
+            public Renderer[] Paint;
+            public AudioSource Engine;
+            public bool Wrecked;
+            public float WheelSpin;
+        }
+
+        private static readonly Color[] CarPaint =
+        {
+            new Color(0.85f, 0.75f, 0.2f), new Color(0.2f, 0.45f, 0.75f), new Color(0.8f, 0.8f, 0.82f), new Color(0.15f, 0.55f, 0.35f),
+            new Color(0.7f, 0.2f, 0.2f),
+        };
+
+        private CarView NewCar(byte id)
+        {
+            var root = new GameObject($"Car_{id}").transform;
+            root.SetParent(_root, false);
+            Color paint = CarPaint[id % CarPaint.Length];
+            GameObject body = PracticeViews.CreatePrimitive(PrimitiveType.Cube, root, "Body", paint);
+            body.transform.localPosition = new Vector3(0, 0.75f, 0);
+            body.transform.localScale = new Vector3(VehicleSim.Width, 0.7f, VehicleSim.Length);
+            GameObject cabin = PracticeViews.CreatePrimitive(PrimitiveType.Cube, root, "Cabin", new Color(0.25f, 0.3f, 0.35f));
+            cabin.transform.localPosition = new Vector3(0, 1.3f, -0.2f);
+            cabin.transform.localScale = new Vector3(VehicleSim.Width * 0.9f, 0.5f, VehicleSim.Length * 0.5f);
+            var wheels = new Transform[4];
+            for (int i = 0; i < 4; i++)
+            {
+                GameObject w = PracticeViews.CreatePrimitive(PrimitiveType.Cylinder, root, $"Wheel{i}", new Color(0.1f, 0.1f, 0.1f));
+                w.transform.localPosition = new Vector3(i % 2 == 0 ? -0.95f : 0.95f, 0.38f, i < 2 ? 1.4f : -1.4f);
+                w.transform.localRotation = Quaternion.Euler(0, 0, 90);
+                w.transform.localScale = new Vector3(0.76f, 0.15f, 0.76f);
+                wheels[i] = w.transform;
+            }
+            AudioSource engine = root.gameObject.AddComponent<AudioSource>();
+            engine.clip = GameAudio.EngineClip();
+            engine.loop = true;
+            engine.spatialBlend = 1f;
+            engine.rolloffMode = AudioRolloffMode.Logarithmic;
+            engine.minDistance = 4f;
+            engine.maxDistance = 120f;
+            engine.dopplerLevel = 0;
+            engine.volume = 0;
+            return new CarView { Root = root, Wheels = wheels, Paint = new[] { body.GetComponent<Renderer>() }, Engine = engine };
+        }
+
+        /// <summary>Cars at their interpolated positions; wheels turn with speed; engine pitch and volume follow speed.</summary>
+        private void SyncCars(RemoteInterpolator interp, SnapshotPacket latest, float dt)
+        {
+            foreach (VehicleEntry known in latest.Vehicles)
+            {
+                if (!_cars.TryGetValue(known.Id, out CarView car)) _cars[known.Id] = car = NewCar(known.Id);
+                if (!interp.TrySampleVehicle(known.Id, out SVector3 p, out float yaw, out VehicleEntry v)) continue;
+                car.Root.SetPositionAndRotation(ToUnity(p), Quaternion.Euler(0, yaw * Mathf.Rad2Deg, 0));
+                car.WheelSpin += v.Speed / 0.38f * Mathf.Rad2Deg * dt;
+                foreach (Transform w in car.Wheels) w.localRotation = Quaternion.Euler(car.WheelSpin, 0, 90);
+                bool wrecked = v.Health == 0;
+                if (wrecked != car.Wrecked)
+                {
+                    car.Wrecked = wrecked;
+                    PracticeViews.SetColor(car.Paint[0].gameObject, wrecked ? new Color(0.15f, 0.13f, 0.12f) : CarPaint[known.Id % CarPaint.Length]);
+                }
+                bool running = !wrecked && (v.Driver != ProtocolInfo.NoPlayer || Mathf.Abs(v.Speed) > 0.3f);
+                float load = Mathf.Clamp01(Mathf.Abs(v.Speed) / VehicleSim.MaxForwardSpeed);
+                car.Engine.pitch = 0.6f + load * 1.2f;
+                car.Engine.volume = running ? (0.25f + 0.45f * load) * GameSettings.SfxVolume : 0f;
+                if (running && !car.Engine.isPlaying) car.Engine.Play();
+                else if (!running && car.Engine.isPlaying) car.Engine.Stop();
+            }
+        }
 
         /// <summary>Your map marker as a tall yellow beacon in the world (null removes it).</summary>
         public void SetMarker(Vector3? at)
@@ -212,6 +291,7 @@ namespace RWBR.Client.Online
             {
                 SyncGround(latest, time);
                 SyncProjectiles(latest, time);
+                SyncCars(interp, latest, Time.deltaTime);
             }
             UpdateBlasts(time);
 
@@ -277,6 +357,8 @@ namespace RWBR.Client.Online
             if (_nextRing != null) Object.Destroy(_nextRing.gameObject);
             if (_beacon != null) Object.Destroy(_beacon);
             _beacon = null;
+            foreach (CarView c in _cars.Values) Object.Destroy(c.Root.gameObject);
+            _cars.Clear();
             if (Effects != null) Effects.Destroy();
             Effects = null;
             _bodies.Clear();

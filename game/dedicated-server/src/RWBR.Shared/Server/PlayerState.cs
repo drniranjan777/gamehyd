@@ -65,6 +65,9 @@ namespace RWBR.Shared.Server
         /// <summary>Tick of elimination (0 while alive), for survival time in the result.</summary>
         public long EliminatedAtTick { get; set; }
         public int Placement { get; set; }
+        /// <summary>The car this player is in (null on foot) and the seat (0 driver, 1 passenger).</summary>
+        public Match.Vehicle? Vehicle { get; set; }
+        public int Seat { get; set; }
 
         /// <summary>Ring buffer of motor states by tick, used to rewind targets for lag compensation.</summary>
         public MotorState[] History { get; }

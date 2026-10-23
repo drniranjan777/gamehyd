@@ -61,7 +61,7 @@ namespace RWBR.Client.Online
         private long _localTick;
         private long _nextLocalShotTick;
         private bool _crouchToggle;
-        private bool _jumpLatched, _reloadLatched, _interactLatched, _healLatched, _throwLatched;
+        private bool _jumpLatched, _reloadLatched, _interactLatched, _healLatched, _throwLatched, _vehicleLatched;
         // One inventory action from the bag screen or quick bar, sent with the next input.
         private InputButtons _actionButtons;
         private ItemKind _actionItem;
@@ -131,6 +131,43 @@ namespace RWBR.Client.Online
 
         public bool SelfAlive => Self is { } s && (s.Flags & PlayerFlags.Alive) != 0;
         public bool MenusOpen => Paused || InventoryOpen || MapOpen || Net.State != ConnectionState.Connected || Net.Result != null || Error != null;
+
+        /// <summary>The car you are in (from the latest snapshot), or null on foot.</summary>
+        public VehicleEntry? SelfVehicle
+        {
+            get
+            {
+                SnapshotPacket s = Net.Latest;
+                if (s == null) return null;
+                foreach (VehicleEntry v in s.Vehicles)
+                    if (v.Driver == Net.PlayerId || v.Passenger == Net.PlayerId) return v;
+                return null;
+            }
+        }
+
+        public bool InVehicle => SelfVehicle.HasValue;
+        public bool Driving => SelfVehicle is { } v && v.Driver == Net.PlayerId;
+
+        /// <summary>A car you could get into right now (in reach, not wrecked, a seat free), or null.</summary>
+        public VehicleEntry? EnterableVehicle()
+        {
+            SnapshotPacket s = Net.Latest;
+            if (s == null || Prediction == null || !SelfAlive || InVehicle) return null;
+            SVector3 me = Prediction.Predicted.Position;
+            VehicleEntry? best = null;
+            float bestDist = VehicleSim.EnterRange;
+            foreach (VehicleEntry v in s.Vehicles)
+            {
+                if (v.Health == 0 || (v.Driver != ProtocolInfo.NoPlayer && v.Passenger != ProtocolInfo.NoPlayer)) continue;
+                float d = new Vector2(me.X - v.X, me.Z - v.Z).magnitude;
+                if (d < bestDist && Mathf.Abs(me.Y - v.Y) < 1.5f)
+                {
+                    bestDist = d;
+                    best = v;
+                }
+            }
+            return best;
+        }
 
         /// <summary>The full map screen.</summary>
         public bool MapOpen { get; set; }
@@ -406,6 +443,7 @@ namespace RWBR.Client.Online
             foreach (SnapshotPacket s in Net.NewSnapshots)
             {
                 Interp.Add(s);
+                if (Prediction != null) Prediction.Frozen = InCar(s);
                 Prediction?.Reconcile(s, Net.PlayerId);
                 TrackHealth(s);
                 RemoteShots(s);
@@ -438,6 +476,9 @@ namespace RWBR.Client.Online
                 ViewYaw = Mathf.Repeat(ViewYaw + frame.Look.x * sens, 360f);
                 ViewPitch = Mathf.Clamp(ViewPitch - frame.Look.y * sens, -70f, 75f);
                 _jumpLatched |= frame.JumpPressed;
+                _vehicleLatched |= frame.VehiclePressed;
+                _handbrakeHeld = Driving && (Keyboard.current?.spaceKey.isPressed == true || frame.JumpPressed ||
+                                             (Gamepad.current?.buttonSouth.isPressed ?? false) || Touch.IsHeld(TouchButton.Jump));
                 _reloadLatched |= frame.ReloadPressed;
                 _interactLatched |= frame.InteractPressed;
                 _healLatched |= frame.HealPressed;
@@ -467,10 +508,11 @@ namespace RWBR.Client.Online
                 Prediction.DecayOffset(Time.deltaTime);
                 Touch.InteractAvailable = SelfAlive && NearestPickup(out _);
                 Touch.MapAvailable = true;
+                Touch.VehicleAvailable = InVehicle || EnterableVehicle().HasValue;
                 Touch.ThrowAvailable = SelfAlive && Inventory != null &&
                                        (Inventory.Count(ItemKind.Frag) > 0 || Inventory.Count(ItemKind.Smoke) > 0);
                 _views.SetSelfView(ViewPitch + Aim.KickPitch, Aim.Eased, Aim.Scoped, _tickRate);
-                _views.Render(Net.PlayerId, Prediction.RenderPosition, ViewYaw, Prediction.Predicted, Interp, Net.Latest, Time.time);
+                _views.Render(Net.PlayerId, SelfRenderPosition(), ViewYaw, Prediction.Predicted, Interp, Net.Latest, Time.time);
                 MatchSounds();
                 GameAudio.Instance.SetAmbience(SelfAlive || Net.Result == null
                     ? GameAudio.AmbienceFor(Map.DistrictAt(Prediction.Predicted.Position.X, Prediction.Predicted.Position.Z))
@@ -594,6 +636,7 @@ namespace RWBR.Client.Online
             if (_interactLatched) buttons |= InputButtons.Interact;
             if (_healLatched) buttons |= InputButtons.Heal;
             if (_switchLatched) buttons |= InputButtons.SwitchWeapon;
+            if (_vehicleLatched) buttons |= InputButtons.Vehicle;
             if (Aim.Aiming) buttons |= InputButtons.Aim;
             ItemKind item = ItemKind.None;
             ushort target = 0;
@@ -615,12 +658,14 @@ namespace RWBR.Client.Online
                 }
             }
             _switchLatched = false;
-            _jumpLatched = _reloadLatched = _interactLatched = _healLatched = _throwLatched = false;
+            _jumpLatched = _reloadLatched = _interactLatched = _healLatched = _throwLatched = _vehicleLatched = false;
             if ((buttons & InputButtons.Jump) != 0) _crouchToggle = false;
 
-            // Same trick as practice mode: rotate the stick into the aim frame so movement follows the camera.
+            // On foot, same trick as practice mode: rotate the stick into the aim frame so movement follows the camera.
+            // Driving, the stick is the car's own controls (up = throttle, sideways = steer) and space is the handbrake.
             Vector2 move = Paused ? Vector2.zero : frame.Move;
-            float delta = (ViewYaw + Aim.KickYaw) * Mathf.Deg2Rad - yaw;
+            float delta = Driving ? 0f : (ViewYaw + Aim.KickYaw) * Mathf.Deg2Rad - yaw;
+            if (Driving && frame.JumpPressed == false && _handbrakeHeld) buttons |= InputButtons.Jump;
             float cos = Mathf.Cos(delta), sin = Mathf.Sin(delta);
             return new InputCommand
             {
@@ -634,6 +679,27 @@ namespace RWBR.Client.Online
                 Item = item,
                 Target = target,
             };
+        }
+
+        private bool _handbrakeHeld;
+
+        private bool InCar(SnapshotPacket s)
+        {
+            foreach (VehicleEntry v in s.Vehicles)
+                if (v.Driver == Net.PlayerId || v.Passenger == Net.PlayerId) return true;
+            return false;
+        }
+
+        /// <summary>Where to draw yourself: on your seat in the (interpolated) car, else your predicted position.</summary>
+        private SVector3 SelfRenderPosition()
+        {
+            if (SelfVehicle is { } car && Interp.TrySampleVehicle(car.Id, out SVector3 at, out float yaw, out _))
+            {
+                var state = new VehicleState { Position = at, Yaw = yaw };
+                SVector3 seat = VehicleSim.SeatPosition(state, car.Driver == Net.PlayerId ? 0 : 1);
+                return new SVector3(seat.X, at.Y + 0.1f, seat.Z);
+            }
+            return Prediction.RenderPosition;
         }
 
         // ---- Inventory actions (bag screen, quick bar) ----

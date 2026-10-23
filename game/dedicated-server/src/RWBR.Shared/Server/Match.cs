@@ -71,6 +71,7 @@ namespace RWBR.Shared.Server
             _historyLength = config.Ticks(config.MaxRewindSeconds) + 2;
             _lootTaken = new bool[config.Map.Loot.Count];
             Loot = LootTable.Apply(config.Map, config.LootTable);
+            SpawnVehicles();
             WithdrawDisabledLoot();
         }
 
@@ -167,6 +168,7 @@ namespace RWBR.Shared.Server
                     break;
                 case MatchPhase.Active:
                     SimulatePlayers(allowFire: true);
+                    StepVehicles();
                     StepProjectiles();
                     ApplyZoneDamage();
                     CheckForEnd();
@@ -398,12 +400,14 @@ namespace RWBR.Shared.Server
             Array.Clear(_lootTaken, 0, _lootTaken.Length);
             WithdrawDisabledLoot();
             ClearItems();
+            SpawnVehicles();
             for (int i = 0; i < _players.Count; i++)
             {
                 PlayerState p = _players[i];
                 p.Motor = MotorState.StandingAt(_cfg.Map.SpawnPoint(i, _players.Count));
                 p.Combat.Reset(_cfg.Weapon, _cfg.StartWithWeapon, _cfg.StartingReserveAmmo, _cfg.StartingWeaponIndex);
                 p.Alive = true;
+                p.Vehicle = null;
                 Array.Fill(p.History, p.Motor);
             }
         }
@@ -433,13 +437,23 @@ namespace RWBR.Shared.Server
 
                 p.Yaw = Simulation.WrapYaw(cmd.Yaw);
                 p.Pitch = Simulation.SanitizeAngle(cmd.Pitch, GameRules.MaxPitchRadians);
-                p.Aiming = cmd.Has(InputButtons.Aim) && p.Combat.HasWeapon && p.Alive;
+                p.Aiming = cmd.Has(InputButtons.Aim) && p.Combat.HasWeapon && p.Alive && (p.Vehicle == null || p.Seat > 0);
                 if (!p.Alive) continue;
 
+                if (p.Vehicle != null)
+                {
+                    InCar(p, cmd, allowFire);
+                    continue;
+                }
                 Simulation.Step(ref p.Motor, cmd, _dt, _cfg.Map);
                 p.Combat.Update(Tick, ActiveWeapon(p));
                 if (!allowFire) continue;
 
+                if (cmd.Has(InputButtons.Vehicle))
+                {
+                    EnterOrExit(p);
+                    if (p.Vehicle != null) continue;
+                }
                 if (cmd.Has(InputButtons.Interact)) TryPickUp(p, cmd.Target);
                 if (cmd.Has(InputButtons.DropItem) && p.Combat.Drop(cmd.Item, cmd.Target)) PlaceDrops(p);
                 if (cmd.Has(InputButtons.SwitchWeapon))
@@ -457,6 +471,38 @@ namespace RWBR.Shared.Server
         }
 
         private WeaponDefinition ActiveWeapon(PlayerState p) => p.Combat.ActiveWeapon ?? _cfg.Weapon;
+
+        /// <summary>
+        /// A player in a car: the driver's stick drives it (Jump is the handbrake) and the driver can't use weapons; the
+        /// passenger can shoot, reload, switch and heal, but not pick up, drop or throw.
+        /// </summary>
+        private void InCar(PlayerState p, InputCommand cmd, bool allowFire)
+        {
+            Vehicle v = p.Vehicle!;
+            p.Combat.Update(Tick, ActiveWeapon(p));
+            if (p.Seat == 0)
+            {
+                v.Throttle = cmd.MoveZ;
+                v.Steer = cmd.MoveX;
+                v.Handbrake = cmd.Has(InputButtons.Jump);
+            }
+            if (!allowFire) return;
+            if (cmd.Has(InputButtons.Vehicle))
+            {
+                EnterOrExit(p);
+                return;
+            }
+            if (cmd.Has(InputButtons.Heal)) p.Combat.TryStartHeal(Tick, _cfg.TickRate);
+            if (cmd.Has(InputButtons.UseItem)) p.Combat.TryStartHeal(Tick, _cfg.TickRate, cmd.Item);
+            if (p.Seat == 0) return;
+            if (cmd.Has(InputButtons.SwitchWeapon))
+                p.Combat.TrySwitch(Tick, p.Combat.WeaponIn(1 - p.Combat.ActiveSlot) ?? _cfg.Weapon, _cfg.TickRate);
+            if (cmd.Has(InputButtons.Reload)) p.Combat.TryStartReload(Tick, ActiveWeapon(p), _cfg.TickRate);
+            if (!cmd.Has(InputButtons.Fire)) return;
+            FireResult result = p.Combat.TryFire(Tick, ActiveWeapon(p), _cfg.TickRate);
+            if (result == FireResult.Fired) Fire(p, cmd);
+            else Stats.FireBlocked++;
+        }
 
         private readonly List<TargetCapsule> _targets = new();
         private readonly List<PlayerState> _targetPlayers = new();
@@ -595,6 +641,7 @@ namespace RWBR.Shared.Server
             victim.Health = 0;
             victim.EliminatedAtTick = Tick;
             victim.Placement = AliveCount() + 1;
+            if (victim.Vehicle != null) Exit(victim, hurt: false); // out of the car first, so the loot lands beside it
             victim.Combat.DropAll(); // everything they carried is left where they fell
             PlaceDrops(victim);
             if (killer != null) killer.Kills++;
@@ -690,6 +737,7 @@ namespace RWBR.Shared.Server
                     ShotCounter = p.ShotCounter,
                 }));
             }
+            FillVehicles(snapshot);
             _sentSnapshots.Add(snapshot);
 
             foreach (PlayerState p in _players)

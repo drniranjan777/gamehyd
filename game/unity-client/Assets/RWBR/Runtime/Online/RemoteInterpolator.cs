@@ -83,6 +83,37 @@ namespace RWBR.Client.Online
             return true;
         }
 
+        /// <summary>A car between the two buffered snapshots around the render time (same delay as other players).</summary>
+        public bool TrySampleVehicle(byte id, out SVector3 position, out float yaw, out VehicleEntry entry)
+        {
+            position = default;
+            yaw = 0;
+            entry = default;
+            if (_buffer.Count == 0) return false;
+            SnapshotPacket a = null, b = null;
+            foreach (SnapshotPacket s in _buffer)
+            {
+                if (s.Tick <= _renderTick) a = s;
+                else
+                {
+                    b = s;
+                    break;
+                }
+            }
+            if (a == null) a = b;
+            if (b == null) b = a;
+            int ia = a.Vehicles.FindIndex(v => v.Id == id), ib = b.Vehicles.FindIndex(v => v.Id == id);
+            if (ia < 0 && ib < 0) return false;
+            VehicleEntry ea = ia >= 0 ? a.Vehicles[ia] : b.Vehicles[ib], eb = ib >= 0 ? b.Vehicles[ib] : ea;
+            float t = b.Tick == a.Tick ? 1f : (float)((_renderTick - a.Tick) / (b.Tick - a.Tick));
+            t = Math.Max(0f, Math.Min(1f, t));
+            position = SVector3.Lerp(new SVector3(ea.X, ea.Y, ea.Z), new SVector3(eb.X, eb.Y, eb.Z), t);
+            yaw = LerpAngle(ea.Yaw, eb.Yaw, t);
+            entry = t < 0.5f ? ea : eb;
+            entry.Speed = ea.Speed + (eb.Speed - ea.Speed) * t;
+            return true;
+        }
+
         public IEnumerable<ushort> KnownPlayers()
         {
             if (_buffer.Count == 0) yield break;

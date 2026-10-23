@@ -286,6 +286,90 @@ These are placeholders until recorded ambience exists.
   fixes. Until then v2 suits larger lobbies.
 - **Server cost:** the match runs at 150–190× real time on the dev laptop on both maps.
 
+## Part C4 (23 October 2026): vehicles
+
+One car type in the shared simulation, so the server decides everything and offline matches drive the same way
+(`Vehicles.cs`, `Server/MatchVehicles.cs`).
+
+**Driving** (`VehicleSim`, a kinematic "bicycle" model rather than a rigid body):
+
+- **Speed:** accelerates at 6 m/s² to 22 m/s (about 80 km/h). Pulling back brakes hard (14 m/s²), then reverses
+  slowly (up to 6 m/s). It rolls to a stop when you let go.
+- **Steering:** 30° of lock at a standstill, down to about 7° at top speed, so it turns tightly when slow and gently
+  when fast.
+- **Handbrake:** Jump or space stops it within about a second.
+- **Collisions:** the car is two circles along its length. Kerbs and bridge decks up to 0.3 m are driven over.
+  Anything taller stops it: it bounces back and takes damage of 6 health per m/s of speed lost. Water always stops
+  it, so the river is crossed by car only on the bridges. The car drives on the ground only.
+- **Health:** 600.
+
+**In a match:**
+
+- **Spawns:** cars are parked along the avenues: 8 on v1, plus 4 in v2's ring by the warehouses, fields, logistics
+  park and across the river. A test checks that every one is clear, on the road, and away from player spawns. The
+  small maps have none.
+- **Getting in and out:** F, d-pad down, or the GET IN / GET OUT touch button (shown only near a car with a free seat,
+  or inside one). It takes the nearest car within 3.2 m, driver's seat first. Getting out puts you beside your door,
+  or the other side if that's blocked. Jumping out faster than 6 m/s hurts, 4 health per m/s over.
+- **Seats:** two. The driver steers and can heal but can't use weapons. The passenger can shoot, reload, switch and
+  heal, but not pick up, drop or throw. Occupants sit crouched in their seats and can be shot.
+- **Hitting people:** someone hit at 4 m/s or more takes 4.5 health per m/s (a full-speed hit does about 99), and the
+  kill counts for the driver. Slower contact just pushes them aside, and parked cars push people out of their
+  footprint.
+- **Damage and wrecks:** frags damage cars at twice the damage they would do to a person at that distance. At zero
+  health the car is a wreck: everyone inside is thrown out and takes 40 damage, so does anyone within 4 m, and a wreck
+  can't be driven. An eliminated occupant leaves the car first, so their loot lands beside it.
+
+**Protocol 9:** every car is in the snapshot, delta-encoded like players. A car is written only when its position,
+heading, speed, health or occupants changed since the baseline. Parked cars cost nothing; a moving car costs about
+12–17 bytes.
+
+**In the game:**
+
+- **Look:** a placeholder box body, cabin and four wheels that turn with speed, in five paints. Wrecks go dark.
+- **Movement on screen:** cars are interpolated with the same delay as other players. You are drawn in your seat in
+  the interpolated car, so the camera follows smoothly.
+- **Engine sound:** a synthesised loop per car whose pitch and volume rise with speed, silent when parked and empty.
+- **Controls:** driving, the stick is the car's own controls (W/S or up/down for throttle and brake, A/D for steering,
+  not camera-relative) and space is the handbrake. The mouse still looks around.
+- **HUD:** shows "Driving" or "Passenger", the speed in km/h and the car's health. The prompt shows
+  "[F] Get in the car (drive / ride as passenger)".
+- **Keys:** pick-up moved to E only, and F is now the car key.
+- **Practice:** the GET IN button is hidden there.
+
+**Not built in C4, and why:**
+
+- **Your own car isn't predicted on your device.** The server moves it and you see it after the network delay.
+  Offline that's one frame. Online, at 50–100 ms round trip, steering will feel a little late. Client-side prediction
+  of the car is the next step for online driving feel.
+- **Bullets don't damage cars.** Only grenades, crashes and wrecks do. The shared ballistics only test player
+  capsules. People inside can be shot.
+- **Bots don't drive.** They walk past parked cars (they're pushed aside like players), and a bot can be run over.
+  Driving bots belong to C5.
+- **One car model, placeholder look.** Final art needs a licensed or original car model.
+
+### Changed files (C4)
+
+- Shared, new: `Vehicles.cs` (`VehicleState`, `VehicleSim`, `VehicleSpawns`), `Server/MatchVehicles.cs`.
+- Shared, changed: `InputCommand.cs` (Vehicle button), `MatchConfig.cs` (`Vehicles`), `Protocol/Packets.cs`
+  (`VehicleEntry`, protocol 9), `Protocol/SnapshotCodec.cs` (car deltas), `Server/Match.cs` (seats, in-car rules,
+  stepping), `Server/MatchItems.cs` (frags damage cars), `Server/PlayerState.cs`.
+- Unity: `OnlineGame.cs` (car state, driving controls, seat rendering), `OnlineViews.cs` (car views, engine),
+  `OnlineHud.cs` (car HUD, prompt), `RemoteInterpolator.cs` (car sampling), `ClientPrediction.cs` (paused in a car),
+  `PlayerInput.cs`, `TouchControls.cs`, `GameAudio.cs` (engine loop).
+
+### Tests (C4)
+
+| Suite          | Result                                                                                                                                                                                                                                                                                    |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| .NET           | 119/119. New: acceleration, top speed, braking then reversing, rolling to a stop; tighter turns when slow, handbrake; a wall stops and damages the car; kerbs driven over, walls not; the river crossed only on the bridge; every car spawn clear and away from player spawns; two players get in, the driver can't shoot and the passenger can, both ride along, getting out fast hurts and lands beside the car, it rolls to a stop; a run-over kill counts for the driver and a slow nudge only pushes; a frag wrecks a car and throws its occupant out, and a wreck can't be entered; parked cars cost nothing in delta snapshots and a moving one costs under 20 bytes |
+| Unity EditMode | 64/64. New: the engine loop is audible, unclipped and seamless                                                                                                                                                                                                                             |
+| Unity PlayMode | 23/23, including both full-platform tests. New, in an offline match: walk to a car, F to get in, the stick drives it more than 6 m in 2 s, every car is drawn, you are drawn in your seat, F to get out beside it                                                                         |
+
+**Bots with cars on the map** (city, 20 bots, 6 matches): 7.4 min, 8.2 kills, 11.0 zone eliminations, essentially the
+same as without cars (8.0 / 11.5), so parked cars don't trip the bots up. The simulator runs at 122× real time with
+eight cars.
+
 ### Not done in C1
 
 - Bots are the Phase 8 bots: no difficulty levels or weapon choice by range yet (C5).

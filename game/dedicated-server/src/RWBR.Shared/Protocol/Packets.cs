@@ -62,7 +62,7 @@ namespace RWBR.Shared.Protocol
 
     public static class ProtocolInfo
     {
-        public const ushort Version = 8;
+        public const ushort Version = 9;
         /// <summary>Ground items (dropped or left by eliminated players) start at this id; lower ids are map loot spots.</summary>
         public const ushort FirstGroundItemId = 0x8000;
         public const ushort NoPlayer = ushort.MaxValue;
@@ -140,6 +140,8 @@ namespace RWBR.Shared.Protocol
         public List<GroundItemEntry> Ground = new List<GroundItemEntry>();
         /// <summary>Grenades and smoke clouds near the recipient.</summary>
         public List<ProjectileEntry> Projectiles = new List<ProjectileEntry>();
+        /// <summary>Every car in the match (delta-encoded: unchanged cars cost nothing).</summary>
+        public List<VehicleEntry> Vehicles = new List<VehicleEntry>();
 
         // Recipient-only equipment and backpack.
         public byte SelfVest, SelfHelmet, SelfBackpack;
@@ -174,6 +176,19 @@ namespace RWBR.Shared.Protocol
         public byte Ammo;
         public Attachments Attach;
         public float X, Y, Z;
+    }
+
+    /// <summary>A car: position (cm on the wire), heading, speed (for engine sound), health and who sits in it.</summary>
+    public struct VehicleEntry
+    {
+        public byte Id;
+        public float X, Y, Z, Yaw;
+        /// <summary>Signed speed in m/s (0.1 m/s on the wire).</summary>
+        public float Speed;
+        /// <summary>Percent of full health; 0 = wrecked.</summary>
+        public byte Health;
+        public ushort Driver;
+        public ushort Passenger;
     }
 
     public enum ProjectileState : byte

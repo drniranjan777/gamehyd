@@ -240,6 +240,7 @@ namespace RWBR.Shared.Server
         private void Explode(Projectile pr)
         {
             Vector3 blast = pr.Position + new Vector3(0, 0.3f, 0);
+            DamageVehiclesFromBlast(blast, pr.Owner);
             foreach (PlayerState victim in _players)
             {
                 if (!victim.Alive) continue;

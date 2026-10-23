@@ -72,6 +72,7 @@ namespace RWBR.Client.Online
                 else if (_game.SelfAlive && !_game.Paused) DrawCrosshair();
             SoundCues.Draw(_w, VirtualHeight, Camera.main);
                 DrawVitals(s, self.Value);
+                DrawCar();
                 DrawNavigation(s, self.Value);
                 DrawQuickBar();
                 DrawPrompt();
@@ -242,6 +243,19 @@ namespace RWBR.Client.Online
 
         private static string Level(int level) => level > 0 ? $"L{level}" : "—";
 
+        /// <summary>In a car: speed, the car's health, and how to get out.</summary>
+        private void DrawCar()
+        {
+            if (!(_game.SelfVehicle is { } car)) return;
+            float x = 24, y = VirtualHeight - 160;
+            Fill(new Rect(x, y, 260, 58), new Color(0, 0, 0, 0.45f));
+            string role = _game.Driving ? "Driving" : "Passenger";
+            GUI.Label(new Rect(x + 10, y + 4, 240, 24), $"{role}   {Mathf.Abs(car.Speed) * 3.6f:0} km/h", _label);
+            Bar(new Rect(x + 10, y + 32, 240, 12), car.Health / 100f, Color.Lerp(new Color(0.9f, 0.3f, 0.2f), new Color(0.9f, 0.8f, 0.3f), car.Health / 100f));
+            string keys = _game.Touch.Visible ? "GET OUT" : "[F] get out" + (_game.Driving ? " · W/S drive, A/D steer, Space brake" : "");
+            GUI.Label(new Rect(x, y - 22, 520, 22), keys, _small);
+        }
+
         private readonly MapHud _mapHud = new MapHud();
 
         private MapHud.ZoneView ZoneOf(SnapshotPacket s) => new MapHud.ZoneView
@@ -404,7 +418,16 @@ namespace RWBR.Client.Online
 
         private void DrawPrompt()
         {
-            if (!_game.NearestPickup(out OnlineGame.NearbyItem item) || _game.MenusOpen) return;
+            if (_game.MenusOpen) return;
+            string vkey = _game.Touch.Visible ? "GET IN" : "[F]";
+            if (_game.EnterableVehicle() is { } car)
+            {
+                var cr = new Rect(_w / 2 - 200, VirtualHeight * 0.58f, 400, 34);
+                Fill(cr, new Color(0, 0, 0, 0.5f));
+                string seat = car.Driver == ProtocolInfo.NoPlayer ? "drive" : "ride as passenger";
+                GUI.Label(cr, $"{vkey}  Get in the car ({seat})", _center);
+            }
+            if (!_game.NearestPickup(out OnlineGame.NearbyItem item)) return;
             string key = _game.Touch.Visible ? "PICK UP" : "[E]";
             int more = _game.NearbyItems().Count - 1;
             string extra = more > 0 ? (_game.Touch.Visible ? $"  (+{more}: BAG)" : $"  (+{more}: Tab)") : "";
@@ -450,7 +473,8 @@ namespace RWBR.Client.Online
                 var c = new Vector2(b.Center.x * _w, (1 - b.Center.y) * VirtualHeight);
                 float r = b.Radius * VirtualHeight;
                 Fill(new Rect(c.x - r, c.y - r, r * 2, r * 2), new Color(1, 1, 1, t.IsHeld(b.Button) || (b.Button == TouchButton.Aim && _game.Aim.Aiming) ? 0.45f : 0.22f));
-                string label = b.Button == TouchButton.Throw ? (_game.SelectedThrowable == ItemKind.Smoke ? "SMOKE" : "FRAG") : b.Label;
+                string label = b.Button == TouchButton.Throw ? (_game.SelectedThrowable == ItemKind.Smoke ? "SMOKE" : "FRAG")
+                    : b.Button == TouchButton.Vehicle ? (_game.InVehicle ? "GET OUT" : "GET IN") : b.Label;
                 GUI.Label(new Rect(c.x - 50, c.y - 12, 100, 24), label, new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter });
             }
         }

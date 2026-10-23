@@ -34,6 +34,8 @@ namespace RWBR.Client.Player
         public bool CycleThrowablePressed;
         /// <summary>Open or close the full map (M, d-pad left, touch MAP).</summary>
         public bool MapToggled;
+        /// <summary>Get into or out of a car (F, d-pad down, touch GET IN / GET OUT).</summary>
+        public bool VehiclePressed;
 
         public void Merge(PlayerInputFrame other)
         {
@@ -54,6 +56,7 @@ namespace RWBR.Client.Player
             ThrowPressed |= other.ThrowPressed;
             CycleThrowablePressed |= other.CycleThrowablePressed;
             MapToggled |= other.MapToggled;
+            VehiclePressed |= other.VehiclePressed;
             if (other.SelectSlot >= 0) SelectSlot = other.SelectSlot;
         }
     }
@@ -84,7 +87,8 @@ namespace RWBR.Client.Player
                 f.JumpPressed = kb.spaceKey.wasPressedThisFrame;
                 f.CrouchToggled = kb.cKey.wasPressedThisFrame || kb.leftCtrlKey.wasPressedThisFrame;
                 f.ReloadPressed = kb.rKey.wasPressedThisFrame;
-                f.InteractPressed = kb.eKey.wasPressedThisFrame || kb.fKey.wasPressedThisFrame;
+                f.InteractPressed = kb.eKey.wasPressedThisFrame;
+                f.VehiclePressed = kb.fKey.wasPressedThisFrame;
                 f.HealPressed = kb.hKey.wasPressedThisFrame || kb.digit4Key.wasPressedThisFrame;
                 f.InventoryToggled = kb.tabKey.wasPressedThisFrame || kb.iKey.wasPressedThisFrame;
                 f.PausePressed = kb.escapeKey.wasPressedThisFrame;
@@ -122,6 +126,7 @@ namespace RWBR.Client.Player
                 f.ThrowPressed |= pad.leftShoulder.wasPressedThisFrame;
                 f.CycleThrowablePressed |= pad.dpad.right.wasPressedThisFrame;
                 f.MapToggled |= pad.dpad.left.wasPressedThisFrame;
+                f.VehiclePressed |= pad.dpad.down.wasPressedThisFrame;
             }
             f.Move = Vector2.ClampMagnitude(f.Move, 1f);
             return f;

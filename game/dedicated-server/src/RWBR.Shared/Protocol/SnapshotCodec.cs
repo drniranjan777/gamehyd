@@ -63,7 +63,7 @@ namespace RWBR.Shared.Protocol
     }
 
     /// <summary>
-    /// Snapshot wire format (protocol v8: v7 plus the next zone circle). Entries are delta-encoded against a baseline snapshot the receiver
+    /// Snapshot wire format (protocol v9: v8 plus cars). Entries are delta-encoded against a baseline snapshot the receiver
     /// acknowledged (the AckTick in its inputs); unchanged players cost 3 bytes, moving players about 12.
     /// The recipient's backpack and equipment follow the header. Ground items near the recipient are sent only when they
     /// differ from the baseline (one byte otherwise); grenades and smoke near the recipient are sent while there are any.
@@ -170,7 +170,128 @@ namespace RWBR.Shared.Protocol
                 w.U8((byte)e.State);
                 WriteDecimetres(w, e.X, e.Y, e.Z);
             }
+            WriteVehicles(w, p.Vehicles, baseline?.Vehicles);
             return w.ToArray();
+        }
+
+        [Flags]
+        private enum CarField : byte
+        {
+            PositionDelta = 1,
+            PositionFull = 2,
+            Yaw = 4,
+            Speed = 8,
+            Health = 16,
+            Seats = 32,
+            All = PositionFull | Yaw | Speed | Health | Seats,
+        }
+
+        /// <summary>A car as the receiver will see it (the server keeps normalised entries as delta baselines).</summary>
+        public static VehicleEntry Normalize(VehicleEntry v)
+        {
+            v.X = Quantize.Position(Quantize.Position(v.X));
+            v.Y = Quantize.Position(Quantize.Position(v.Y));
+            v.Z = Quantize.Position(Quantize.Position(v.Z));
+            v.Yaw = Quantize.Yaw(Quantize.Yaw(v.Yaw));
+            v.Speed = SpeedOf(SpeedQ(v.Speed));
+            return v;
+        }
+
+        private static short SpeedQ(float mps) => (short)Math.Clamp((int)Math.Round(mps * 10f), short.MinValue, short.MaxValue);
+        private static float SpeedOf(short q) => q / 10f;
+
+        /// <summary>Only cars that changed since the baseline are written (with only the fields that changed).</summary>
+        private static void WriteVehicles(PacketWriter w, List<VehicleEntry> cars, List<VehicleEntry>? baseline)
+        {
+            var changed = new List<(VehicleEntry Car, CarField Mask, int Dx, int Dy, int Dz)>();
+            foreach (VehicleEntry v in cars)
+            {
+                int x = Quantize.Position(v.X), y = Quantize.Position(v.Y), z = Quantize.Position(v.Z);
+                VehicleEntry? b = null;
+                if (baseline != null)
+                    foreach (VehicleEntry o in baseline)
+                        if (o.Id == v.Id) b = o;
+                if (b is not { } bb)
+                {
+                    changed.Add((v, CarField.All, 0, 0, 0));
+                    continue;
+                }
+                CarField mask = 0;
+                int dx = x - Quantize.Position(bb.X), dy = y - Quantize.Position(bb.Y), dz = z - Quantize.Position(bb.Z);
+                if (dx != 0 || dy != 0 || dz != 0)
+                    mask |= FitsShort(dx) && FitsShort(dy) && FitsShort(dz) ? CarField.PositionDelta : CarField.PositionFull;
+                if (Quantize.Yaw(v.Yaw) != Quantize.Yaw(bb.Yaw)) mask |= CarField.Yaw;
+                if (SpeedQ(v.Speed) != SpeedQ(bb.Speed)) mask |= CarField.Speed;
+                if (v.Health != bb.Health) mask |= CarField.Health;
+                if (v.Driver != bb.Driver || v.Passenger != bb.Passenger) mask |= CarField.Seats;
+                if (mask != 0) changed.Add((v, mask, dx, dy, dz));
+            }
+            w.U8((byte)Math.Min(changed.Count, 255));
+            foreach (var (v, mask, dx, dy, dz) in changed)
+            {
+                w.U8(v.Id);
+                w.U8((byte)mask);
+                if ((mask & CarField.PositionDelta) != 0)
+                {
+                    w.I16((short)dx);
+                    w.I16((short)dy);
+                    w.I16((short)dz);
+                }
+                if ((mask & CarField.PositionFull) != 0)
+                {
+                    w.I32(Quantize.Position(v.X));
+                    w.I32(Quantize.Position(v.Y));
+                    w.I32(Quantize.Position(v.Z));
+                }
+                if ((mask & CarField.Yaw) != 0) w.U16(Quantize.Yaw(v.Yaw));
+                if ((mask & CarField.Speed) != 0) w.I16(SpeedQ(v.Speed));
+                if ((mask & CarField.Health) != 0) w.U8(v.Health);
+                if ((mask & CarField.Seats) != 0)
+                {
+                    w.U16(v.Driver);
+                    w.U16(v.Passenger);
+                }
+            }
+        }
+
+        private static void ReadVehicles(PacketReader r, SnapshotPacket p, SnapshotPacket? baseline)
+        {
+            if (baseline != null) p.Vehicles.AddRange(baseline.Vehicles); // unchanged cars carry over
+            int n = r.U8();
+            for (int i = 0; i < n; i++)
+            {
+                byte id = r.U8();
+                var mask = (CarField)r.U8();
+                int index = p.Vehicles.FindIndex(v => v.Id == id);
+                if (index < 0 && (mask & CarField.All) != CarField.All) throw new PacketFormatException("car delta without baseline");
+                VehicleEntry v = index >= 0 ? p.Vehicles[index] : new VehicleEntry { Id = id };
+                int x = Quantize.Position(v.X), y = Quantize.Position(v.Y), z = Quantize.Position(v.Z);
+                if ((mask & CarField.PositionDelta) != 0)
+                {
+                    x += r.I16();
+                    y += r.I16();
+                    z += r.I16();
+                }
+                if ((mask & CarField.PositionFull) != 0)
+                {
+                    x = r.I32();
+                    y = r.I32();
+                    z = r.I32();
+                }
+                v.X = Quantize.Position(x);
+                v.Y = Quantize.Position(y);
+                v.Z = Quantize.Position(z);
+                if ((mask & CarField.Yaw) != 0) v.Yaw = Quantize.Yaw(r.U16());
+                if ((mask & CarField.Speed) != 0) v.Speed = SpeedOf(r.I16());
+                if ((mask & CarField.Health) != 0) v.Health = r.U8();
+                if ((mask & CarField.Seats) != 0)
+                {
+                    v.Driver = r.U16();
+                    v.Passenger = r.U16();
+                }
+                if (index >= 0) p.Vehicles[index] = v;
+                else p.Vehicles.Add(v);
+            }
         }
 
         private static void WriteDecimetres(PacketWriter w, float x, float y, float z)
@@ -262,6 +383,7 @@ namespace RWBR.Shared.Protocol
                 e.Z = r.I16() / 10f;
                 p.Projectiles.Add(e);
             }
+            ReadVehicles(r, p, baseline);
             return p;
         }
 

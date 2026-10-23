@@ -27,6 +27,8 @@ namespace RWBR.Shared
         /// <summary>Drop <see cref="InputCommand.Item"/>: <see cref="InputCommand.Target"/> units (0 = all), or the weapon in
         /// slot Target.</summary>
         DropItem = 2048,
+        /// <summary>Get into the nearest car (driver's seat first) or out of the one you're in.</summary>
+        Vehicle = 4096,
     }
 
     /// <summary>One client input sample. Clients send inputs, never positions, damage or results (BRD 7.2).</summary>
@@ -35,9 +37,9 @@ namespace RWBR.Shared
         public uint Sequence;
         /// <summary>Latest server tick the client had rendered when sampling; bounds lag compensation.</summary>
         public uint AckTick;
-        /// <summary>Local strafe (-1..1). Magnitude of (MoveX, MoveZ) is clamped to 1 on the server.</summary>
+        /// <summary>Local strafe (-1..1); steering in a car's driver's seat. Magnitude of (MoveX, MoveZ) is clamped to 1 on the server.</summary>
         public float MoveX;
-        /// <summary>Local forward (-1..1).</summary>
+        /// <summary>Local forward (-1..1); throttle (forward) and brake/reverse (back) when driving. Jump is the handbrake.</summary>
         public float MoveZ;
         public float Yaw;
         public float Pitch;
