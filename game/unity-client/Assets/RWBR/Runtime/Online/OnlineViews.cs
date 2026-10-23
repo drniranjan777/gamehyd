@@ -79,16 +79,20 @@ namespace RWBR.Client.Online
             return t != null;
         }
 
-        public void Build(MapLayout map)
+        public void Build(MapLayout map) => Build(map, map.Loot);
+
+        /// <summary>Builds the views for a map and the match's loot spots (its loot table).</summary>
+        public void Build(MapLayout map, IReadOnlyList<LootSpawn> loot)
         {
             Clear();
             _map = map;
             _lineMaterial = new Material(Shader.Find("Sprites/Default"));
             _fxMaterial = new Material(Shader.Find("Sprites/Default")) { renderQueue = 3100 };
             Effects = new CombatEffects(_root);
-            for (int i = 0; i < map.Loot.Count; i++)
+            _lootSpots = loot;
+            for (int i = 0; i < loot.Count; i++)
             {
-                LootSpawn item = map.Loot[i];
+                LootSpawn item = loot[i];
                 GameObject go = PracticeViews.CreatePrimitive(PrimitiveType.Cube, _root, $"Loot_{i:00}_{item.Kind}", PracticeViews.LootColor(item.Kind));
                 go.transform.localScale = PracticeViews.LootScale(item.Kind);
                 _loot.Add(go);
@@ -103,7 +107,45 @@ namespace RWBR.Client.Online
             _zoneRing.widthMultiplier = 0.5f;
             _zoneRing.startColor = _zoneRing.endColor = new Color(0.3f, 0.6f, 1f, 0.8f);
             _zoneRing.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+            // Where the zone is closing to: a thin white ring.
+            var nextGo = new GameObject("NextZoneRing");
+            nextGo.transform.SetParent(_root, false);
+            _nextRing = nextGo.AddComponent<LineRenderer>();
+            _nextRing.sharedMaterial = _lineMaterial;
+            _nextRing.loop = true;
+            _nextRing.positionCount = RingSegments;
+            _nextRing.widthMultiplier = 0.3f;
+            _nextRing.startColor = _nextRing.endColor = new Color(1f, 1f, 1f, 0.7f);
+            _nextRing.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         }
+
+        private LineRenderer _nextRing;
+        private GameObject _beacon;
+
+        /// <summary>Your map marker as a tall yellow beacon in the world (null removes it).</summary>
+        public void SetMarker(Vector3? at)
+        {
+            if (!at.HasValue)
+            {
+                if (_beacon != null) Object.Destroy(_beacon);
+                _beacon = null;
+                return;
+            }
+            if (_beacon == null)
+            {
+                _beacon = PracticeViews.CreatePrimitive(PrimitiveType.Cylinder, _root, "MarkerBeacon", new Color(1f, 0.85f, 0.1f, 0.45f));
+                var r = _beacon.GetComponent<Renderer>();
+                r.sharedMaterial = _fxMaterial;
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                PracticeViews.SetColor(_beacon, new Color(1f, 0.85f, 0.1f, 0.45f));
+                _beacon.transform.localScale = new Vector3(0.8f, 60f, 0.8f);
+            }
+            _beacon.transform.position = at.Value + Vector3.up * 60f;
+        }
+
+        public bool MarkerShown => _beacon != null;
+        private IReadOnlyList<LootSpawn> _lootSpots;
 
         public void Render(ushort selfId, SVector3 selfPosition, float selfYawDegrees, MotorState selfMotor,
             RemoteInterpolator interp, SnapshotPacket latest, float time)
@@ -160,7 +202,7 @@ namespace RWBR.Client.Online
                     bool visible = latest == null || !latest.IsLootTaken(i);
                     if (_loot[i].activeSelf != visible) _loot[i].SetActive(visible);
                     if (!visible) continue;
-                    Vector3 lp = ToUnity(_map.Loot[i].Position);
+                    Vector3 lp = ToUnity(_lootSpots[i].Position);
                     _loot[i].transform.SetPositionAndRotation(lp + Vector3.up * (0.45f + Mathf.Sin(time * 2f + i) * 0.08f),
                         Quaternion.Euler(0, time * 60f + i * 30f, 0));
                 }
@@ -180,7 +222,11 @@ namespace RWBR.Client.Online
                     float a = i * Mathf.PI * 2 / RingSegments;
                     _zoneRing.SetPosition(i, new Vector3(latest.ZoneX + Mathf.Sin(a) * latest.ZoneRadius, 0.6f,
                         latest.ZoneZ + Mathf.Cos(a) * latest.ZoneRadius));
+                    _nextRing.SetPosition(i, new Vector3(latest.NextZoneX + Mathf.Sin(a) * latest.NextZoneRadius, 0.5f,
+                        latest.NextZoneZ + Mathf.Cos(a) * latest.NextZoneRadius));
                 }
+                bool closing = latest.NextZoneRadius < latest.ZoneRadius - 0.5f;
+                if (_nextRing.enabled != closing) _nextRing.enabled = closing;
             }
 
             Effects?.Update(time);
@@ -228,6 +274,9 @@ namespace RWBR.Client.Online
             _blasts.Clear();
             foreach ((LineRenderer line, float _) in _tracers) Object.Destroy(line.gameObject);
             if (_zoneRing != null) Object.Destroy(_zoneRing.gameObject);
+            if (_nextRing != null) Object.Destroy(_nextRing.gameObject);
+            if (_beacon != null) Object.Destroy(_beacon);
+            _beacon = null;
             if (Effects != null) Effects.Destroy();
             Effects = null;
             _bodies.Clear();

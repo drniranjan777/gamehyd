@@ -295,3 +295,10 @@ dl.kv dd {
   max-width: 380px;
   margin: 10vh auto;
 }
+
+/* Two columns of small fields (loot table). */
+.grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 16px;
+}

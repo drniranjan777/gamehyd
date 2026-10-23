@@ -63,7 +63,7 @@ namespace RWBR.Shared.Protocol
     }
 
     /// <summary>
-    /// Snapshot wire format (protocol v7). Entries are delta-encoded against a baseline snapshot the receiver
+    /// Snapshot wire format (protocol v8: v7 plus the next zone circle). Entries are delta-encoded against a baseline snapshot the receiver
     /// acknowledged (the AckTick in its inputs); unchanged players cost 3 bytes, moving players about 12.
     /// The recipient's backpack and equipment follow the header. Ground items near the recipient are sent only when they
     /// differ from the baseline (one byte otherwise); grenades and smoke near the recipient are sent while there are any.
@@ -101,6 +101,9 @@ namespace RWBR.Shared.Protocol
             w.F32(p.ZoneX);
             w.F32(p.ZoneZ);
             w.F32(p.ZoneRadius);
+            w.F32(p.NextZoneX);
+            w.F32(p.NextZoneZ);
+            w.F32(p.NextZoneRadius);
             w.U32(p.AckSequence);
             w.U8(p.AliveCount);
             w.U16(p.SelfReserveAmmo);
@@ -199,6 +202,9 @@ namespace RWBR.Shared.Protocol
             p.ZoneX = r.F32();
             p.ZoneZ = r.F32();
             p.ZoneRadius = r.F32();
+            p.NextZoneX = r.F32();
+            p.NextZoneZ = r.F32();
+            p.NextZoneRadius = r.F32();
             p.AckSequence = r.U32();
             p.AliveCount = r.U8();
             p.SelfReserveAmmo = r.U16();

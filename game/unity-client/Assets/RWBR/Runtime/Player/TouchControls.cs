@@ -21,6 +21,7 @@ namespace RWBR.Client.Player
         Switch,
         Aim,
         Throw,
+        Map,
     }
 
     /// <summary>
@@ -72,6 +73,7 @@ namespace RWBR.Client.Player
             new ButtonLayout { Button = TouchButton.Switch, Label = "SWAP", Center = new Vector2(0.80f, 0.55f), Radius = 0.05f },
             new ButtonLayout { Button = TouchButton.Aim, Label = "AIM", Center = new Vector2(0.73f, 0.27f), Radius = 0.06f },
             new ButtonLayout { Button = TouchButton.Throw, Label = "THROW", Center = new Vector2(0.59f, 0.12f), Radius = 0.055f },
+            new ButtonLayout { Button = TouchButton.Map, Label = "MAP", Center = new Vector2(0.13f, 0.90f), Radius = 0.05f },
         };
 
         public const float MinButtonScale = 0.7f;
@@ -208,6 +210,12 @@ namespace RWBR.Client.Player
         public bool InteractAvailable { get; set; }
         /// <summary>Whether the THROW button is shown and works (a grenade is carried).</summary>
         public bool ThrowAvailable { get; set; }
+        /// <summary>Whether the MAP button is shown and works (matches have a map; practice doesn't).</summary>
+        public bool MapAvailable { get; set; }
+
+        /// <summary>Whether a button is shown and responds right now.</summary>
+        public bool Shows(TouchButton b) =>
+            (b != TouchButton.Interact || InteractAvailable) && (b != TouchButton.Throw || ThrowAvailable) && (b != TouchButton.Map || MapAvailable);
 
         /// <summary>Current stick origin and knob in screen pixels (bottom-left origin), for drawing.</summary>
         public Vector2? StickOrigin { get; private set; }
@@ -273,8 +281,7 @@ namespace RWBR.Client.Player
         {
             foreach (ButtonLayout b in Layout)
             {
-                if (b.Button == TouchButton.Interact && !InteractAvailable) continue;
-                if (b.Button == TouchButton.Throw && !ThrowAvailable) continue;
+                if (!Shows(b.Button)) continue;
                 Vector2 c = new Vector2(b.Center.x * Screen.width, b.Center.y * Screen.height);
                 if (Vector2.Distance(pos, c) > b.Radius * Screen.height) continue;
 
@@ -290,6 +297,7 @@ namespace RWBR.Client.Player
                     case TouchButton.Switch: f.SwitchPressed = true; break;
                     case TouchButton.Aim: f.AimToggled = true; break;
                     case TouchButton.Throw: f.ThrowPressed = true; break;
+                    case TouchButton.Map: f.MapToggled = true; break;
                 }
                 return new Tracked { Role = Role.Button, Button = b.Button, Origin = pos, Last = pos };
             }

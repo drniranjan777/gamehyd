@@ -31,6 +31,15 @@ namespace RWBR.Shared
         public float FillWaitSeconds { get; set; }
         public float MaxMatchSeconds { get; set; } = 900f;
         public float ZoneDamagePerSecond { get; set; } = 5f;
+        /// <summary>Each later zone stage hurts this much more (0.5: stage 2 does 1.5x, stage 3 2x...).</summary>
+        public float ZoneDamageGrowth { get; set; } = 0.5f;
+        /// <summary>
+        /// Picks where each circle closes. 0 keeps every circle centred on the map (tests, old behaviour); any other
+        /// value moves each new circle to a random spot inside the previous one, the same for everyone in the match.
+        /// </summary>
+        public int ZoneSeed { get; set; }
+        /// <summary>Live-ops loot weights; sent to every client in Welcome.</summary>
+        public LootTableConfig LootTable { get; set; } = LootTableConfig.Default;
         public List<ZoneStage> ZoneStages { get; set; } = new List<ZoneStage>
         {
             new ZoneStage(60, 60, 60),

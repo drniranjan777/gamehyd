@@ -13,19 +13,35 @@ namespace RWBR.Shared
     ///
     /// Districts: Old City bazaar (NW), Hi-Tech towers (NE), Residential colony (SW), Lakeside (SE), and the
     /// Char Gate plaza at the centre, with a metro viaduct along x = 150.
+    ///
+    /// "hyd-city-v2" (900 m) is v1 unchanged at the centre plus a 150 m ring: the Industrial Estate (north: warehouses
+    /// you can enter, container yards, a factory chimney), Musi Riverside (east: a river with three road bridges and
+    /// farmland beyond), the Outskirts (south: open fields, rocks, trees and farmhouses) and the Logistics Park (west:
+    /// container stacks, warehouses, a truck depot). Built by the same generator after the v1 districts, so v1's random
+    /// sequence, and so its pinned geometry, is untouched.
     /// </summary>
     public static class CityMap
     {
         public const string Version = "hyd-city-v1";
+        public const string VersionV2 = "hyd-city-v2";
         public const float HalfSize = 300f;
+        public const float HalfSizeV2 = 450f;
+        /// <summary>The river's banks (x) in v2; bridges cross it at <see cref="BridgeZs"/>.</summary>
+        public const float RiverWest = 340f, RiverEast = 368f;
+        public static readonly float[] BridgeZs = { -220f, 0f, 220f };
+        private const float BridgeHalfWidth = 7f;
         private const uint Seed = 0x48594431; // "HYD1"
         private const float AvenueHalfWidth = 10f;
 
         // Built once, even when several threads ask at the same time (the server, tests running in parallel).
-        private static readonly System.Lazy<MapLayout> Cached = new System.Lazy<MapLayout>(Generate);
+        private static readonly System.Lazy<MapLayout> Cached = new System.Lazy<MapLayout>(() => Generate(v2: false));
+        private static readonly System.Lazy<MapLayout> CachedV2 = new System.Lazy<MapLayout>(() => Generate(v2: true));
 
         /// <summary>The map is immutable, so one shared instance is enough (queries are thread-safe).</summary>
         public static MapLayout Build() => Cached.Value;
+
+        /// <summary>hyd-city-v2 (see the class summary).</summary>
+        public static MapLayout BuildV2() => CachedV2.Value;
 
         private sealed class Builder
         {
@@ -69,10 +85,10 @@ namespace RWBR.Shared
             East,
         }
 
-        private static MapLayout Generate()
+        private static MapLayout Generate(bool v2)
         {
             var b = new Builder();
-            var districts = new[]
+            var districts = new List<District>
             {
                 new District("Char Gate Plaza", -45, -45, 45, 45),
                 new District("Old City Bazaar", -300, AvenueHalfWidth, -AvenueHalfWidth, 300),
@@ -81,6 +97,7 @@ namespace RWBR.Shared
                 new District("Lakeside", AvenueHalfWidth, -300, 300, -AvenueHalfWidth),
             };
 
+            // v1 districts first and in this order: they draw from the shared random sequence.
             Plaza(b);
             Bazaar(b);
             Towers(b);
@@ -88,8 +105,21 @@ namespace RWBR.Shared
             Lakeside(b);
             Viaduct(b);
             AvenueSpawns(b);
+            if (!v2) return new MapLayout(Version, HalfSize, b.Boxes, b.Loot, b.Kinds, districts, b.Spawns);
 
-            return new MapLayout(Version, HalfSize, b.Boxes, b.Loot, b.Kinds, districts, b.Spawns);
+            const float h = HalfSizeV2;
+            districts.Add(new District("Industrial Estate", -h, HalfSize, h, h));
+            districts.Add(new District("Outskirts", -h, -h, h, -HalfSize));
+            districts.Add(new District("Musi Riverside", HalfSize, -HalfSize, h, HalfSize));
+            districts.Add(new District("Logistics Park", -h, -HalfSize, -HalfSize, HalfSize));
+            River(b);
+            Industrial(b);
+            Logistics(b);
+            Outskirts(b);
+            Farmland(b);
+            ViaductExtension(b);
+            RingSpawns(b);
+            return new MapLayout(VersionV2, h, b.Boxes, b.Loot, b.Kinds, districts, b.Spawns);
         }
 
         /// <summary>
@@ -245,6 +275,184 @@ namespace RWBR.Shared
             }
         }
 
+        // ---- hyd-city-v2 ring ----
+
+        private static bool OnRiver(float x) => x > RiverWest - 4 && x < RiverEast + 4;
+
+        private static bool NearBridge(float z, float margin) => Array.Exists(BridgeZs, bz => Math.Abs(z - bz) < BridgeHalfWidth + margin);
+
+        /// <summary>
+        /// The river along x = 340..368, the whole length of the map, as impassable water strips with gaps where the
+        /// bridges are. A bridge is a road deck with railings on both sides.
+        /// </summary>
+        private static void River(Builder b)
+        {
+            const float h = HalfSizeV2;
+            var cuts = new List<float> { -h };
+            foreach (float z in BridgeZs)
+            {
+                cuts.Add(z - BridgeHalfWidth);
+                cuts.Add(z + BridgeHalfWidth);
+            }
+            cuts.Add(h);
+            for (int i = 0; i + 1 < cuts.Count; i += 2)
+                for (float z = cuts[i]; z < cuts[i + 1]; z += 30)
+                    b.Box(RiverWest, 0, z, RiverEast, 1.3f, Math.Min(z + 30, cuts[i + 1]), BoxKind.Water);
+            foreach (float z in BridgeZs)
+            {
+                b.Box(RiverWest - 4, 0, z - BridgeHalfWidth, RiverEast + 4, 0.05f, z + BridgeHalfWidth, BoxKind.Bridge);
+                b.Box(RiverWest - 4, 0, z - BridgeHalfWidth, RiverEast + 4, 1.1f, z - BridgeHalfWidth + 0.4f, BoxKind.Railing);
+                b.Box(RiverWest - 4, 0, z + BridgeHalfWidth - 0.4f, RiverEast + 4, 1.1f, z + BridgeHalfWidth, BoxKind.Railing);
+            }
+            // Ghats: steps and walls along the city bank (cover), clear of the bridges.
+            for (float z = -h + 20; z < h - 20; z += 24)
+                if (!NearBridge(z, 6)) b.Box(RiverWest - 6, 0, z, RiverWest - 5, 1.2f, z + 8, BoxKind.Cover);
+        }
+
+        /// <summary>
+        /// A large one-storey shed (walls 7 m, roof not reachable) with a wide door on two sides, racks inside as cover
+        /// and loot between the racks.
+        /// </summary>
+        private static void Warehouse(Builder b, float x, float z, float sx, float sz, Loadout district)
+        {
+            const float t = 0.4f, wall = 7f, door = 3f;
+            float x0 = x - sx / 2, x1 = x + sx / 2, z0 = z - sz / 2, z1 = z + sz / 2;
+            // North and south walls each have a wide doorway in the middle.
+            b.Box(x0, 0, z0, x - door, wall, z0 + t, BoxKind.Warehouse);
+            b.Box(x + door, 0, z0, x1, wall, z0 + t, BoxKind.Warehouse);
+            b.Box(x0, 0, z1 - t, x - door, wall, z1, BoxKind.Warehouse);
+            b.Box(x + door, 0, z1 - t, x1, wall, z1, BoxKind.Warehouse);
+            b.Box(x0, 0, z0, x0 + t, wall, z1, BoxKind.Warehouse);
+            b.Box(x1 - t, 0, z0, x1, wall, z1, BoxKind.Warehouse);
+            b.Box(x0, wall, z0, x1, wall + t, z1, BoxKind.Roof);
+            // Two rows of racks, leaving the centre aisle and the doorways clear.
+            for (float rx = x0 + 3; rx + 2 < x1 - 2; rx += 6)
+            {
+                if (Math.Abs(rx + 1 - x) < door + 1.5f) continue;
+                b.Box(rx, 0, z0 + 3, rx + 2, 2.6f, z - 3, BoxKind.Cover);
+                b.Box(rx, 0, z + 3, rx + 2, 2.6f, z1 - 3, BoxKind.Cover);
+            }
+            b.AddLoot(Pick(b, district, out int qty), x, 0, z, qty);
+            b.AddLoot(Pick(b, district, out int qty2), x0 + 2, 0, z, qty2);
+            if (b.Next() < 0.5f) b.AddLoot(Pick(b, district, out int qty3), x1 - 2, 0, z, qty3);
+        }
+
+        /// <summary>A stack of shipping containers (2.6 m each), one to three high: cover, and something to climb on.</summary>
+        private static void Containers(Builder b, float x, float z, bool alongX)
+        {
+            int high = 1 + (int)(b.Next() * 3);
+            float sx = alongX ? 12f : 2.5f, sz = alongX ? 2.5f : 12f;
+            for (int i = 0; i < high; i++) b.Box(x - sx / 2, i * 2.6f, z - sz / 2, x + sx / 2, (i + 1) * 2.6f, z + sz / 2, BoxKind.Container);
+        }
+
+        /// <summary>North band: warehouses in rows, container yards between them, and a factory with a tall chimney.</summary>
+        private static void Industrial(Builder b)
+        {
+            const float h = HalfSizeV2;
+            for (float z = HalfSize + 40; z < h - 30; z += 60)
+            {
+                for (float x = -h + 50; x < h - 50; x += 70)
+                {
+                    if (Math.Abs(x) < 25 || Math.Abs(x - 150) < 25 || OnRiver(x) || OnRiver(x - 25) || OnRiver(x + 25)) continue; // avenue, viaduct, river
+                    if (Math.Abs(x + 200) < 60 && z > h - 75) continue; // the factory's plot
+                    if (b.Next() < 0.65f) Warehouse(b, x, z, b.Range(34, 44), b.Range(20, 26), Loadout.Industrial);
+                    else
+                    {
+                        Containers(b, x - 10, z - 6, alongX: true);
+                        Containers(b, x + 8, z + 6, alongX: true);
+                        b.AddLoot(Pick(b, Loadout.Industrial, out int qty), x, 0, z, qty);
+                    }
+                }
+            }
+            // The factory: a big shed and its chimney, a landmark visible from across the map.
+            Warehouse(b, -210, h - 45, 50, 30, Loadout.Industrial);
+            b.Column(-178, h - 45, 5, 5, 45, BoxKind.Chimney);
+        }
+
+        /// <summary>West band: container stacks in yard rows, two warehouses and a depot of parked trucks.</summary>
+        private static void Logistics(Builder b)
+        {
+            const float h = HalfSizeV2;
+            for (float z = -HalfSize + 30; z < HalfSize - 20; z += 34)
+            {
+                if (Math.Abs(z) < 25) continue; // avenue
+                for (float x = -h + 25; x < -HalfSize - 15; x += 30)
+                {
+                    float r = b.Next();
+                    if (r < 0.55f) Containers(b, x, z, alongX: b.Next() < 0.5f);
+                    else if (r < 0.75f) b.AddLoot(Pick(b, Loadout.Industrial, out int qty), x, 0, z, qty);
+                }
+            }
+            Warehouse(b, -375, 150, 40, 24, Loadout.Industrial);
+            Warehouse(b, -375, -150, 40, 24, Loadout.Industrial);
+            for (int i = 0; i < 6; i++) b.Column(-330, -60 + i * 8, 3f, 8f, 3.2f, BoxKind.Car); // trucks
+        }
+
+        /// <summary>South band: open fields with low rocks, lone trees, haystacks, and a few farmhouses with roof stairs.</summary>
+        private static void Outskirts(Builder b)
+        {
+            const float h = HalfSizeV2;
+            for (float z = -h + 15; z < -HalfSize - 10; z += 22)
+            {
+                for (float x = -h + 15; x < h - 15; x += 22)
+                {
+                    if (Math.Abs(x) < 14 || OnRiver(x)) continue; // the road south, and the river
+                    float r = b.Next();
+                    float jx = x + b.Range(-6, 6), jz = z + b.Range(-6, 6);
+                    if (r < 0.18f) b.Column(jx, jz, b.Range(1.5f, 3.5f), b.Range(1.5f, 3f), b.Range(0.9f, 1.6f), BoxKind.Rock);
+                    else if (r < 0.3f)
+                    {
+                        b.Column(jx, jz, 0.7f, 0.7f, 3f, BoxKind.Tree);
+                        b.Box(jx - 2.4f, 3f, jz - 2.4f, jx + 2.4f, 5.8f, jz + 2.4f, BoxKind.Tree);
+                    }
+                    else if (r < 0.36f) b.Column(jx, jz, 3f, 2f, 1.8f, BoxKind.Field); // haystack
+                    else if (r < 0.42f) b.AddLoot(Pick(b, Loadout.Outskirts, out int qty), x, 0, z, qty); // in the open
+                }
+            }
+            foreach ((float x, float z) in new[] { (-300f, -390f), (-120f, -410f), (90f, -380f), (250f, -405f) })
+                Building(b, x, z, 13, 11, Side.North, Stairs.Outside, BoxKind.House, Loadout.Outskirts);
+        }
+
+        /// <summary>East bank beyond the river: fields and farmhouses, reached over the bridges.</summary>
+        private static void Farmland(Builder b)
+        {
+            const float h = HalfSizeV2;
+            for (float z = -h + 20; z < h - 20; z += 26)
+            {
+                for (float x = RiverEast + 12; x < h - 10; x += 26)
+                {
+                    if (NearBridge(z, 4)) continue; // keep the roads off the bridges clear
+                    float r = b.Next();
+                    if (r < 0.15f) b.Column(x + b.Range(-5, 5), z + b.Range(-5, 5), b.Range(1.5f, 3f), b.Range(1.5f, 3f), b.Range(0.9f, 1.5f), BoxKind.Rock);
+                    else if (r < 0.25f) b.Column(x, z, 3f, 2f, 1.8f, BoxKind.Field);
+                    else if (r < 0.32f) b.AddLoot(Pick(b, Loadout.Outskirts, out int qty), x, 0, z, qty);
+                }
+            }
+            foreach (float z in new[] { -330f, -110f, 110f, 330f })
+                Building(b, 410, z, 13, 11, Side.West, Stairs.Outside, BoxKind.House, Loadout.Outskirts);
+        }
+
+        /// <summary>The metro line continues north and south to the map edge.</summary>
+        private static void ViaductExtension(Builder b)
+        {
+            const float x = 150, deckY = 9f, h = HalfSizeV2;
+            for (float z = HalfSize + 10; z <= h - 10; z += 25) b.Column(x, z, 2.2f, 2.2f, deckY, BoxKind.Pillar);
+            for (float z = -HalfSize - 10; z >= -h + 10; z -= 25) b.Column(x, z, 2.2f, 2.2f, deckY, BoxKind.Pillar);
+            b.Box(x - 4, deckY, HalfSize - 5, x + 4, deckY + 1.4f, h - 5, BoxKind.Viaduct);
+            b.Box(x - 4, deckY, -h + 5, x + 4, deckY + 1.4f, -HalfSize + 5, BoxKind.Viaduct);
+        }
+
+        /// <summary>Spawns along the avenues continue into the ring (until the plane drop arrives in part C6).</summary>
+        private static void RingSpawns(Builder b)
+        {
+            foreach (float t in new[] { -420f, -360f, 360f, 420f })
+            {
+                b.Spawns.Add(new Vector3(0, 0, t));
+                if (!OnRiver(t)) b.Spawns.Add(new Vector3(t, 0, 0));
+            }
+            b.Spawns.Add(new Vector3(RiverEast + 30, 0, 0)); // across the middle bridge
+        }
+
         // ---- Building kit ----
 
         private enum Stairs
@@ -260,6 +468,8 @@ namespace RWBR.Shared
             Towers,
             Residential,
             Lakeside,
+            Industrial,
+            Outskirts,
         }
 
         /// <summary>
@@ -337,6 +547,8 @@ namespace RWBR.Shared
                 Loadout.Bazaar => new[] { WeaponCatalog.Smg, WeaponCatalog.Shotgun, WeaponCatalog.Pistol, WeaponCatalog.Rifle },
                 Loadout.Towers => new[] { WeaponCatalog.Rifle, WeaponCatalog.Marksman, WeaponCatalog.Smg },
                 Loadout.Residential => new[] { WeaponCatalog.Pistol, WeaponCatalog.Shotgun, WeaponCatalog.Rifle, WeaponCatalog.Smg },
+                Loadout.Industrial => new[] { WeaponCatalog.Rifle, WeaponCatalog.Shotgun, WeaponCatalog.Smg, WeaponCatalog.Marksman },
+                Loadout.Outskirts => new[] { WeaponCatalog.Sniper, WeaponCatalog.Marksman, WeaponCatalog.Rifle, WeaponCatalog.Pistol },
                 _ => new[] { WeaponCatalog.Rifle, WeaponCatalog.Marksman, WeaponCatalog.Pistol },
             };
             if (r < 0.45f)

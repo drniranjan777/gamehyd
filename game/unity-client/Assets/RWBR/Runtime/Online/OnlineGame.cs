@@ -76,6 +76,8 @@ namespace RWBR.Client.Online
         public ClientPrediction Prediction { get; private set; }
         public RemoteInterpolator Interp { get; } = new RemoteInterpolator(InterpolationDelayTicks);
         public MapLayout Map { get; private set; }
+        /// <summary>The match's loot spots: the map's spots with the items its loot table (from Welcome) puts there.</summary>
+        public IReadOnlyList<LootSpawn> Loot { get; private set; } = Array.Empty<LootSpawn>();
         public TouchControls Touch { get; private set; }
         public IPlayerInputSource InputOverride { get; set; }
         public string ServerAddress { get; set; } = DefaultServer;
@@ -128,7 +130,20 @@ namespace RWBR.Client.Online
         }
 
         public bool SelfAlive => Self is { } s && (s.Flags & PlayerFlags.Alive) != 0;
-        public bool MenusOpen => Paused || InventoryOpen || Net.State != ConnectionState.Connected || Net.Result != null || Error != null;
+        public bool MenusOpen => Paused || InventoryOpen || MapOpen || Net.State != ConnectionState.Connected || Net.Result != null || Error != null;
+
+        /// <summary>The full map screen.</summary>
+        public bool MapOpen { get; set; }
+        /// <summary>Your map marker (x, z), shown on the minimap, the compass and as a beacon in the world.</summary>
+        public Vector2? Marker { get; private set; }
+
+        /// <summary>Places the marker, or clears it when <paramref name="at"/> is next to the current one (or null).</summary>
+        public void SetMarker(Vector2? at)
+        {
+            if (at.HasValue && Marker.HasValue && Vector2.Distance(at.Value, Marker.Value) < 15f) at = null;
+            Marker = at;
+            _views.SetMarker(at.HasValue ? new Vector3(at.Value.x, 0, at.Value.y) : (Vector3?)null);
+        }
 
         /// <summary>The bag screen (inventory, equipment and items on the ground nearby).</summary>
         public bool InventoryOpen { get; set; }
@@ -217,7 +232,10 @@ namespace RWBR.Client.Online
             Error = null;
             _localBots = bots;
             _localConfig = config;
-            Local = new LocalMatch(config ?? LocalMatch.BotMatchConfig(CityMap.Build(), bots), bots, seed: Environment.TickCount & 0xFFFF);
+            int seed = Environment.TickCount & 0xFFFF;
+            MatchConfig cfg = config ?? LocalMatch.BotMatchConfig(CityMap.BuildV2(), bots);
+            if (config == null) cfg.ZoneSeed = seed | 1; // a different zone every match
+            Local = new LocalMatch(cfg, bots, seed);
             Net.ConnectLocal(Local, PlayerName);
             ResetMatchView();
         }
@@ -349,6 +367,8 @@ namespace RWBR.Client.Online
             Interp.Clear();
             _views.Clear();
             InventoryOpen = false;
+            MapOpen = false;
+            Marker = null;
             Inventory = null;
             _actionButtons = InputButtons.None;
             _lastHealth.Clear();
@@ -424,6 +444,7 @@ namespace RWBR.Client.Online
                 _throwLatched |= frame.ThrowPressed;
                 if (frame.CycleThrowablePressed) CycleThrowable();
                 if (frame.InventoryToggled) InventoryOpen = !InventoryOpen;
+                if (frame.MapToggled) MapOpen = !MapOpen;
                 int activeSlot = Net.Latest?.SelfActiveSlot ?? 0;
                 _switchLatched |= frame.SwitchPressed || (frame.SelectSlot >= 0 && frame.SelectSlot != activeSlot);
                 if (frame.CrouchToggled) _crouchToggle = !_crouchToggle;
@@ -445,11 +466,15 @@ namespace RWBR.Client.Online
             {
                 Prediction.DecayOffset(Time.deltaTime);
                 Touch.InteractAvailable = SelfAlive && NearestPickup(out _);
+                Touch.MapAvailable = true;
                 Touch.ThrowAvailable = SelfAlive && Inventory != null &&
                                        (Inventory.Count(ItemKind.Frag) > 0 || Inventory.Count(ItemKind.Smoke) > 0);
                 _views.SetSelfView(ViewPitch + Aim.KickPitch, Aim.Eased, Aim.Scoped, _tickRate);
                 _views.Render(Net.PlayerId, Prediction.RenderPosition, ViewYaw, Prediction.Predicted, Interp, Net.Latest, Time.time);
                 MatchSounds();
+                GameAudio.Instance.SetAmbience(SelfAlive || Net.Result == null
+                    ? GameAudio.AmbienceFor(Map.DistrictAt(Prediction.Predicted.Position.X, Prediction.Predicted.Position.Z))
+                    : Ambience.None);
             }
             Feed.RemoveAll(f => Time.time - f.Time > 5f);
 
@@ -531,7 +556,8 @@ namespace RWBR.Client.Online
             Map = _world.Layout;
             _tickRate = Math.Max(1, (int)Net.Welcome.TickRate);
             Prediction = new ClientPrediction(Map, _tickRate);
-            _views.Build(Map);
+            Loot = LootTable.Apply(Map, Net.Welcome.LootTable);
+            _views.Build(Map, Loot);
             MapLayout map = Map;
             GameAudio audio = GameAudio.Instance;
             audio.LineOfSight = (a, b) =>
@@ -647,9 +673,9 @@ namespace RWBR.Client.Online
             SnapshotPacket s = Net.Latest;
             if (Map == null || s == null || Prediction == null) return list;
             MotorState me = Prediction.Predicted;
-            for (int i = 0; i < Map.Loot.Count; i++)
+            for (int i = 0; i < Loot.Count; i++)
             {
-                LootSpawn l = Map.Loot[i];
+                LootSpawn l = Loot[i];
                 if (s.IsLootTaken(i) || !Simulation.CanReach(me, l.Position)) continue;
                 list.Add(Nearby((ushort)i, l.Kind, l.Count, l.Position, me));
             }

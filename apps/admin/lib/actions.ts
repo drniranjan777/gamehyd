@@ -201,9 +201,20 @@ export async function saveConfig(
         disabledProducts: list('disabledProducts'),
         disabledWeapons: list('disabledWeapons'),
         xpMultiplier: Number(text(d, 'xpMultiplier') || '1'),
+        lootTable: lootTable(d),
       },
     }),
   );
+}
+
+/** The loot table fields ("loot.<name>"); blank fields are left out so the API applies its defaults. */
+function lootTable(d: FormData): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [key, value] of d.entries()) {
+    if (!key.startsWith('loot.') || typeof value !== 'string' || value.trim() === '') continue;
+    out[key.slice(5)] = Number(value);
+  }
+  return out;
 }
 
 export async function createEvent(_: ActionState, d: FormData): Promise<ActionState> {

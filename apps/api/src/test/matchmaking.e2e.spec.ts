@@ -95,6 +95,13 @@ describeDb('matchmaking, servers and results (PostgreSQL)', () => {
     expectContract(assigned, 'POST', '/internal/game-servers/heartbeat');
     const a = assigned.body.assignment;
     expect(a).toMatchObject({ capacity: 3, mapVersion: 'greybox-block-100-v2' });
+    // The live-ops loot table goes with every assignment (defaults until live ops changes it).
+    expect(a.lootTable).toMatchObject({
+      version: 1,
+      fragPercent: 10,
+      mediumRounds: 45,
+      upgradePercent: 40,
+    });
 
     const hosting = await signed(
       h,

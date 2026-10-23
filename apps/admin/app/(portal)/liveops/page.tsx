@@ -10,6 +10,7 @@ export default async function LiveOpsPage() {
     can('liveops.write'),
   ]);
   const c = config.current.config;
+  const lt = c.lootTable ?? {};
   return (
     <>
       <h1>Live operations</h1>
@@ -53,6 +54,121 @@ export default async function LiveOpsPage() {
                   defaultValue={c.xpMultiplier ?? 1}
                 />
               </label>
+              <details>
+                <summary>Loot table (version {lt.version ?? 1})</summary>
+                <p className="muted" style={{ fontSize: 12 }}>
+                  What map loot spots hold in matches that start after publishing. Shares are % of
+                  the spots of that kind; the rest goes to the last option. Raise the version on
+                  every change.
+                </p>
+                <div className="grid2">
+                  <label>
+                    Version
+                    <input
+                      name="loot.version"
+                      type="number"
+                      min={1}
+                      defaultValue={lt.version ?? 1}
+                    />
+                  </label>
+                  <label>
+                    Frag grenades, % of ammo spots
+                    <input name="loot.fragPercent" type="number" defaultValue={lt.fragPercent} />
+                  </label>
+                  <label>
+                    Smoke grenades, % of ammo spots
+                    <input name="loot.smokePercent" type="number" defaultValue={lt.smokePercent} />
+                  </label>
+                  <label>
+                    Attachments, % of ammo spots
+                    <input
+                      name="loot.attachmentPercent"
+                      type="number"
+                      defaultValue={lt.attachmentPercent}
+                    />
+                  </label>
+                  <label>
+                    Light ammo, % of the remaining ammo spots
+                    <input name="loot.lightPercent" type="number" defaultValue={lt.lightPercent} />
+                  </label>
+                  <label>
+                    Medium ammo, %
+                    <input
+                      name="loot.mediumPercent"
+                      type="number"
+                      defaultValue={lt.mediumPercent}
+                    />
+                  </label>
+                  <label>
+                    Shells, % (the rest is heavy ammo)
+                    <input
+                      name="loot.shellsPercent"
+                      type="number"
+                      defaultValue={lt.shellsPercent}
+                    />
+                  </label>
+                  <label>
+                    Light rounds per spot
+                    <input name="loot.lightRounds" type="number" defaultValue={lt.lightRounds} />
+                  </label>
+                  <label>
+                    Medium rounds per spot
+                    <input name="loot.mediumRounds" type="number" defaultValue={lt.mediumRounds} />
+                  </label>
+                  <label>
+                    Shells per spot
+                    <input name="loot.shellRounds" type="number" defaultValue={lt.shellRounds} />
+                  </label>
+                  <label>
+                    Heavy rounds per spot
+                    <input name="loot.heavyRounds" type="number" defaultValue={lt.heavyRounds} />
+                  </label>
+                  <label>
+                    Bandages, % of heal spots
+                    <input
+                      name="loot.bandagePercent"
+                      type="number"
+                      defaultValue={lt.bandagePercent}
+                    />
+                  </label>
+                  <label>
+                    Medkits, % (the rest are energy drinks)
+                    <input
+                      name="loot.medkitPercent"
+                      type="number"
+                      defaultValue={lt.medkitPercent}
+                    />
+                  </label>
+                  <label>
+                    Bandages per spot
+                    <input
+                      name="loot.bandagesPerSpot"
+                      type="number"
+                      defaultValue={lt.bandagesPerSpot}
+                    />
+                  </label>
+                  <label>
+                    Vests, % of armour spots
+                    <input name="loot.vestPercent" type="number" defaultValue={lt.vestPercent} />
+                  </label>
+                  <label>
+                    Helmets, % (the rest are backpacks)
+                    <input
+                      name="loot.helmetPercent"
+                      type="number"
+                      defaultValue={lt.helmetPercent}
+                    />
+                  </label>
+                  <label>
+                    Chance of one level higher, %
+                    <input
+                      name="loot.upgradePercent"
+                      type="number"
+                      defaultValue={lt.upgradePercent}
+                    />
+                  </label>
+                </div>
+              </details>
               <label>
                 Reason (audited)
                 <input name="reason" minLength={3} maxLength={300} required />

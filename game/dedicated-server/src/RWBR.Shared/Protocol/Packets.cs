@@ -62,7 +62,7 @@ namespace RWBR.Shared.Protocol
 
     public static class ProtocolInfo
     {
-        public const ushort Version = 7;
+        public const ushort Version = 8;
         /// <summary>Ground items (dropped or left by eliminated players) start at this id; lower ids are map loot spots.</summary>
         public const ushort FirstGroundItemId = 0x8000;
         public const ushort NoPlayer = ushort.MaxValue;
@@ -89,6 +89,8 @@ namespace RWBR.Shared.Protocol
         public string MapVersion = "";
         /// <summary>WeaponCatalog.BalanceVersion on the server; the client's catalog must match.</summary>
         public ushort WeaponBalanceVersion;
+        /// <summary>The match's loot weights: with the map version, they decide what every loot spot holds.</summary>
+        public LootTableConfig LootTable = LootTableConfig.Default;
     }
 
     public struct SnapshotEntry
@@ -115,6 +117,8 @@ namespace RWBR.Shared.Protocol
         public MatchPhase Phase;
         public ushort PhaseTicksLeft;
         public float ZoneX, ZoneZ, ZoneRadius;
+        /// <summary>Where the current stage's circle ends up (equal to the current circle once the zone has closed).</summary>
+        public float NextZoneX, NextZoneZ, NextZoneRadius;
         /// <summary>Last input sequence the server processed for the recipient (for client reconciliation).</summary>
         public uint AckSequence;
         public byte AliveCount;
@@ -292,6 +296,7 @@ namespace RWBR.Shared.Protocol
             w.U8(p.MaxPlayers);
             w.Str(p.MapVersion, 64);
             w.U16(p.WeaponBalanceVersion);
+            p.LootTable.Write(w);
             return w.ToArray();
         }
 
@@ -303,6 +308,7 @@ namespace RWBR.Shared.Protocol
             MaxPlayers = r.U8(),
             MapVersion = r.Str(64),
             WeaponBalanceVersion = r.U16(),
+            LootTable = LootTableConfig.Read(r),
         };
 
         public static byte[] EncodeReject(RejectReason reason)

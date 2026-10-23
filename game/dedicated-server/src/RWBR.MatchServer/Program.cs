@@ -49,7 +49,7 @@ if (simulate > 0)
     var results = new System.Collections.Generic.List<RWBR.MatchServer.Sim.SimulatedMatch>();
     for (int i = 1; i <= simulate; i++)
     {
-        var simCfg = new MatchConfig { MinPlayers = simPlayers, MaxPlayers = simPlayers, Map = simMap, ZoneStages = MatchConfig.ZonesFor(simMap), CountdownSeconds = 3 };
+        var simCfg = new MatchConfig { MinPlayers = simPlayers, MaxPlayers = simPlayers, Map = simMap, ZoneStages = MatchConfig.ZonesFor(simMap), CountdownSeconds = 3, ZoneSeed = i };
         if (args.Contains("--loot-start")) simCfg.StartWithWeapon = false; // design option: everyone starts unarmed and loots
         var r = RWBR.MatchServer.Sim.MatchSimulator.Run(simCfg, i);
         results.Add(r);

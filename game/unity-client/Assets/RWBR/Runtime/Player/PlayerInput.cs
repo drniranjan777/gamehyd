@@ -32,6 +32,8 @@ namespace RWBR.Client.Player
         public bool ThrowPressed;
         /// <summary>Switch between frag and smoke (T, d-pad right).</summary>
         public bool CycleThrowablePressed;
+        /// <summary>Open or close the full map (M, d-pad left, touch MAP).</summary>
+        public bool MapToggled;
 
         public void Merge(PlayerInputFrame other)
         {
@@ -51,6 +53,7 @@ namespace RWBR.Client.Player
             SwitchPressed |= other.SwitchPressed;
             ThrowPressed |= other.ThrowPressed;
             CycleThrowablePressed |= other.CycleThrowablePressed;
+            MapToggled |= other.MapToggled;
             if (other.SelectSlot >= 0) SelectSlot = other.SelectSlot;
         }
     }
@@ -88,6 +91,7 @@ namespace RWBR.Client.Player
                 f.SwitchPressed = kb.qKey.wasPressedThisFrame;
                 f.ThrowPressed = kb.gKey.wasPressedThisFrame;
                 f.CycleThrowablePressed = kb.tKey.wasPressedThisFrame;
+                f.MapToggled = kb.mKey.wasPressedThisFrame;
                 if (kb.digit1Key.wasPressedThisFrame) f.SelectSlot = 0;
                 if (kb.digit2Key.wasPressedThisFrame) f.SelectSlot = 1;
             }
@@ -117,6 +121,7 @@ namespace RWBR.Client.Player
                 f.SwitchPressed |= pad.rightShoulder.wasPressedThisFrame;
                 f.ThrowPressed |= pad.leftShoulder.wasPressedThisFrame;
                 f.CycleThrowablePressed |= pad.dpad.right.wasPressedThisFrame;
+                f.MapToggled |= pad.dpad.left.wasPressedThisFrame;
             }
             f.Move = Vector2.ClampMagnitude(f.Move, 1f);
             return f;

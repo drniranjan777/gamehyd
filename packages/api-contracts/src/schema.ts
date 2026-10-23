@@ -3567,6 +3567,7 @@ export interface components {
         fillWaitSeconds: number;
         /** @description Weapon catalog ids switched off by live ops; no loot of them spawns in this match. */
         disabledWeapons: string[];
+        lootTable?: components['schemas']['LootTable'];
       };
     };
     ResultSubmission: {
@@ -3717,6 +3718,27 @@ export interface components {
       disabledWeapons: string[];
       /** @description Match XP multiplier for events (default 1) */
       xpMultiplier?: number;
+      lootTable?: components['schemas']['LootTable'];
+    };
+    /** @description Loot weights for matches (Phase C). Shares are percents of the spots of that kind; the rest goes to the last option. Sent to the match server with each assignment and from there to every player. */
+    LootTable: {
+      version?: number;
+      fragPercent?: number;
+      smokePercent?: number;
+      attachmentPercent?: number;
+      lightPercent?: number;
+      mediumPercent?: number;
+      shellsPercent?: number;
+      lightRounds?: number;
+      mediumRounds?: number;
+      shellRounds?: number;
+      heavyRounds?: number;
+      bandagePercent?: number;
+      medkitPercent?: number;
+      bandagesPerSpot?: number;
+      vestPercent?: number;
+      helmetPercent?: number;
+      upgradePercent?: number;
     };
     PublicConfig: {
       version: number;

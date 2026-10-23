@@ -334,6 +334,43 @@ describeDb('live ops: season pass, ops dashboard, releases, economy (PostgreSQL)
       'release.create',
     ]);
   });
+  it('publishes a loot table: values kept, the rest defaulted, out-of-range values refused', async () => {
+    const cfg = await api()
+      .get('/api/v1/admin/liveops/config')
+      .set(...as('root'));
+    const bad = await api()
+      .put('/api/v1/admin/liveops/config')
+      .set(...as('root'))
+      .send({
+        expectedVersion: cfg.body.current.version,
+        config: { ...cfg.body.current.config, lootTable: { version: 2, fragPercent: 150 } },
+        reason: 'too many grenades',
+      });
+    expect(bad.status).toBe(422);
+    const put = await api()
+      .put('/api/v1/admin/liveops/config')
+      .set(...as('root'))
+      .send({
+        expectedVersion: cfg.body.current.version,
+        config: {
+          ...cfg.body.current.config,
+          lootTable: { version: 2, fragPercent: 20, heavyRounds: 20 },
+        },
+        reason: 'more grenades this weekend',
+      });
+    expect(put.status).toBe(200);
+    const after = await api()
+      .get('/api/v1/admin/liveops/config')
+      .set(...as('root'));
+    expect(after.body.current.config.lootTable).toMatchObject({
+      version: 2,
+      fragPercent: 20,
+      heavyRounds: 20,
+      smokePercent: 5,
+      bandagesPerSpot: 3,
+    });
+  });
+
   it('pays double XP (and season XP) during a double-XP event, not double coins', async () => {
     const cfg = await api()
       .get('/api/v1/admin/liveops/config')

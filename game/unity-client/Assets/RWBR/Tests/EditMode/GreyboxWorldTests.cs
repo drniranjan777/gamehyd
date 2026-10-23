@@ -20,6 +20,7 @@ namespace RWBR.Tests
         /// <summary>Every server box is in the rendered mesh, and the physics colliders sit exactly on the box tops.</summary>
         [TestCase("greybox-block-100-v2")]
         [TestCase("hyd-city-v1")]
+        [TestCase("hyd-city-v2")]
         public void Rendered_world_matches_the_server_layout(string version)
         {
             GreyboxWorld world = Build(version);

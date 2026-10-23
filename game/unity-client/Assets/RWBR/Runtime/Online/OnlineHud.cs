@@ -72,6 +72,7 @@ namespace RWBR.Client.Online
                 else if (_game.SelfAlive && !_game.Paused) DrawCrosshair();
             SoundCues.Draw(_w, VirtualHeight, Camera.main);
                 DrawVitals(s, self.Value);
+                DrawNavigation(s, self.Value);
                 DrawQuickBar();
                 DrawPrompt();
             }
@@ -81,6 +82,7 @@ namespace RWBR.Client.Online
             else if (!_game.MenusOpen && Cursor.lockState != CursorLockMode.Locked)
                 GUI.Label(new Rect(0, VirtualHeight * 0.62f, _w, 30), "Click to play · Right mouse aim · Esc menu", _center);
             if (_game.InventoryOpen && !_game.Paused) DrawInventory();
+            if (_game.MapOpen && !_game.Paused && s != null && self.HasValue) DrawFullMap(s, self.Value);
             if (_game.Paused) DrawPause();
             else _editingTouch = false;
             if (net.Result != null) DrawResult(net);
@@ -162,8 +164,8 @@ namespace RWBR.Client.Online
                     text = "Match over";
                     break;
             }
-            Fill(new Rect(_w / 2 - 150, 16, 300, 34), new Color(0, 0, 0, 0.45f));
-            GUI.Label(new Rect(_w / 2 - 150, 18, 300, 30), text, _center);
+            Fill(new Rect(_w / 2 - 150, 72, 300, 34), new Color(0, 0, 0, 0.45f));
+            GUI.Label(new Rect(_w / 2 - 150, 74, 300, 30), text, _center);
         }
 
         private void DrawZone(SnapshotPacket s, SnapshotEntry self)
@@ -171,7 +173,7 @@ namespace RWBR.Client.Online
             float dist = new Vector2(self.X - s.ZoneX, self.Z - s.ZoneZ).magnitude;
             if (s.Phase != MatchPhase.Active || dist <= s.ZoneRadius || (self.Flags & PlayerFlags.Alive) == 0) return;
             Fill(new Rect(0, 0, _w, VirtualHeight), new Color(0.2f, 0.3f, 1f, 0.12f));
-            GUI.Label(new Rect(0, 60, _w, 30), $"Outside the safe zone — move {dist - s.ZoneRadius:0} m towards the centre", _center);
+            GUI.Label(new Rect(0, 112, _w, 30), $"Outside the safe zone — move {dist - s.ZoneRadius:0} m towards the centre", _center);
         }
 
         private void DrawCrosshair()
@@ -240,6 +242,42 @@ namespace RWBR.Client.Online
 
         private static string Level(int level) => level > 0 ? $"L{level}" : "—";
 
+        private readonly MapHud _mapHud = new MapHud();
+
+        private MapHud.ZoneView ZoneOf(SnapshotPacket s) => new MapHud.ZoneView
+        {
+            Center = new Vector2(s.ZoneX, s.ZoneZ),
+            Radius = s.ZoneRadius,
+            NextCenter = new Vector2(s.NextZoneX, s.NextZoneZ),
+            NextRadius = s.NextZoneRadius,
+        };
+
+        /// <summary>The compass along the top and the minimap in the top-right corner (left of the pause button on touch).</summary>
+        private void DrawNavigation(SnapshotPacket s, SnapshotEntry self)
+        {
+            if (_game.Map == null || _game.MapOpen) return;
+            var me = new Vector2(self.X, self.Z);
+            MapHud.ZoneView zone = ZoneOf(s);
+            _mapHud.DrawCompass(new Rect(_w / 2 - 200, 6, 400, 22), _game.ViewYaw, me, _game.Marker, zone, _small);
+            bool touch = _game.Touch.Visible && _game.InputOverride == null;
+            const float size = 200;
+            float right = touch ? _w - 0.09f * _w : _w - 16;
+            _mapHud.DrawMinimap(new Rect(right - size, 16, size, size), _game.Map, me, _game.ViewYaw, zone, _game.Marker);
+            GUI.Label(new Rect(right - size, 16 + size + 2, size, 20), _game.Map.DistrictAt(self.X, self.Z), new GUIStyle(_small) { alignment = TextAnchor.UpperCenter });
+        }
+
+        /// <summary>The full map: tap or click to place a marker (again on it to clear it).</summary>
+        private void DrawFullMap(SnapshotPacket s, SnapshotEntry self)
+        {
+            Fill(new Rect(0, 0, _w, VirtualHeight), new Color(0, 0, 0, 0.55f));
+            float side = Mathf.Min(VirtualHeight - 90, _w - 40);
+            var r = new Rect(_w / 2 - side / 2, 46, side, side);
+            GUI.Label(new Rect(0, 10, _w, 30), "Map — tap to place a marker, tap it again to clear", _center);
+            Vector2? clicked = _mapHud.DrawFullMap(r, _game.Map, new Vector2(self.X, self.Z), _game.ViewYaw, ZoneOf(s), _game.Marker, _small);
+            if (clicked.HasValue) _game.SetMarker(clicked);
+            if (GUI.Button(new Rect(_w / 2 - 80, r.yMax + 8, 160, 34), "Close", _button)) _game.MapOpen = false;
+        }
+
         private static string AttachmentNames(Attachments a)
         {
             string s = "";
@@ -256,7 +294,7 @@ namespace RWBR.Client.Online
             if (inv == null || _game.MenusOpen || !_game.SelfAlive) return;
             // Along the bottom with a keyboard; on touch screens a column at the right edge, clear of the buttons.
             bool touch = _game.Touch.Visible && _game.InputOverride == null;
-            float x = touch ? _w - 108 : _w / 2 - 250, y = touch ? 96 : VirtualHeight - 58;
+            float x = touch ? _w - 108 : _w / 2 - 250, y = touch ? 250 : VirtualHeight - 58;
             int i = 0;
             foreach (ItemKind k in new[] { ItemKind.Bandage, ItemKind.Medkit, ItemKind.EnergyDrink, ItemKind.Frag, ItemKind.Smoke })
             {
@@ -408,8 +446,7 @@ namespace RWBR.Client.Online
             }
             foreach (TouchControls.ButtonLayout b in TouchControls.Layout)
             {
-                if (b.Button == TouchButton.Interact && !t.InteractAvailable) continue;
-                if (b.Button == TouchButton.Throw && !t.ThrowAvailable) continue;
+                if (!t.Shows(b.Button)) continue;
                 var c = new Vector2(b.Center.x * _w, (1 - b.Center.y) * VirtualHeight);
                 float r = b.Radius * VirtualHeight;
                 Fill(new Rect(c.x - r, c.y - r, r * 2, r * 2), new Color(1, 1, 1, t.IsHeld(b.Button) || (b.Button == TouchButton.Aim && _game.Aim.Aiming) ? 0.45f : 0.22f));

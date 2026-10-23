@@ -26,6 +26,17 @@ namespace RWBR.Client.Audio
     /// synthesised once, played from a pool of 3D sources with logarithmic distance attenuation, muffled through walls
     /// (occlusion via the game's line-of-sight test) and given room reverb when the listener is indoors.
     /// </summary>
+    /// <summary>Background soundscapes, one per kind of district.</summary>
+    public enum Ambience
+    {
+        None,
+        City,
+        Market,
+        Industrial,
+        Water,
+        Countryside,
+    }
+
     public sealed class GameAudio : MonoBehaviour
     {
         private const int PoolSize = 32;
@@ -43,6 +54,130 @@ namespace RWBR.Client.Audio
         /// <summary>Listener position → true when a roof or ceiling is overhead. Set by the game.</summary>
         public Func<Vector3, bool> Indoors { get; set; }
         public int PlayedCount { get; private set; }
+        /// <summary>The soundscape playing (or fading in) now.</summary>
+        public Ambience CurrentAmbience { get; private set; }
+
+        private AudioSource _ambA, _ambB;
+        private const float AmbienceVolume = 0.22f;
+
+        /// <summary>The soundscape for a district name (placeholder synthesis until recorded ambience arrives).</summary>
+        public static Ambience AmbienceFor(string district)
+        {
+            switch (district)
+            {
+                case "Old City Bazaar": return Ambience.Market;
+                case "Industrial Estate":
+                case "Logistics Park": return Ambience.Industrial;
+                case "Lakeside":
+                case "Musi Riverside": return Ambience.Water;
+                case "Outskirts":
+                case "Residential Colony": return Ambience.Countryside;
+                default: return Ambience.City; // other districts, and the avenues between them ("")
+            }
+        }
+
+        /// <summary>Crossfades to the soundscape for where the listener is (call every frame; cheap when unchanged).</summary>
+        public void SetAmbience(Ambience a)
+        {
+            if (_ambA == null)
+            {
+                _ambA = NewLoopSource("AmbienceA");
+                _ambB = NewLoopSource("AmbienceB");
+            }
+            if (a != CurrentAmbience)
+            {
+                CurrentAmbience = a;
+                // B fades out what A was playing; A starts the new loop.
+                (_ambA, _ambB) = (_ambB, _ambA);
+                if (a != Ambience.None)
+                {
+                    _ambA.clip = AmbienceClip(a);
+                    _ambA.volume = 0;
+                    _ambA.Play();
+                }
+            }
+            float target = AmbienceVolume * GameSettings.SfxVolume;
+            float step = Time.unscaledDeltaTime / 1.5f * AmbienceVolume;
+            _ambA.volume = a == Ambience.None ? 0 : Mathf.MoveTowards(_ambA.volume, target, step);
+            _ambB.volume = Mathf.MoveTowards(_ambB.volume, 0, step);
+            if (_ambB.volume <= 0 && _ambB.isPlaying) _ambB.Stop();
+        }
+
+        private AudioSource NewLoopSource(string name)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(transform, false);
+            AudioSource s = go.AddComponent<AudioSource>();
+            s.loop = true;
+            s.playOnAwake = false;
+            s.spatialBlend = 0f; // all around the listener
+            s.volume = 0;
+            return s;
+        }
+
+        /// <summary>A 6 s loop per soundscape, synthesised once.</summary>
+        public static AudioClip AmbienceClip(Ambience a)
+        {
+            string name = "amb_" + a;
+            if (Clips.TryGetValue(name, out AudioClip cached)) return cached;
+            const float seconds = 6f;
+            int n = (int)(seconds * SampleRate);
+            var data = new float[n];
+            uint state = (uint)name.GetHashCode() | 1u;
+            float Noise()
+            {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                return (state & 0xFFFF) / 32768f - 1f;
+            }
+            float lp = 0, lp2 = 0;
+            for (int i = 0; i < n; i++)
+            {
+                float t = i / (float)SampleRate;
+                // Loop seamlessly: modulations complete whole cycles in 6 s.
+                float slow = 0.5f + 0.5f * Mathf.Sin(2 * Mathf.PI * t / seconds);
+                float v;
+                switch (a)
+                {
+                    case Ambience.Market: // murmur: band of noise with a syllable-rate wobble
+                        lp = 0.92f * lp + 0.08f * Noise();
+                        lp2 = 0.6f * lp2 + 0.4f * lp;
+                        v = (lp - lp2) * 2.2f * (0.6f + 0.4f * Mathf.Abs(Mathf.Sin(2 * Mathf.PI * 3f * t + slow)));
+                        break;
+                    case Ambience.Industrial: // machinery: a low hum, its harmonic and rumble
+                        lp = 0.98f * lp + 0.02f * Noise();
+                        v = 0.35f * Mathf.Sin(2 * Mathf.PI * 55f * t) + 0.15f * Mathf.Sin(2 * Mathf.PI * 110f * t) + lp * 3f;
+                        v *= 0.55f;
+                        break;
+                    case Ambience.Water: // lapping water: soft noise swelling every 2 s
+                        lp = 0.85f * lp + 0.15f * Noise();
+                        v = lp * (0.4f + 0.6f * Mathf.Pow(0.5f + 0.5f * Mathf.Sin(2 * Mathf.PI * t / 2f), 2));
+                        break;
+                    case Ambience.Countryside: // breeze and a few birds
+                        lp = 0.97f * lp + 0.03f * Noise();
+                        v = lp * 1.5f;
+                        float c = t % 1.5f;
+                        if ((int)(t / 1.5f) % 2 == 0 && c < 0.12f)
+                            v += 0.25f * Mathf.Sin(2 * Mathf.PI * (2800f + 1500f * c / 0.12f) * c) * Mathf.Sin(Mathf.PI * c / 0.12f);
+                        break;
+                    default: // city: distant traffic rumble
+                        lp = 0.985f * lp + 0.015f * Noise();
+                        v = lp * 4f * (0.7f + 0.3f * slow);
+                        break;
+                }
+                data[i] = Mathf.Clamp(v, -1f, 1f);
+            }
+            // Fade both ends to silence over 10 ms so the loop point doesn't click.
+            int fade = SampleRate / 100;
+            for (int i = 0; i < fade; i++)
+            {
+                float k = i / (float)fade;
+                data[i] *= k;
+                data[n - 1 - i] *= k;
+            }
+            return Store(name, data);
+        }
         public bool ListenerIndoors { get; private set; }
 
         public static GameAudio Instance

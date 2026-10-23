@@ -34,7 +34,7 @@ public sealed class ManagedOptions
 /// </summary>
 public sealed class ManagedServer
 {
-    private static readonly string[] MapVersions = { CityMap.Version, "greybox-block-100-v2", "greybox-block-40-v2" };
+    private static readonly string[] MapVersions = { CityMap.Version, CityMap.VersionV2, "greybox-block-100-v2", "greybox-block-40-v2" };
     private readonly PlatformClient _api;
     private readonly ManagedOptions _o;
 
@@ -102,6 +102,8 @@ public sealed class ManagedServer
         cfg.SnapshotEveryTicks = _o.SnapshotEveryTicks;
         cfg.TicketSecret = _o.TicketSecret;
         cfg.MatchId = a.MatchId;
+        cfg.ZoneSeed = a.MatchId.GetHashCode() | 1; // the circles move, differently every match
+        cfg.LootTable = a.LootTable?.Clamped() ?? LootTableConfig.Default; // live-ops loot weights
         if (a.DisabledWeapons is { Length: > 0 } off)
         {
             var unknown = cfg.DisableWeapons(off);

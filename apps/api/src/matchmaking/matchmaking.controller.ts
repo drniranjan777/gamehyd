@@ -265,6 +265,8 @@ export class InternalController {
               fillWaitSeconds: this.config.MATCH_FILL_WAIT_SECONDS,
               // Kill switch: weapons removed from this match's loot and starting kit.
               disabledWeapons: (await this.gameConfig.current()).config.disabledWeapons,
+              // Live-ops loot weights for this match.
+              lootTable: (await this.gameConfig.current()).config.lootTable,
             }
           : null,
       };

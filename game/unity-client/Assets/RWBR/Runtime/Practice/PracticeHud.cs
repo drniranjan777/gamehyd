@@ -302,7 +302,7 @@ namespace RWBR.Client.Practice
             }
             foreach (TouchControls.ButtonLayout b in TouchControls.Layout)
             {
-                if (b.Button == TouchButton.Interact && !t.InteractAvailable) continue;
+                if (!t.Shows(b.Button)) continue;
                 Vector2 c = new Vector2(b.Center.x * _w, (1 - b.Center.y) * h);
                 bool on = t.IsHeld(b.Button) || (b.Button == TouchButton.Aim && _game.Aim.Aiming);
                 float alpha = on ? 0.45f : 0.22f;

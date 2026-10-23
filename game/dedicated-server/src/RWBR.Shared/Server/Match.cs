@@ -61,6 +61,7 @@ namespace RWBR.Shared.Server
         private long _activeStartTick;
         private long _finishTick;
         private float _zoneStartRadius;
+        private Vector2[] _zoneCenters = { Vector2.Zero };
 
         public Match(MatchConfig config, Func<DateTimeOffset>? clock = null)
         {
@@ -69,6 +70,7 @@ namespace RWBR.Shared.Server
             _dt = 1f / config.TickRate;
             _historyLength = config.Ticks(config.MaxRewindSeconds) + 2;
             _lootTaken = new bool[config.Map.Loot.Count];
+            Loot = LootTable.Apply(config.Map, config.LootTable);
             WithdrawDisabledLoot();
         }
 
@@ -76,7 +78,7 @@ namespace RWBR.Shared.Server
         private void WithdrawDisabledLoot()
         {
             if (_cfg.DisabledWeapons.Count == 0) return;
-            IReadOnlyList<LootSpawn> loot = _cfg.Map.Loot;
+            IReadOnlyList<LootSpawn> loot = Loot;
             for (int i = 0; i < loot.Count; i++)
                 if (loot[i].WeaponIndex >= 0 && _cfg.DisabledWeapons.Contains(loot[i].WeaponIndex)) _lootTaken[i] = true;
         }
@@ -90,9 +92,13 @@ namespace RWBR.Shared.Server
         public MatchConfig Config => _cfg;
         /// <summary>Whether loot spawn <paramref name="index"/> can still be picked up.</summary>
         public bool LootAvailable(int index) => !_lootTaken[index];
+        /// <summary>The map's loot spots with this match's items (<see cref="MatchConfig.LootTable"/>).</summary>
+        public IReadOnlyList<LootSpawn> Loot { get; }
         public bool IsFinished => Phase == MatchPhase.Completed && Tick >= _finishTick;
-        public Vector2 ZoneCenter => Vector2.Zero;
-        public float ZoneRadius => CurrentZoneRadius();
+        public Vector2 ZoneCenter => Zone().Center;
+        public float ZoneRadius => Zone().Radius;
+        /// <summary>The circle the zone is closing to now.</summary>
+        public (Vector2 Center, float Radius) NextZone => (Zone().NextCenter, Zone().NextRadius);
         /// <summary>Phase and connected count as of the last tick; safe to read from other threads (heartbeats).</summary>
         public (MatchPhase Phase, int Connected) PublicStatus => ((MatchPhase)_publicPhase, _publicConnected);
         public double ActiveSeconds => Phase >= MatchPhase.Active ? (Tick - _activeStartTick) * (double)_dt : 0;
@@ -314,6 +320,7 @@ namespace RWBR.Shared.Server
                 WeaponBalanceVersion = (ushort)WeaponCatalog.BalanceVersion,
                 MaxPlayers = (byte)_cfg.MaxPlayers,
                 MapVersion = _cfg.Map.Version,
+                LootTable = _cfg.LootTable,
             }));
 
         private void HandleInput(PlayerState p, List<InputCommand> inputs)
@@ -387,6 +394,7 @@ namespace RWBR.Shared.Server
             Phase = MatchPhase.Active;
             _activeStartTick = Tick;
             _zoneStartRadius = _cfg.Map.HalfSize * 1.4143f; // covers the map corners
+            _zoneCenters = PlanZoneCenters();
             Array.Clear(_lootTaken, 0, _lootTaken.Length);
             WithdrawDisabledLoot();
             ClearItems();
@@ -502,30 +510,76 @@ namespace RWBR.Shared.Server
             foreach (PlayerState p in _players) p.History[Tick % _historyLength] = p.Motor;
         }
 
-        private float CurrentZoneRadius()
+        private float CurrentZoneRadius() => Zone().Radius;
+
+        /// <summary>
+        /// Where each circle closes: the first anywhere its whole circle fits on the map, each later one at a random
+        /// point inside the one before (so it is always reachable from it). All at the centre when ZoneSeed is 0.
+        /// </summary>
+        private Vector2[] PlanZoneCenters()
         {
-            if (Phase < MatchPhase.Active) return _cfg.Map.HalfSize * 1.4143f;
+            var centers = new Vector2[_cfg.ZoneStages.Count + 1];
+            uint state = (uint)_cfg.ZoneSeed;
+            float Next()
+            {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                return (state & 0xFFFFFF) / (float)0x1000000;
+            }
+            float prevRadius = _zoneStartRadius;
+            for (int i = 0; i < _cfg.ZoneStages.Count; i++)
+            {
+                float end = _cfg.ZoneStages[i].EndRadius;
+                Vector2 c = centers[i];
+                if (_cfg.ZoneSeed != 0)
+                {
+                    float reach = i == 0 ? _cfg.Map.HalfSize - end : prevRadius - end;
+                    double angle = Next() * Math.PI * 2, dist = Math.Sqrt(Next()) * Math.Max(0, reach) * 0.85;
+                    c = centers[i] + new Vector2((float)(Math.Sin(angle) * dist), (float)(Math.Cos(angle) * dist));
+                    float limit = Math.Max(0, _cfg.Map.HalfSize - end);
+                    c = new Vector2(Math.Clamp(c.X, -limit, limit), Math.Clamp(c.Y, -limit, limit));
+                }
+                centers[i + 1] = c;
+                prevRadius = end;
+            }
+            return centers;
+        }
+
+        /// <summary>The zone now: current circle, the circle it is closing to, and the stage (0-based).</summary>
+        private (Vector2 Center, float Radius, Vector2 NextCenter, float NextRadius, int Stage) Zone()
+        {
+            float start = _cfg.Map.HalfSize * 1.4143f;
+            if (Phase < MatchPhase.Active || _cfg.ZoneStages.Count == 0) return (Vector2.Zero, start, Vector2.Zero, start, 0);
             float elapsed = (Tick - _activeStartTick) * _dt;
             float radius = _zoneStartRadius;
-            foreach (ZoneStage s in _cfg.ZoneStages)
+            for (int i = 0; i < _cfg.ZoneStages.Count; i++)
             {
-                if (elapsed < s.HoldSeconds) return radius;
+                ZoneStage s = _cfg.ZoneStages[i];
+                Vector2 from = _zoneCenters[i], to = _zoneCenters[i + 1];
+                if (elapsed < s.HoldSeconds) return (from, radius, to, s.EndRadius, i);
                 elapsed -= s.HoldSeconds;
-                if (elapsed < s.ShrinkSeconds) return radius + (s.EndRadius - radius) * (elapsed / s.ShrinkSeconds);
+                if (elapsed < s.ShrinkSeconds)
+                {
+                    float t = elapsed / s.ShrinkSeconds;
+                    return (Vector2.Lerp(from, to, t), radius + (s.EndRadius - radius) * t, to, s.EndRadius, i);
+                }
                 elapsed -= s.ShrinkSeconds;
                 radius = s.EndRadius;
             }
-            return radius;
+            Vector2 last = _zoneCenters[_cfg.ZoneStages.Count];
+            return (last, radius, last, radius, _cfg.ZoneStages.Count - 1);
         }
 
         private void ApplyZoneDamage()
         {
-            float radius = CurrentZoneRadius();
-            float damage = _cfg.ZoneDamagePerSecond * _dt;
+            var zone = Zone();
+            float radius = zone.Radius;
+            float damage = _cfg.ZoneDamagePerSecond * (1f + _cfg.ZoneDamageGrowth * zone.Stage) * _dt;
             foreach (PlayerState p in _players)
             {
                 if (!p.Alive) continue;
-                float dist = new Vector2(p.Position.X, p.Position.Z).Length();
+                float dist = Vector2.Distance(new Vector2(p.Position.X, p.Position.Z), zone.Center);
                 if (dist <= radius) continue;
                 p.Health -= damage;
                 if (p.Health > 0) continue;
@@ -594,14 +648,18 @@ namespace RWBR.Shared.Server
         private void BroadcastSnapshots()
         {
             if (Tick % Math.Max(1, _cfg.SnapshotEveryTicks) != 0) return;
+            var zone = Zone();
             var snapshot = new SnapshotPacket
             {
                 Tick = (uint)Tick,
                 Phase = Phase,
                 PhaseTicksLeft = Phase == MatchPhase.Countdown ? (ushort)Math.Max(0, _phaseEndTick - Tick) : (ushort)0,
-                ZoneX = 0,
-                ZoneZ = 0,
-                ZoneRadius = CurrentZoneRadius(),
+                ZoneX = zone.Center.X,
+                ZoneZ = zone.Center.Y,
+                ZoneRadius = zone.Radius,
+                NextZoneX = zone.NextCenter.X,
+                NextZoneZ = zone.NextCenter.Y,
+                NextZoneRadius = zone.NextRadius,
                 AliveCount = (byte)AliveCount(),
                 LootTaken = PackLootTaken(),
             };

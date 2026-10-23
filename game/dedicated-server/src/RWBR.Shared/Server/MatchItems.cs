@@ -106,7 +106,7 @@ namespace RWBR.Shared.Server
         private void TryPickUp(PlayerState p, ushort target)
         {
             int wantId = target == 0 ? -1 : target - 1;
-            IReadOnlyList<LootSpawn> loot = _cfg.Map.Loot;
+            IReadOnlyList<LootSpawn> loot = Loot;
             int bestSpot = -1;
             GroundItem? bestGround = null;
             float bestDist = float.MaxValue;

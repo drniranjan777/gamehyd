@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using RWBR.Shared;
 
 namespace RWBR.MatchServer.Platform;
 
@@ -25,7 +26,8 @@ public sealed record HeartbeatRequest(
     double? TickMsP99 = null,
     bool Draining = false);
 
-public sealed record MatchAssignment(Guid MatchId, string MapVersion, int Capacity, int MinPlayers, int FillWaitSeconds, string[]? DisabledWeapons = null);
+public sealed record MatchAssignment(Guid MatchId, string MapVersion, int Capacity, int MinPlayers, int FillWaitSeconds, string[]? DisabledWeapons = null,
+    LootTableConfig? LootTable = null);
 
 public sealed record HeartbeatResponse(Guid ServerId, MatchAssignment? Assignment);
 

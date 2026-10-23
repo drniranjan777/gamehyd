@@ -129,7 +129,8 @@ namespace RWBR.Shared
 
         /// <summary>
         /// Horizontal push-out. Boxes the character can step onto (top within <see cref="GameRules.StepHeight"/>
-        /// of the feet) and boxes entirely above the head do not block.
+        /// of the feet) and boxes entirely above the head do not block. Water always blocks, from any height: nobody
+        /// walks on it or wades in, even after jumping off something next to it. (Shots still pass over it.)
         /// </summary>
         public static Vector3 ResolveHorizontal(Vector3 p, float feetY, float height, MapLayout map)
         {
@@ -141,7 +142,8 @@ namespace RWBR.Shared
             foreach (int i in Near(map, p.X - r, p.Z - r, p.X + r, p.Z + r))
             {
                 Aabb box = map.Obstacles[i];
-                if (box.Max.Y <= feetY + GameRules.StepHeight || box.Min.Y >= feetY + height) continue;
+                bool water = map.KindOf(i) == BoxKind.Water;
+                if (!water && box.Max.Y <= feetY + GameRules.StepHeight || box.Min.Y >= feetY + height) continue;
                 float minX = box.Min.X - r, maxX = box.Max.X + r;
                 float minZ = box.Min.Z - r, maxZ = box.Max.Z + r;
                 if (p.X <= minX || p.X >= maxX || p.Z <= minZ || p.Z >= maxZ) continue;
@@ -165,7 +167,7 @@ namespace RWBR.Shared
             foreach (int i in Near(map, p.X - r, p.Z - r, p.X + r, p.Z + r))
             {
                 Aabb box = map.Obstacles[i];
-                if (box.Max.Y > maxTop || box.Max.Y <= ground) continue;
+                if (box.Max.Y > maxTop || box.Max.Y <= ground || map.KindOf(i) == BoxKind.Water) continue; // water is never ground
                 if (p.X < box.Min.X - r || p.X > box.Max.X + r || p.Z < box.Min.Z - r || p.Z > box.Max.Z + r) continue;
                 ground = box.Max.Y;
             }

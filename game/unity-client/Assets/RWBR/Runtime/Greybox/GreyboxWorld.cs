@@ -85,8 +85,19 @@ namespace RWBR.Client.Greybox
             // Ground, with the city's avenues as darker strips (visual only; the ground is flat for the server).
             var ground = new MeshBuilder();
             ground.Box(new Vector3(-layout.HalfSize, -0.1f, -layout.HalfSize), new Vector3(layout.HalfSize, 0, layout.HalfSize), new Color(0.45f, 0.42f, 0.36f));
-            if (layout.Version == CityMap.Version)
+            if (layout.Version.StartsWith("hyd-city", StringComparison.Ordinal))
             {
+                if (layout.HalfSize > CityMap.HalfSize)
+                {
+                    // v2 ring: concrete yards north and west, fields south and across the river (visual only: flat ground).
+                    float h = layout.HalfSize, c = CityMap.HalfSize;
+                    var yard = new Color(0.5f, 0.5f, 0.5f);
+                    var field = new Color(0.42f, 0.55f, 0.3f);
+                    ground.Box(new Vector3(-h, 0, c), new Vector3(h, 0.004f, h), yard);
+                    ground.Box(new Vector3(-h, 0, -c), new Vector3(-c, 0.004f, c), yard);
+                    ground.Box(new Vector3(-h, 0, -h), new Vector3(h, 0.004f, -c), field);
+                    ground.Box(new Vector3(CityMap.RiverEast, 0, -c), new Vector3(h, 0.006f, c), field);
+                }
                 var road = new Color(0.2f, 0.2f, 0.22f);
                 ground.Box(new Vector3(-10, 0, -layout.HalfSize), new Vector3(10, 0.01f, layout.HalfSize), road);
                 ground.Box(new Vector3(-layout.HalfSize, 0, -10), new Vector3(layout.HalfSize, 0.01f, 10), road);
@@ -179,6 +190,17 @@ namespace RWBR.Client.Greybox
                 case BoxKind.Car: c = new Color(0.7f, 0.15f, 0.15f); break;
                 case BoxKind.CompoundWall: c = new Color(0.75f, 0.7f, 0.6f); break;
                 case BoxKind.Wall: c = new Color(0.9f, 0.88f, 0.82f); break;
+                case BoxKind.Warehouse: c = new Color(0.62f, 0.6f, 0.55f); break;
+                case BoxKind.Container:
+                    // Shipping containers in a few faded paint colours.
+                    Color[] paint = { new Color(0.7f, 0.25f, 0.2f), new Color(0.2f, 0.4f, 0.65f), new Color(0.25f, 0.5f, 0.3f), new Color(0.75f, 0.55f, 0.2f) };
+                    c = paint[(int)((uint)index * 2654435761u >> 30)];
+                    break;
+                case BoxKind.Rock: c = new Color(0.5f, 0.48f, 0.44f); break;
+                case BoxKind.Chimney: c = new Color(0.55f, 0.35f, 0.3f); break;
+                case BoxKind.Railing: c = new Color(0.65f, 0.65f, 0.68f); break;
+                case BoxKind.Bridge: c = new Color(0.35f, 0.35f, 0.38f); break;
+                case BoxKind.Field: c = new Color(0.85f, 0.75f, 0.4f); break; // haystacks
                 default: c = new Color(0.8f, 0.74f, 0.6f); break;
             }
             // Small deterministic variation so neighbouring buildings read as separate.

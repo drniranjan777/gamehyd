@@ -32,6 +32,7 @@ namespace RWBR.Shared.Server
 
         public void Join(Match match)
         {
+            _brain.Loot = match.Loot;
             byte[] hello = PacketCodec.Encode(new HelloPacket { Name = Name });
             match.Receive(EndPoint, hello, hello.Length);
         }
@@ -111,6 +112,7 @@ namespace RWBR.Shared.Server
             CountdownSeconds = 5f,
             StartWithWeapon = false,
             ResultBroadcastSeconds = 1f,
+            ZoneSeed = 1, // moving circles (the game picks a new seed per match)
         };
 
         public void SendFromPlayer(byte[] data)

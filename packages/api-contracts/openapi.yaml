@@ -1850,6 +1850,7 @@ components:
                   type: array
                   items: { type: string }
                   description: Weapon catalog ids switched off by live ops; no loot of them spawns in this match.
+                lootTable: { $ref: '#/components/schemas/LootTable' }
     ResultSubmission:
       type: object
       additionalProperties: false
@@ -2057,6 +2058,30 @@ components:
             maximum: 5,
             description: Match XP multiplier for events (default 1),
           }
+        lootTable: { $ref: '#/components/schemas/LootTable' }
+    LootTable:
+      type: object
+      description: >-
+        Loot weights for matches (Phase C). Shares are percents of the spots of that kind; the rest goes to the last
+        option. Sent to the match server with each assignment and from there to every player.
+      properties:
+        version: { type: integer, minimum: 1 }
+        fragPercent: { type: integer, minimum: 0, maximum: 100 }
+        smokePercent: { type: integer, minimum: 0, maximum: 100 }
+        attachmentPercent: { type: integer, minimum: 0, maximum: 100 }
+        lightPercent: { type: integer, minimum: 0, maximum: 100 }
+        mediumPercent: { type: integer, minimum: 0, maximum: 100 }
+        shellsPercent: { type: integer, minimum: 0, maximum: 100 }
+        lightRounds: { type: integer, minimum: 1, maximum: 200 }
+        mediumRounds: { type: integer, minimum: 1, maximum: 200 }
+        shellRounds: { type: integer, minimum: 1, maximum: 200 }
+        heavyRounds: { type: integer, minimum: 1, maximum: 200 }
+        bandagePercent: { type: integer, minimum: 0, maximum: 100 }
+        medkitPercent: { type: integer, minimum: 0, maximum: 100 }
+        bandagesPerSpot: { type: integer, minimum: 1, maximum: 10 }
+        vestPercent: { type: integer, minimum: 0, maximum: 100 }
+        helmetPercent: { type: integer, minimum: 0, maximum: 100 }
+        upgradePercent: { type: integer, minimum: 0, maximum: 100 }
     PublicConfig:
       type: object
       additionalProperties: false

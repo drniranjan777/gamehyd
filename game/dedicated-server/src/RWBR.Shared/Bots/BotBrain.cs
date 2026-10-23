@@ -18,6 +18,7 @@ namespace RWBR.Shared.Bots
         private const float WaypointReached = 1.2f;
         private const float EngageRange = 45f;
         private const float LootDetour = 60f;
+        private static readonly float[] PartWay = { 0.6f, 0.35f, 0.15f };
 
         private readonly Random _rng;
         private readonly MapLayout? _map;
@@ -41,6 +42,9 @@ namespace RWBR.Shared.Bots
             _map = map;
             _nav = map != null ? NavGrid.For(map) : null;
         }
+
+        /// <summary>The match's loot spots (its loot table); the map's default items when not set.</summary>
+        public IReadOnlyList<LootSpawn>? Loot { get; set; }
 
         public InputCommand Decide(SnapshotPacket? snap, ushort selfId, double time)
         {
@@ -161,8 +165,20 @@ namespace RWBR.Shared.Bots
             return false;
         }
 
-        private static bool OutsideZone(SnapshotPacket snap, Vector3 p, float fraction) =>
-            new Vector2(p.X - snap.ZoneX, p.Z - snap.ZoneZ).Length() > snap.ZoneRadius * fraction;
+        /// <summary>
+        /// The circle bots aim for: the next one once it is announced (it lies inside the current one, so heading
+        /// there early is always safe), else the current one.
+        /// </summary>
+        private static (float X, float Z, float R) Target(SnapshotPacket snap) =>
+            snap.NextZoneRadius > 0 && snap.NextZoneRadius < snap.ZoneRadius
+                ? (snap.NextZoneX, snap.NextZoneZ, snap.NextZoneRadius)
+                : (snap.ZoneX, snap.ZoneZ, snap.ZoneRadius);
+
+        private static bool OutsideZone(SnapshotPacket snap, Vector3 p, float fraction)
+        {
+            var (x, z, r) = Target(snap);
+            return new Vector2(p.X - x, p.Z - z).Length() > r * fraction;
+        }
 
         /// <summary>Chooses a goal (zone, loot, roam) and a path to it, at most every couple of seconds.</summary>
         private void PlanIfNeeded(SnapshotPacket snap, SnapshotEntry self, Vector3 me, double time, bool armed, bool outOfAmmo)
@@ -175,12 +191,13 @@ namespace RWBR.Shared.Bots
             _goalLoot = -1;
             _goalGround = -1;
             _goalSince = time;
-            var zone = new Vector3(snap.ZoneX, 0, snap.ZoneZ);
+            var (zx, zz, zr) = Target(snap);
+            var zone = new Vector3(zx, 0, zz);
             if (OutsideZone(snap, me, 0.8f))
             {
                 // Run toward the zone centre (aim at a point well inside the ring).
                 Vector3 dir = Vector3.Normalize(zone - new Vector3(me.X, 0, me.Z));
-                goal = zone - dir * snap.ZoneRadius * 0.3f;
+                goal = zone - dir * zr * 0.3f;
             }
             else if (FindLoot(snap, self, me, !armed ? LootNeed.Weapon : outOfAmmo ? LootNeed.Ammo : LootNeed.Any, out int loot, out int ground, out Vector3 at))
             {
@@ -192,20 +209,27 @@ namespace RWBR.Shared.Bots
             {
                 if (time > _roamUntil || OutsideZoneTarget(snap))
                 {
-                    double angle = _rng.NextDouble() * Math.PI * 2, r = Math.Sqrt(_rng.NextDouble()) * snap.ZoneRadius * 0.6;
-                    _roamTarget = new Vector3(snap.ZoneX + (float)(Math.Sin(angle) * r), 0, snap.ZoneZ + (float)(Math.Cos(angle) * r));
+                    double angle = _rng.NextDouble() * Math.PI * 2, r = Math.Sqrt(_rng.NextDouble()) * zr * 0.6;
+                    _roamTarget = new Vector3(zx + (float)(Math.Sin(angle) * r), 0, zz + (float)(Math.Cos(angle) * r));
                     _roamUntil = time + 20 + _rng.NextDouble() * 20;
                 }
                 goal = _roamTarget;
             }
             _goal = goal;
             _path = _nav!.FindPath(me, goal);
+            // The goal is in water or a building, or too far for one search: head part of the way there instead.
+            for (int i = 0; _path == null && _goalLoot < 0 && _goalGround < 0 && i < PartWay.Length; i++)
+            {
+                Vector3 mid = Vector3.Lerp(me, goal, PartWay[i]);
+                mid.Y = 0;
+                _path = _nav.FindPath(me, mid);
+                if (_path != null) _goal = mid;
+            }
             _pathIndex = 0;
             if (_path == null) _roamUntil = 0; // unreachable: pick another target next time
         }
 
-        private bool OutsideZoneTarget(SnapshotPacket snap) =>
-            new Vector2(_roamTarget.X - snap.ZoneX, _roamTarget.Z - snap.ZoneZ).Length() > snap.ZoneRadius * 0.8f;
+        private bool OutsideZoneTarget(SnapshotPacket snap) => OutsideZone(snap, _roamTarget, 0.8f);
 
         private enum LootNeed
         {
@@ -226,7 +250,7 @@ namespace RWBR.Shared.Bots
             at = default;
             float best = need == LootNeed.Any ? 25f : LootDetour;
             ItemKind ammo = WeaponCatalog.IsValid(self.Weapon) ? Items.AmmoFor(WeaponCatalog.Get(self.Weapon).Class) : ItemKind.None;
-            IReadOnlyList<LootSpawn> loot = _map!.Loot;
+            IReadOnlyList<LootSpawn> loot = Loot ?? _map!.Loot;
             for (int i = 0; i < loot.Count; i++)
             {
                 LootSpawn l = loot[i];

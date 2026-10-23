@@ -40,6 +40,14 @@ namespace RWBR.Shared
         Tree,
         Car,
         CompoundWall,
+        // hyd-city-v2
+        Warehouse,
+        Container,
+        Rock,
+        Chimney,
+        Railing,
+        Bridge,
+        Field,
     }
 
     /// <summary>A named area of a map (HUD location name, loot weighting).</summary>
@@ -231,6 +239,11 @@ namespace RWBR.Shared
             if (version == CityMap.Version)
             {
                 layout = CityMap.Build();
+                return true;
+            }
+            if (version == CityMap.VersionV2)
+            {
+                layout = CityMap.BuildV2();
                 return true;
             }
             if (version == TrainingRangeVersion)
