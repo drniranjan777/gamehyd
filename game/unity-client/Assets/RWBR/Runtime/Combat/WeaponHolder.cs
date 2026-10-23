@@ -31,8 +31,13 @@ namespace RWBR.Client.Combat
     public sealed class WeaponHolder
     {
         private const float SwitchSeconds = 0.25f;
-        private static readonly Vector3 HipOffset = new Vector3(0.26f, -0.42f, 0.42f);
-        private static readonly Vector3 AimOffset = new Vector3(0.14f, -0.22f, 0.45f);
+        // Capsules: held clear of the 0.4 m capsule. Rigged characters: where a 1.8 m person's hands actually reach,
+        // stock at the right shoulder (hip) or the sight at the eye (aimed). Offsets are from the eye, in the view frame.
+        public static readonly Vector3 CapsuleHip = new Vector3(0.26f, -0.42f, 0.42f);
+        public static readonly Vector3 CapsuleAim = new Vector3(0.14f, -0.22f, 0.45f);
+        public static readonly Vector3 RiggedHip = new Vector3(0.12f, -0.36f, 0.25f);
+        public static readonly Vector3 RiggedAim = new Vector3(0.08f, -0.14f, 0.22f);
+        private Vector3 _hipOffset = CapsuleHip, _aimOffset = CapsuleAim;
 
         private readonly Transform _anchor;
         private readonly Dictionary<WeaponClass, WeaponModel> _models = new Dictionary<WeaponClass, WeaponModel>();
@@ -48,6 +53,13 @@ namespace RWBR.Client.Combat
         }
 
         public WeaponModel Current => _current;
+
+        /// <summary>Where the weapon is held at the hip and when aimed (see <see cref="RiggedHip"/>).</summary>
+        public void SetHoldOffsets(Vector3 hip, Vector3 aim)
+        {
+            _hipOffset = hip;
+            _aimOffset = aim;
+        }
         public Vector3 MuzzlePosition => _current != null ? _current.Muzzle.position : _anchor.position;
         public Vector3 Forward => _anchor.forward;
         public Vector3 Right => _anchor.right;
@@ -80,7 +92,7 @@ namespace RWBR.Client.Combat
 
             _kick = Mathf.MoveTowards(_kick, 0, dt * 6f);
             float aim = Mathf.Clamp01(pose.Aim);
-            Vector3 offset = Vector3.Lerp(HipOffset, AimOffset, aim * aim * (3 - 2 * aim));
+            Vector3 offset = Vector3.Lerp(_hipOffset, _aimOffset, aim * aim * (3 - 2 * aim));
             float pitch = pose.PitchDegrees;
             float roll = 0;
 

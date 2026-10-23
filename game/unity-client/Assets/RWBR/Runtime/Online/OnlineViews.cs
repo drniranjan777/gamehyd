@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using RWBR.Client.Character;
 using RWBR.Client.Combat;
 using RWBR.Client.Practice;
 using RWBR.Shared;
@@ -9,19 +10,18 @@ using SVector3 = System.Numerics.Vector3;
 namespace RWBR.Client.Online
 {
     /// <summary>
-    /// Presentation for an online match: predicted self, interpolated others (placeholder capsules holding 3D weapon
-    /// models), loot, tracers, shot effects and the zone ring.
+    /// Presentation for an online match: predicted self, interpolated others (the rigged character once built, else
+    /// placeholder capsules, holding 3D weapon models), loot, tracers, shot effects and the zone ring.
     /// </summary>
     public sealed class OnlineViews
     {
         private static readonly Color SelfColor = new Color(0.2f, 0.5f, 0.95f);
         private static readonly Color OtherColor = new Color(0.85f, 0.2f, 0.2f);
-        private static readonly Color DeadColor = new Color(0.25f, 0.25f, 0.25f);
         private const int RingSegments = 96;
 
         private readonly Transform _root;
         private readonly Dictionary<ushort, GameObject> _bodies = new Dictionary<ushort, GameObject>();
-        private readonly Dictionary<ushort, bool> _deadShown = new Dictionary<ushort, bool>();
+        private readonly Dictionary<ushort, CharacterBody> _characters = new Dictionary<ushort, CharacterBody>();
         private readonly List<GameObject> _loot = new List<GameObject>();
         private readonly List<(LineRenderer Line, float Until)> _tracers = new List<(LineRenderer, float)>();
         private readonly HashSet<ushort> _seen = new HashSet<ushort>();
@@ -32,11 +32,11 @@ namespace RWBR.Client.Online
         private float _selfPitch, _selfAim;
         private bool _selfHidden;
         private int _tickRate = 30;
-        private Renderer[] _selfRenderers;
 
         public CombatEffects Effects { get; private set; }
 
         public WeaponHolder WeaponOf(ushort id) => _weapons.TryGetValue(id, out WeaponHolder h) ? h : null;
+        public CharacterBody CharacterOf(ushort id) => _characters.TryGetValue(id, out CharacterBody b) ? b : null;
 
         /// <summary>The local player's view pitch (degrees), aim blend, and whether the body is hidden (scoped).</summary>
         public void SetSelfView(float pitchDegrees, float aim, bool hidden, int tickRate)
@@ -92,24 +92,23 @@ namespace RWBR.Client.Online
                 {
                     _seen.Add(e.PlayerId);
                     GameObject root = Body(e.PlayerId, e.PlayerId == selfId);
-                    bool alive = (e.Flags & PlayerFlags.Alive) != 0;
 
                     if (e.PlayerId == selfId)
                     {
                         root.transform.SetPositionAndRotation(ToUnity(selfPosition), Quaternion.Euler(0, selfYawDegrees, 0));
-                        Pose(root, alive, selfMotor.Height, SelfColor, e.PlayerId);
                         SelfTransform = root.transform;
-                        _selfRenderers ??= root.transform.GetChild(0).GetComponentsInChildren<Renderer>();
-                        foreach (Renderer r in _selfRenderers)
-                            if (r.enabled == _selfHidden) r.enabled = !_selfHidden;
+                        _characters[e.PlayerId].SetHidden(_selfHidden);
+                        Pose(e, selfMotor.Height, selfYawDegrees, _selfPitch, _selfAim, selfMotor.Grounded, selfMotor.Crouched);
                         UpdateWeapon(e, selfMotor.EyeHeight, _selfPitch, _selfAim, _selfHidden, time);
                         continue;
                     }
 
                     if (!interp.TrySample(e.PlayerId, out SVector3 p, out float yaw, out SnapshotEntry sampled)) continue;
                     root.transform.SetPositionAndRotation(ToUnity(p), Quaternion.Euler(0, yaw * Mathf.Rad2Deg, 0));
-                    float h = (sampled.Flags & PlayerFlags.Crouched) != 0 ? GameRules.CrouchHeight : GameRules.PlayerHeight;
-                    Pose(root, alive, h, OtherColor, e.PlayerId);
+                    bool crouched = (sampled.Flags & PlayerFlags.Crouched) != 0;
+                    float h = crouched ? GameRules.CrouchHeight : GameRules.PlayerHeight;
+                    // Remote grounded state is not sent; treat players at street or floor level as grounded.
+                    Pose(e, h, yaw * Mathf.Rad2Deg, 0, 0, grounded: true, crouched);
                     UpdateWeapon(sampled, (sampled.Flags & PlayerFlags.Crouched) != 0 ? GameRules.CrouchEyeHeight : GameRules.EyeHeight, 0, 0, false, time);
                 }
             }
@@ -123,7 +122,7 @@ namespace RWBR.Client.Online
                 Object.Destroy(_bodies[id]);
                 _bodies.Remove(id);
                 _weapons.Remove(id);
-                _deadShown.Remove(id);
+                _characters.Remove(id);
             }
 
             if (_map != null)
@@ -192,8 +191,7 @@ namespace RWBR.Client.Online
             Effects = null;
             _bodies.Clear();
             _weapons.Clear();
-            _selfRenderers = null;
-            _deadShown.Clear();
+            _characters.Clear();
             _loot.Clear();
             _tracers.Clear();
             SelfTransform = null;
@@ -204,34 +202,28 @@ namespace RWBR.Client.Online
             if (_bodies.TryGetValue(id, out GameObject root)) return root;
             root = new GameObject(self ? "You" : $"Player {id}");
             root.transform.SetParent(_root, false);
-            GameObject body = PracticeViews.CreatePrimitive(PrimitiveType.Capsule, root.transform, "Body", self ? SelfColor : OtherColor);
-            GameObject visor = PracticeViews.CreatePrimitive(PrimitiveType.Cube, body.transform, "Visor", Color.black);
-            visor.transform.localPosition = new Vector3(0, 0.55f, 0.42f);
-            visor.transform.localScale = new Vector3(0.7f, 0.12f, 0.2f);
+            CharacterBody body = CharacterBody.Create(root.transform, self ? SelfColor : OtherColor);
+            var weapon = new WeaponHolder(root.transform);
+            body.Bind(weapon);
             _bodies[id] = root;
-            _weapons[id] = new WeaponHolder(root.transform);
+            _weapons[id] = weapon;
+            _characters[id] = body;
             return root;
         }
 
-        private void Pose(GameObject root, bool alive, float height, Color color, ushort id)
+        private void Pose(SnapshotEntry e, float height, float yawDegrees, float pitch, float aim, bool grounded, bool crouched)
         {
-            Transform body = root.transform.GetChild(0);
-            _deadShown.TryGetValue(id, out bool shownDead);
-            if (alive)
+            _characters[e.PlayerId].Pose(new CharacterMotion
             {
-                body.localPosition = new Vector3(0, height / 2, 0);
-                body.localScale = new Vector3(0.8f, height / 2, 0.8f);
-                body.localRotation = Quaternion.identity;
-                if (shownDead) PracticeViews.SetColor(body.gameObject, color);
-                _deadShown[id] = false;
-            }
-            else
-            {
-                body.localPosition = new Vector3(0, 0.4f, 0);
-                body.localRotation = Quaternion.Euler(90, 0, 0);
-                if (!shownDead) PracticeViews.SetColor(body.gameObject, DeadColor);
-                _deadShown[id] = true;
-            }
+                ViewYawDegrees = yawDegrees,
+                PitchDegrees = pitch,
+                Grounded = grounded,
+                Crouched = crouched,
+                Alive = (e.Flags & PlayerFlags.Alive) != 0,
+                Aim = aim,
+                Reloading = (e.Flags & PlayerFlags.Reloading) != 0,
+                Weapon = (e.Flags & PlayerFlags.HasWeapon) != 0 && WeaponCatalog.IsValid(e.Weapon) ? WeaponCatalog.Get(e.Weapon).Class : (WeaponClass?)null,
+            }, height, _bodies[e.PlayerId].transform.eulerAngles.y, Time.deltaTime);
         }
 
         private void UpdateWeapon(SnapshotEntry e, float eyeHeight, float pitch, float aim, bool hidden, float time)

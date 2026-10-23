@@ -2,9 +2,10 @@
 
 Date: 22 October 2026. Plan and audit: [PHASE-A-CHARACTER-AUDIT.md](PHASE-A-CHARACTER-AUDIT.md).
 
-This is the first part of Phase B: everything that does not need the licensed character and animations. **The
-characters are still placeholder capsules.** Rigged characters, the twelve animation states, blending and IK start when
-the Mixamo files are in `game/unity-client/Assets/ThirdParty/Mixamo/` (and the repository is private).
+Part 1 (below) is everything that does not need the licensed character and animations. Part 2 is the character
+animation plumbing, built and tested on a procedural skeleton. **The characters on screen are still placeholder
+capsules** until the Mixamo files are in `game/unity-client/Assets/ThirdParty/Mixamo/` and `./unity-batch.sh characters`
+has been run.
 
 ## What was built
 
@@ -81,6 +82,53 @@ Known flaky test: `OnlineMatchTests.Client_joins_predicts_movement_and_receives_
 waiting for the match result: the bot did not eliminate the idle test player within 70 s. It passed when rerun alone,
 and nothing in the bot or in unaimed combat changed. It needs a longer wait or a bot spawned closer.
 
+## Part 2 (23 October 2026): character animation plumbing
+
+Everything the Mixamo character needs, built and tested **without the art**. When the files are in, run
+`./unity-batch.sh characters` (or RWBR > Characters > Build): the game switches from capsules to the rigged character on
+its own. Until then nothing changes on screen.
+
+- **Import pipeline** (`Editor/CharacterImport.cs`). Files go under `Assets/ThirdParty/Mixamo/Characters` (With Skin)
+  and `Assets/ThirdParty/Mixamo/Animations` (Without Skin, In Place). The import step makes them humanoid, takes the
+  animations' avatar from the character, and bakes root motion into the pose (the simulation moves characters). It
+  loops locomotion clips, skips materials on animation files, and compresses meshes, animation and textures (ASTC,
+  1024 px cap on Android and iOS).
+- **Clip matching**: Mixamo names every clip "mixamo.com", so file names pick the slot ("Rifle Run Forward",
+  "walk backwards", "Pistol Idle"…). There are 21 slots, and files with "pistol" fill the pistol set. Missing required
+  clips fail the batch build with a list.
+- **Animator controller** (generated into `Resources/Characters/RWBR_Humanoid.controller`):
+  - **Locomotion layer:** rifle and pistol 2D blend trees on body-frame velocity: idle, walk and run in 4 directions, and
+    sprint. A missing strafe side is mirrored, and a missing sprint plays the run faster. Also crouch, jump, fall, land,
+    turn-in-place (only when there is a turn clip) and death, which clears when a range target stands up.
+  - **Upper-body layer** (legs untouched): aim and reload.
+  - **Reactions layer:** hit flinch.
+  - **Every layer runs the IK pass.**
+  - **Neutral pose:** a generated relaxed standing clip fills idle, crouch idle and death until real clips exist, so a
+    character never shows its T-pose.
+- **Character prefab**: built from the character model, scaled to the simulation's 1.8 m. It uses two-bone skinning,
+  and animation is culled when off screen.
+- **`CharacterAnimator`** (runtime driver), fed by the practice simulation, your prediction and other players'
+  snapshots:
+  - **Animation parameters:** damped forward and strafe speed, crouch, grounded, aim, pitch, pistol or rifle set, and
+    reloading.
+  - **Events:** jump and land on take-off and touch-down, switch on a weapon change, hit on damage, death.
+  - **Turn in place:** the feet stay put for looks under 60°, then the body turns to the view in 0.3 s.
+  - **IK:** both hands go to grip points on the weapon model. They let go while reloading, so the reload clip moves
+    them. The head and spine aim along the view, and when standing still the feet are planted on the ground (stairs,
+    kerbs) by raycast.
+- **`CharacterBody`**: one interface for both bodies. The rigged one is used when the prefab exists, otherwise the
+  capsule. A rigged body holds the weapon where a real arm reaches. Range targets now also get their colour back when
+  they stand up again (a capsule bug fixed on the way).
+- **Licensed files stay off the public repository**: `.gitignore` excludes `Assets/ThirdParty/` and the built prefab,
+  until the repository is private.
+
+Part 2 tests (all passing):
+
+| Suite          | Result                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Unity EditMode | 44/44. New: Mixamo file names to slots (rifle and pistol), missing-clip report, controller parameters, layers, IK pass, upper-body mask and states, mirrored strafe, committed controller present, body-frame velocity, turn in place                                                                                                                                                                                                      |
+| Unity PlayMode | 15/15, including the full-stack Quick-play, store and online match tests. New: on a **procedurally built humanoid skeleton** driving the real controller, both hands land on the weapon grips (0.00 m), the feet are planted on the ground, the hands let go during reload, run and strafe reach the blend parameters, crouch and death states play, the body turns in place after a 100° look, and without the prefab the capsule is used |
+
 ## Before players get this build
 
 The production server at game.tallygen.com runs protocol 4 and schema 0009. An APK from this code (protocol 5) **cannot
@@ -94,11 +142,16 @@ The firing range and practice work offline either way.
 
 ## Not done yet (honest list)
 
-- Realistic characters, outfits, helmets, backpacks, customisation: need the Mixamo files.
-- Animations, blending, foot and hand IK, turn-in-place, hit reactions and death animations: need the Mixamo files.
-- Remote players' aim and pitch are not sent to other clients, so their weapons stay level.
+- **On screen the characters are still capsules.** The realistic character and animations need the Mixamo files.
+  All the plumbing (part 2) is built and tested, but how the real clips look, hand-grip rotations and foot sliding at
+  each speed can only be tuned once they are in.
+- Outfit, helmet and backpack variants, and customisation (which needs the platform to store the choice), are not
+  built.
+- Remote players' aim, pitch and grounded state are not sent to other clients. Their weapons stay level, they don't
+  aim, and jumps don't play for them.
 - Touch layout editor and haptics were not built.
 - The weapon models are simple original shapes; a licensed weapon pack would look better.
-- Character LODs, animator culling and ASTC texture settings come with the character import.
+- Character LODs: the Mixamo characters have a single detail level; LODs need a pack that includes them, or decimated
+  copies.
 - No iOS build has been made (no Mac or Apple account in this setup).
 - Not yet checked on the phone.

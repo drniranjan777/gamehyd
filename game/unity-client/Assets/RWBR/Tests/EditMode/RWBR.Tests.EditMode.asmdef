@@ -4,6 +4,7 @@
     "references": [
         "RWBR.Client",
         "RWBR.Shared",
+        "RWBR.Editor",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

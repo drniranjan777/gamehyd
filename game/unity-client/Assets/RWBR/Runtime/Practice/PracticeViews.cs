@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using RWBR.Client.Character;
 using RWBR.Client.Combat;
 using RWBR.Shared;
 using UnityEngine;
@@ -13,14 +14,13 @@ namespace RWBR.Client.Practice
     }
 
     /// <summary>
-    /// Presentation for the practice simulation: placeholder capsule characters holding 3D weapon models, loot,
-    /// shot tracers and pooled shot effects.
+    /// Presentation for the practice simulation: characters (the rigged character once built, else placeholder
+    /// capsules) holding 3D weapon models, loot, shot tracers and pooled shot effects.
     /// </summary>
     public sealed class PracticeViews
     {
         private static readonly Color PlayerColor = new Color(0.2f, 0.5f, 0.95f);
         private static readonly Color EnemyColor = new Color(0.85f, 0.2f, 0.2f);
-        private static readonly Color DeadColor = new Color(0.25f, 0.25f, 0.25f);
 
         private readonly Transform _root;
         private readonly Dictionary<ushort, GameObject> _bodies = new Dictionary<ushort, GameObject>();
@@ -28,10 +28,10 @@ namespace RWBR.Client.Practice
         private readonly List<GameObject> _loot = new List<GameObject>();
         private readonly List<(LineRenderer Line, float Until)> _tracers = new List<(LineRenderer, float)>();
         private readonly Dictionary<ushort, WeaponHolder> _weapons = new Dictionary<ushort, WeaponHolder>();
+        private readonly Dictionary<ushort, CharacterBody> _characters = new Dictionary<ushort, CharacterBody>();
         private Material _tracerMaterial;
         private float _playerPitch, _playerAim;
         private bool _playerHidden;
-        private Renderer[] _playerRenderers;
 
         public PracticeViews(Transform root) => _root = root;
 
@@ -41,6 +41,7 @@ namespace RWBR.Client.Practice
         public CombatEffects Effects { get; private set; }
 
         public WeaponHolder WeaponOf(ushort id) => _weapons.TryGetValue(id, out WeaponHolder h) ? h : null;
+        public CharacterBody CharacterOf(ushort id) => _characters.TryGetValue(id, out CharacterBody b) ? b : null;
 
         /// <summary>The local player's view pitch (degrees), aim blend, and whether the body is hidden (scoped).</summary>
         public void SetPlayerView(float pitchDegrees, float aim, bool hidden)
@@ -64,12 +65,12 @@ namespace RWBR.Client.Practice
             {
                 GameObject root = new GameObject(f.Name);
                 root.transform.SetParent(_root, false);
-                GameObject body = CreatePrimitive(PrimitiveType.Capsule, root.transform, "Body", f.IsPlayer ? PlayerColor : EnemyColor);
-                GameObject visor = CreatePrimitive(PrimitiveType.Cube, body.transform, "Visor", Color.black);
-                visor.transform.localPosition = new Vector3(0, 0.55f, 0.42f);
-                visor.transform.localScale = new Vector3(0.7f, 0.12f, 0.2f);
+                CharacterBody body = CharacterBody.Create(root.transform, f.IsPlayer ? PlayerColor : EnemyColor);
+                var weapon = new WeaponHolder(root.transform);
+                body.Bind(weapon);
                 _bodies[f.Id] = root;
-                _weapons[f.Id] = new WeaponHolder(root.transform);
+                _weapons[f.Id] = weapon;
+                _characters[f.Id] = body;
             }
 
             for (int i = 0; i < sim.Map.Loot.Count; i++)
@@ -113,31 +114,24 @@ namespace RWBR.Client.Practice
                 (SVector3 prev, SVector3 cur) = _positions[f.Id];
                 root.position = SVector3.Lerp(prev, cur, alpha).ToUnity();
 
-                Transform body = root.GetChild(0);
-                float h = f.Motor.Height;
-                if (f.Combat.Alive)
-                {
-                    root.rotation = Quaternion.Euler(0, f.Yaw * Mathf.Rad2Deg, 0);
-                    body.localPosition = new Vector3(0, h / 2, 0);
-                    body.localScale = new Vector3(0.8f, h / 2, 0.8f);
-                    body.localRotation = Quaternion.identity;
-                }
-                else
-                {
-                    // Fallen over.
-                    body.localPosition = new Vector3(0, 0.4f, 0);
-                    body.localRotation = Quaternion.Euler(90, 0, 0);
-                    SetColor(body.gameObject, DeadColor);
-                }
-
+                if (f.Combat.Alive) root.rotation = Quaternion.Euler(0, f.Yaw * Mathf.Rad2Deg, 0);
                 bool hidden = f.IsPlayer && _playerHidden;
-                if (f.IsPlayer)
-                {
-                    _playerRenderers ??= body.GetComponentsInChildren<Renderer>();
-                    foreach (Renderer r in _playerRenderers)
-                        if (r.enabled == hidden) r.enabled = !hidden;
-                }
+                float pitch = f.IsPlayer ? _playerPitch : -f.Pitch * Mathf.Rad2Deg;
+                float aim = f.IsPlayer ? _playerAim : 0;
                 WeaponDefinition weapon = sim.WeaponOf(f);
+                CharacterBody character = _characters[f.Id];
+                character.SetHidden(hidden);
+                character.Pose(new CharacterMotion
+                {
+                    ViewYawDegrees = f.Yaw * Mathf.Rad2Deg,
+                    PitchDegrees = pitch,
+                    Grounded = f.Motor.Grounded,
+                    Crouched = f.Motor.Crouched,
+                    Alive = f.Combat.Alive,
+                    Aim = aim,
+                    Reloading = f.Combat.Reloading,
+                    Weapon = f.Combat.HasWeapon ? weapon.Class : (WeaponClass?)null,
+                }, f.Motor.Height, root.eulerAngles.y, Time.deltaTime);
                 float reload = -1;
                 if (f.Combat.Reloading)
                 {
@@ -147,8 +141,8 @@ namespace RWBR.Client.Practice
                 _weapons[f.Id].Update(new WeaponPose
                 {
                     Weapon = f.Combat.ActiveWeaponIndex,
-                    PitchDegrees = f.IsPlayer ? _playerPitch : -f.Pitch * Mathf.Rad2Deg,
-                    Aim = f.IsPlayer ? _playerAim : 0,
+                    PitchDegrees = pitch,
+                    Aim = aim,
                     Reload = reload,
                     Alive = f.Combat.Alive,
                     Crouched = f.Motor.Crouched,
@@ -179,7 +173,7 @@ namespace RWBR.Client.Practice
         public void ResetColors(PracticeSimulation sim)
         {
             foreach (Fighter f in sim.AllFighters())
-                SetColor(_bodies[f.Id].transform.GetChild(0).gameObject, f.IsPlayer ? PlayerColor : EnemyColor);
+                _characters[f.Id].SetColor(f.IsPlayer ? PlayerColor : EnemyColor);
         }
 
         /// <summary>A shot tracer from <paramref name="start"/> (the muzzle) or, without one, from just ahead of the eye.</summary>

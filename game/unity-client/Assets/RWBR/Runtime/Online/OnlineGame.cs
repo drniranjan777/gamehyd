@@ -581,6 +581,7 @@ namespace RWBR.Client.Online
             if (holder?.Current != null && effects != null)
             {
                 holder.Fired(weapon.RecoilPitchDegrees);
+                _views.CharacterOf(Net.PlayerId)?.Fired();
                 effects.MuzzleFlash(holder.MuzzlePosition, holder.Forward, true, Time.time);
                 if (weapon.Class != WeaponClass.Shotgun) effects.Shell(holder.EjectorPosition, holder.Right, holder.Forward);
             }
@@ -612,6 +613,7 @@ namespace RWBR.Client.Online
                     if (muzzle.HasValue && _views.Effects != null)
                     {
                         holder.Fired(w.RecoilPitchDegrees);
+                        _views.CharacterOf(e.PlayerId)?.Fired();
                         _views.Effects.MuzzleFlash(muzzle.Value, holder.Forward, false, Time.time);
                     }
                     for (int i = 0; i < shots; i++)
@@ -636,6 +638,7 @@ namespace RWBR.Client.Online
             {
                 if (_lastHealth.TryGetValue(e.PlayerId, out byte before) && e.Health < before)
                 {
+                    _views?.CharacterOf(e.PlayerId)?.Hit();
                     if (e.PlayerId == Net.PlayerId) LastDamagedTime = Time.time;
                     else if (Time.time - _lastShotTime < 0.4f)
                     {

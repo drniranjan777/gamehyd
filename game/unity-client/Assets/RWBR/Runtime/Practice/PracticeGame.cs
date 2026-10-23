@@ -312,6 +312,7 @@ namespace RWBR.Client.Practice
                         if (holder?.Current != null)
                         {
                             holder.Fired(weapon.RecoilPitchDegrees);
+                            _views.CharacterOf(e.Actor)?.Fired();
                             effects.MuzzleFlash(holder.MuzzlePosition, holder.Forward, byPlayer, Time.time);
                             if (weapon.Class != WeaponClass.Shotgun) effects.Shell(holder.EjectorPosition, holder.Right, holder.Forward);
                         }
@@ -325,6 +326,7 @@ namespace RWBR.Client.Practice
                         break;
                     case SimEventType.Hit:
                         effects.Impact(e.To.ToUnity(), (e.From - e.To).ToUnity().normalized, player: true);
+                        _views.CharacterOf(e.Target)?.Hit();
                         if (byPlayer)
                         {
                             LastHitTime = Time.time;

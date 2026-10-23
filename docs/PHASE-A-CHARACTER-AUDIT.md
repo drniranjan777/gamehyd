@@ -82,7 +82,10 @@ PUBG or any other game's models, animations, sounds or UI will not be used.
 ### Mixamo download list
 
 Sign in at https://www.mixamo.com and download each item as **FBX for Unity (.fbx)** at **30 fps**. Tick **In Place**
-wherever Mixamo offers it. Save the files to `game/unity-client/Assets/ThirdParty/Mixamo/`.
+wherever Mixamo offers it. Save the character (With Skin) to `game/unity-client/Assets/ThirdParty/Mixamo/Characters/`
+and every animation (Without Skin) to `game/unity-client/Assets/ThirdParty/Mixamo/Animations/`. Keep Mixamo's file
+names (they pick the animation slot) and download packs unzipped. Then run `./unity-batch.sh characters` in
+`game/unity-client`: it lists anything missing.
 
 | What              | Mixamo search                                                                              | Skin          |
 | ----------------- | ------------------------------------------------------------------------------------------ | ------------- |

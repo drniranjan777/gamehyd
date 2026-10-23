@@ -11,6 +11,9 @@ namespace RWBR.Client.Combat
         public Transform Muzzle;
         /// <summary>Where spent cases leave the weapon.</summary>
         public Transform Ejector;
+        /// <summary>Hand targets for IK on rigged characters: trigger hand on the grip, support hand forward.</summary>
+        public Transform RightHandGrip;
+        public Transform LeftHandGrip;
     }
 
     /// <summary>
@@ -30,6 +33,7 @@ namespace RWBR.Client.Combat
             root.transform.SetParent(parent, false);
             Transform t = root.transform;
             float muzzle;
+            float support; // how far forward the support hand holds the weapon (z)
             switch (weaponClass)
             {
                 case WeaponClass.Pistol:
@@ -37,6 +41,7 @@ namespace RWBR.Client.Combat
                     Box(t, "Frame", new Vector3(0, 0.02f, 0.05f), new Vector3(0.03f, 0.025f, 0.15f), Polymer);
                     Box(t, "Grip", new Vector3(0, -0.04f, -0.01f), new Vector3(0.03f, 0.11f, 0.045f), Polymer, new Vector3(-15, 0, 0));
                     muzzle = 0.16f;
+                    support = 0f; // two-handed grip: the support hand wraps the trigger hand
                     break;
                 case WeaponClass.Smg:
                     Box(t, "Receiver", new Vector3(0, 0.05f, 0.06f), new Vector3(0.05f, 0.07f, 0.3f), Metal);
@@ -45,6 +50,7 @@ namespace RWBR.Client.Combat
                     Box(t, "Grip", new Vector3(0, -0.03f, -0.02f), new Vector3(0.03f, 0.09f, 0.04f), Polymer, new Vector3(-12, 0, 0));
                     Box(t, "Stock", new Vector3(0, 0.04f, -0.17f), new Vector3(0.02f, 0.05f, 0.16f), Metal);
                     muzzle = 0.25f;
+                    support = 0.12f;
                     break;
                 case WeaponClass.Shotgun:
                     Box(t, "Receiver", new Vector3(0, 0.05f, 0.05f), new Vector3(0.055f, 0.075f, 0.3f), Metal);
@@ -54,6 +60,7 @@ namespace RWBR.Client.Combat
                     Box(t, "Grip", new Vector3(0, -0.03f, -0.04f), new Vector3(0.032f, 0.09f, 0.045f), Polymer, new Vector3(-20, 0, 0));
                     Box(t, "Stock", new Vector3(0, 0.02f, -0.25f), new Vector3(0.045f, 0.1f, 0.26f), Polymer, new Vector3(6, 0, 0));
                     muzzle = 0.7f;
+                    support = 0.3f; // on the pump
                     break;
                 case WeaponClass.Marksman:
                 case WeaponClass.Sniper:
@@ -68,6 +75,7 @@ namespace RWBR.Client.Combat
                     Barrel(t, new Vector3(0, 0.125f, 0.08f), sniper ? 0.024f : 0.019f, sniper ? 0.32f : 0.24f, Metal); // scope
                     Barrel(t, new Vector3(0, 0.125f, sniper ? 0.245f : 0.205f), sniper ? 0.026f : 0.021f, 0.01f, Glass);
                     muzzle = 0.27f + barrel;
+                    support = 0.24f;
                     break;
                 default: // assault rifle
                     Box(t, "Receiver", new Vector3(0, 0.05f, 0.04f), new Vector3(0.055f, 0.08f, 0.4f), Metal);
@@ -78,6 +86,7 @@ namespace RWBR.Client.Combat
                     Box(t, "Stock", new Vector3(0, 0.03f, -0.27f), new Vector3(0.045f, 0.1f, 0.24f), Polymer);
                     Box(t, "Sight", new Vector3(0, 0.105f, 0.08f), new Vector3(0.03f, 0.035f, 0.08f), Metal);
                     muzzle = 0.62f;
+                    support = 0.2f;
                     break;
             }
 
@@ -87,7 +96,20 @@ namespace RWBR.Client.Combat
             var ejector = new GameObject("Ejector").transform;
             ejector.SetParent(t, false);
             ejector.localPosition = new Vector3(0.03f, 0.07f, 0.08f);
-            return new WeaponModel { Root = root, Muzzle = muzzlePoint, Ejector = ejector };
+            Transform right = Point(t, "RightHandGrip", new Vector3(0, -0.02f, -0.02f), new Vector3(-15, 0, -90));
+            Transform left = weaponClass == WeaponClass.Pistol
+                ? Point(t, "LeftHandGrip", new Vector3(-0.025f, -0.035f, 0f), new Vector3(-15, 0, 90))
+                : Point(t, "LeftHandGrip", new Vector3(0, 0.02f, support), new Vector3(0, 0, 90));
+            return new WeaponModel { Root = root, Muzzle = muzzlePoint, Ejector = ejector, RightHandGrip = right, LeftHandGrip = left };
+        }
+
+        private static Transform Point(Transform parent, string name, Vector3 position, Vector3 euler)
+        {
+            var point = new GameObject(name).transform;
+            point.SetParent(parent, false);
+            point.localPosition = position;
+            point.localRotation = Quaternion.Euler(euler);
+            return point;
         }
 
         private static void Box(Transform parent, string name, Vector3 center, Vector3 size, Color color, Vector3 euler = default)

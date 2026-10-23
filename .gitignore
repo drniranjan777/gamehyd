@@ -40,3 +40,9 @@ game/unity-client/.utmp/
 
 # Client documents (BRD) stay private: never commit them to this public repository.
 *.docx
+
+# Licensed third-party art (Mixamo, Asset Store) must not be published while the repository is public.
+# Remove these two lines once github.com/drniranjan777/gamehyd is private.
+game/unity-client/Assets/ThirdParty/
+game/unity-client/Assets/ThirdParty.meta
+game/unity-client/Assets/RWBR/Resources/Characters/Soldier.prefab*
