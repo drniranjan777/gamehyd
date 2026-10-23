@@ -118,5 +118,18 @@ namespace RWBR.Tests
             Assert.IsFalse(OnlineGame.TryParseAddress("localhost", out _, out _));
             Assert.IsFalse(OnlineGame.TryParseAddress("host:99999", out _, out _));
         }
+
+        [Test]
+        public void Other_players_reload_progress_is_timed_from_when_it_starts()
+        {
+            var t = new ReloadTracker();
+            Assert.AreEqual(-1f, t.Progress(3, false, 2f, 10f));
+            Assert.AreEqual(0f, t.Progress(3, true, 2f, 10f), 1e-5f, "starts when the flag is first seen");
+            Assert.AreEqual(0.5f, t.Progress(3, true, 2f, 11f), 1e-5f);
+            Assert.AreEqual(1f, t.Progress(3, true, 2f, 13f), 1e-5f, "held at the end, never loops");
+            Assert.AreEqual(0.25f, t.Progress(4, true, 4f, 12f) + t.Progress(4, true, 4f, 13f), 1e-5f, "players are timed separately");
+            Assert.AreEqual(-1f, t.Progress(3, false, 2f, 14f));
+            Assert.AreEqual(0f, t.Progress(3, true, 2f, 20f), 1e-5f, "the next reload starts from zero");
+        }
     }
 }

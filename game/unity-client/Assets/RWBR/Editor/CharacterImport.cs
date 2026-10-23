@@ -373,7 +373,7 @@ namespace RWBR.EditorTools
             AnimationClip neutral = NeutralClip(Path.ChangeExtension(path, null) + "_Neutral.anim");
 
             AnimatorController c = AnimatorController.CreateAnimatorControllerAtPath(path);
-            foreach (string f in new[] { AnimatorIds.ForwardName, AnimatorIds.StrafeName, AnimatorIds.SpeedName, AnimatorIds.AimName, AnimatorIds.PitchName, AnimatorIds.PistolName, AnimatorIds.TurnAngleName })
+            foreach (string f in new[] { AnimatorIds.ForwardName, AnimatorIds.StrafeName, AnimatorIds.SpeedName, AnimatorIds.AimName, AnimatorIds.PitchName, AnimatorIds.PistolName, AnimatorIds.TurnAngleName, AnimatorIds.ReloadProgressName })
                 c.AddParameter(f, AnimatorControllerParameterType.Float);
             foreach (string b in new[] { AnimatorIds.CrouchName, AnimatorIds.GroundedName, AnimatorIds.ArmedName, AnimatorIds.ReloadingName, AnimatorIds.DeadName })
                 c.AddParameter(b, AnimatorControllerParameterType.Bool);
@@ -463,6 +463,9 @@ namespace RWBR.EditorTools
             AnimatorState empty = State(upper, "Empty", null);
             AnimatorState aim = State(upper, "Aim", Pick(AnimSlot.AimIdle, false));
             AnimatorState reload = State(upper, "Reload", Pick(AnimSlot.Reload, false));
+            // The clip follows the reload's progress, so it ends exactly when the magazine is in, whatever the weapon.
+            reload.timeParameterActive = true;
+            reload.timeParameter = AnimatorIds.ReloadProgressName;
             upper.defaultState = empty;
             Link(empty, aim, 0.12f, (AnimatorConditionMode.Greater, 0.5f, AnimatorIds.AimName), (AnimatorConditionMode.If, 0, AnimatorIds.ArmedName));
             Link(aim, empty, 0.12f, (AnimatorConditionMode.Less, 0.5f, AnimatorIds.AimName));

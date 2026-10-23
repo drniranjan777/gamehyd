@@ -2,6 +2,7 @@ using NUnit.Framework;
 using RWBR.Client.Player;
 using RWBR.Client.Settings;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace RWBR.Tests
 {
@@ -79,6 +80,32 @@ namespace RWBR.Tests
             TouchControls.ReloadLayout();
             Assert.AreEqual(new Vector2(0.5f, 0.5f), Find(TouchButton.Fire).Center, "valid entries survive next to unknown ones");
             Assert.AreEqual(0.9f, TouchControls.ButtonScale, 1e-4f);
+        }
+
+        [Test]
+        public void Gamepad_rumbles_for_hits_and_eliminations()
+        {
+            GameSettings.SetVibration(true);
+            var pad = InputSystem.AddDevice<Gamepad>();
+            try
+            {
+                int before = Haptics.Rumbles;
+                Haptics.Hit();
+                Assert.AreEqual(before + 1, Haptics.Rumbles);
+                Vector2 hit = Haptics.LastRumble;
+                Haptics.Kill();
+                Assert.Greater(Haptics.LastRumble.y, hit.y, "eliminations rumble harder than hits");
+                Assert.Less(Haptics.LastRumble.x, Haptics.LastRumble.y, "the heavy motor runs softer");
+
+                GameSettings.SetVibration(false);
+                Haptics.Damaged();
+                Assert.AreEqual(before + 2, Haptics.Rumbles, "no rumble with vibration off");
+                Haptics.StopRumble(pad);
+            }
+            finally
+            {
+                InputSystem.RemoveDevice(pad);
+            }
         }
 
         [Test]

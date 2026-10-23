@@ -23,6 +23,7 @@ namespace RWBR.Client.Online
         private readonly Dictionary<ushort, GameObject> _bodies = new Dictionary<ushort, GameObject>();
         private readonly Dictionary<ushort, CharacterBody> _characters = new Dictionary<ushort, CharacterBody>();
         private readonly Dictionary<ushort, float> _remoteAim = new Dictionary<ushort, float>();
+        private readonly ReloadTracker _reloads = new ReloadTracker();
         private readonly List<GameObject> _loot = new List<GameObject>();
         private readonly List<(LineRenderer Line, float Until)> _tracers = new List<(LineRenderer, float)>();
         private readonly HashSet<ushort> _seen = new HashSet<ushort>();
@@ -99,8 +100,9 @@ namespace RWBR.Client.Online
                         root.transform.SetPositionAndRotation(ToUnity(selfPosition), Quaternion.Euler(0, selfYawDegrees, 0));
                         SelfTransform = root.transform;
                         _characters[e.PlayerId].SetHidden(_selfHidden);
-                        Pose(e, selfMotor.Height, selfYawDegrees, _selfPitch, _selfAim, selfMotor.Grounded, selfMotor.Crouched);
-                        UpdateWeapon(e, selfMotor.EyeHeight, _selfPitch, _selfAim, _selfHidden, time);
+                        float selfReload = ReloadProgress(e, time);
+                        Pose(e, selfMotor.Height, selfYawDegrees, _selfPitch, _selfAim, selfReload, selfMotor.Grounded, selfMotor.Crouched);
+                        UpdateWeapon(e, selfMotor.EyeHeight, _selfPitch, _selfAim, selfReload, _selfHidden, time);
                         continue;
                     }
 
@@ -110,8 +112,9 @@ namespace RWBR.Client.Online
                     float h = crouched ? GameRules.CrouchHeight : GameRules.PlayerHeight;
                     float pitch = RemotePitchDegrees(sampled);
                     float aim = RemoteAim(e.PlayerId, sampled);
-                    Pose(e, h, yaw * Mathf.Rad2Deg, pitch, aim, (sampled.Flags & PlayerFlags.Grounded) != 0, crouched);
-                    UpdateWeapon(sampled, crouched ? GameRules.CrouchEyeHeight : GameRules.EyeHeight, pitch, aim, false, time);
+                    float reload = ReloadProgress(sampled, time);
+                    Pose(e, h, yaw * Mathf.Rad2Deg, pitch, aim, reload, (sampled.Flags & PlayerFlags.Grounded) != 0, crouched);
+                    UpdateWeapon(sampled, crouched ? GameRules.CrouchEyeHeight : GameRules.EyeHeight, pitch, aim, reload, false, time);
                 }
             }
 
@@ -126,6 +129,7 @@ namespace RWBR.Client.Online
                 _weapons.Remove(id);
                 _characters.Remove(id);
                 _remoteAim.Remove(id);
+                _reloads.Forget(id);
             }
 
             if (_map != null)
@@ -196,6 +200,7 @@ namespace RWBR.Client.Online
             _weapons.Clear();
             _characters.Clear();
             _remoteAim.Clear();
+            _reloads.Clear();
             _loot.Clear();
             _tracers.Clear();
             SelfTransform = null;
@@ -231,7 +236,14 @@ namespace RWBR.Client.Online
         /// <summary>Eased aim blend last shown for a player (tests and diagnostics).</summary>
         public float AimShownFor(ushort id) => _remoteAim.TryGetValue(id, out float a) ? a : 0f;
 
-        private void Pose(SnapshotEntry e, float height, float yawDegrees, float pitch, float aim, bool grounded, bool crouched)
+        /// <summary>Reload progress 0..1 for a player's entry, -1 when not reloading.</summary>
+        private float ReloadProgress(SnapshotEntry e, float time)
+        {
+            float length = WeaponCatalog.IsValid(e.Weapon) ? WeaponCatalog.Get(e.Weapon).ReloadSeconds : 2f;
+            return _reloads.Progress(e.PlayerId, (e.Flags & PlayerFlags.Reloading) != 0, length, time);
+        }
+
+        private void Pose(SnapshotEntry e, float height, float yawDegrees, float pitch, float aim, float reload, bool grounded, bool crouched)
         {
             _characters[e.PlayerId].Pose(new CharacterMotion
             {
@@ -241,20 +253,14 @@ namespace RWBR.Client.Online
                 Crouched = crouched,
                 Alive = (e.Flags & PlayerFlags.Alive) != 0,
                 Aim = aim,
-                Reloading = (e.Flags & PlayerFlags.Reloading) != 0,
+                Reloading = reload >= 0,
+                ReloadProgress = Mathf.Max(reload, 0f),
                 Weapon = (e.Flags & PlayerFlags.HasWeapon) != 0 && WeaponCatalog.IsValid(e.Weapon) ? WeaponCatalog.Get(e.Weapon).Class : (WeaponClass?)null,
             }, height, _bodies[e.PlayerId].transform.eulerAngles.y, Time.deltaTime);
         }
 
-        private void UpdateWeapon(SnapshotEntry e, float eyeHeight, float pitch, float aim, bool hidden, float time)
+        private void UpdateWeapon(SnapshotEntry e, float eyeHeight, float pitch, float aim, float reload, bool hidden, float time)
         {
-            float reload = -1;
-            if ((e.Flags & PlayerFlags.Reloading) != 0)
-            {
-                // Snapshots say "reloading" but not how far; animate a loop at the weapon's reload length.
-                float length = WeaponCatalog.IsValid(e.Weapon) ? WeaponCatalog.Get(e.Weapon).ReloadSeconds : 2f;
-                reload = Mathf.Repeat(time / length, 1f);
-            }
             _weapons[e.PlayerId].Update(new WeaponPose
             {
                 Weapon = (e.Flags & PlayerFlags.HasWeapon) != 0 ? e.Weapon : -1,

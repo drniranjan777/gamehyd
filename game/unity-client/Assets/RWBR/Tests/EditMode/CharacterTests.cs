@@ -85,7 +85,7 @@ namespace RWBR.Tests
                          AnimatorIds.ForwardName, AnimatorIds.StrafeName, AnimatorIds.SpeedName, AnimatorIds.CrouchName, AnimatorIds.GroundedName,
                          AnimatorIds.AimName, AnimatorIds.PitchName, AnimatorIds.PistolName, AnimatorIds.ArmedName, AnimatorIds.ReloadingName,
                          AnimatorIds.DeadName, AnimatorIds.JumpName, AnimatorIds.LandName, AnimatorIds.HitName, AnimatorIds.FireName,
-                         AnimatorIds.SwitchName, AnimatorIds.TurnName, AnimatorIds.TurnAngleName,
+                         AnimatorIds.SwitchName, AnimatorIds.TurnName, AnimatorIds.TurnAngleName, AnimatorIds.ReloadProgressName,
                      })
                 CollectionAssert.Contains(names, required);
             Assert.IsTrue(c.parameters.First(p => p.name == AnimatorIds.GroundedName).defaultBool);
@@ -104,6 +104,9 @@ namespace RWBR.Tests
             Assert.AreEqual(AnimatorIds.PistolName, moveTree.blendParameter);
             Assert.AreEqual(2, moveTree.children.Length, "rifle and pistol locomotion trees");
             CollectionAssert.AreEquivalent(new[] { "Empty", "Aim", "Reload" }, c.layers[1].stateMachine.states.Select(s => s.state.name).ToArray());
+            AnimatorState reload = c.layers[1].stateMachine.states.First(s => s.state.name == "Reload").state;
+            Assert.IsTrue(reload.timeParameterActive, "the reload clip follows reload progress");
+            Assert.AreEqual(AnimatorIds.ReloadProgressName, reload.timeParameter);
         }
 
         [Test]

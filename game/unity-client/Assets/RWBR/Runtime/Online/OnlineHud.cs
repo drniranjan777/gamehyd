@@ -22,6 +22,8 @@ namespace RWBR.Client.Online
 
         private OnlineGame _game;
         private PerformanceMonitor _perf;
+        private readonly RWBR.Client.Player.TouchLayoutEditor _touchEditor = new RWBR.Client.Player.TouchLayoutEditor();
+        private bool _editingTouch;
         private GUIStyle _label, _small, _big, _center, _button, _field;
         private float _scale, _w;
         private string _addressDraft;
@@ -78,6 +80,7 @@ namespace RWBR.Client.Online
             else if (!_game.MenusOpen && Cursor.lockState != CursorLockMode.Locked)
                 GUI.Label(new Rect(0, VirtualHeight * 0.62f, _w, 30), "Click to play · Right mouse aim · Esc menu", _center);
             if (_game.Paused) DrawPause();
+            else _editingTouch = false;
             if (net.Result != null) DrawResult(net);
         }
 
@@ -285,7 +288,12 @@ namespace RWBR.Client.Online
 
         private void DrawPause()
         {
-            Rect r = Panel(520, 470, "Paused");
+            if (_editingTouch)
+            {
+                if (_touchEditor.Draw(_w, VirtualHeight, _label, _small, _button)) _editingTouch = false;
+                return;
+            }
+            Rect r = Panel(520, 530, "Paused");
             float x = r.x + 30, y = r.y + 70;
             GUI.Label(new Rect(x, y, 300, 26), $"Look sensitivity  {GameSettings.Sensitivity:0.00}", _label);
             float sens = GUI.HorizontalSlider(new Rect(x, y + 32, 460, 24), GameSettings.Sensitivity, GameSettings.MinSensitivity, GameSettings.MaxSensitivity);
@@ -304,6 +312,7 @@ namespace RWBR.Client.Online
             float sfx = GUI.HorizontalSlider(new Rect(x + 320, y + 192, 120, 20), GameSettings.SfxVolume, 0, 1);
             if (!Mathf.Approximately(m, GameSettings.MasterVolume) || !Mathf.Approximately(sfx, GameSettings.SfxVolume))
                 GameSettings.SetVolumes(m, sfx, GameSettings.UiVolume);
+            if (GUI.Button(new Rect(x, y + 226, 220, 44), "Touch layout", _button)) _editingTouch = true;
             if (GUI.Button(new Rect(x, r.yMax - 70, 210, 44), "Resume", _button)) _game.Paused = false;
             if (GUI.Button(new Rect(x + 250, r.yMax - 70, 210, 44), "Leave match", _button)) _game.LeaveToMenu();
         }

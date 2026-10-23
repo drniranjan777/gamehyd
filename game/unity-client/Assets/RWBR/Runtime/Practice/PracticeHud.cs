@@ -22,6 +22,8 @@ namespace RWBR.Client.Practice
 
         private PracticeGame _game;
         private PerformanceMonitor _perf;
+        private readonly RWBR.Client.Player.TouchLayoutEditor _touchEditor = new RWBR.Client.Player.TouchLayoutEditor();
+        private bool _editingTouch;
         private Texture2D _white;
         private GUIStyle _label, _big, _small, _center, _button;
         private float _scale;
@@ -74,6 +76,7 @@ namespace RWBR.Client.Practice
 
             if (_game.InventoryOpen) DrawInventory(sim, p);
             if (_game.Paused) DrawPause();
+            else _editingTouch = false;
             if (sim.Outcome != PracticeOutcome.InProgress) DrawOutcome(sim);
         }
 
@@ -344,6 +347,11 @@ namespace RWBR.Client.Practice
 
         private void DrawPause()
         {
+            if (_editingTouch)
+            {
+                if (_touchEditor.Draw(_w, VirtualHeight, _label, _small, _button)) _editingTouch = false;
+                return;
+            }
             Rect r = Panel(520, 590, "Paused");
             float x = r.x + 30, y = r.y + 70;
 
@@ -363,6 +371,7 @@ namespace RWBR.Client.Practice
             bool perf = GUI.Toggle(new Rect(x, y + 150, 460, 26), GameSettings.ShowPerformance, "  Show performance overlay");
             if (perf != GameSettings.ShowPerformance) GameSettings.SetShowPerformance(perf);
             VolumeSliders(x, y + 186);
+            if (GUI.Button(new Rect(x, y + 226, 220, 44), "Touch layout", _button)) _editingTouch = true;
 
             if (GUI.Button(new Rect(x, r.yMax - 70, 210, 44), "Resume", _button)) _game.Paused = false;
             if (GUI.Button(new Rect(x + 250, r.yMax - 70, 210, 44), "Restart", _button)) _game.Restart();

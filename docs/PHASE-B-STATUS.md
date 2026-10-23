@@ -177,6 +177,24 @@ no foot IK at mid range with hands still on the grips, no IK far away, and full 
 their shadow when far. In the practice scene the camera feeds character detail and the telemetry line carries the
 budget fields. Batch counts read `null` in these headless runs; they need a rendered development build.
 
+## Part 5 (23 October 2026): Phase B gaps closed
+
+- **Reload animation follows the reload.** The reload clip on the upper-body layer is now driven by a `ReloadProgress`
+  parameter (0 to 1) instead of playing at its own speed, so it ends exactly when the magazine is in, for every weapon.
+  In practice the progress comes from the simulation. Online, the client times other players' reloads from when the
+  Reloading flag first arrives, over the weapon's reload length, so their weapon and body no longer loop. No protocol
+  change was needed. The committed controller `RWBR_Humanoid.controller` was rebuilt with the new parameter.
+- **Touch layout in the pause menu.** Practice and online pause menus now have a "Touch layout" button that opens the
+  same editor as the main menu. Closing the pause menu closes the editor.
+- **Gamepad rumble.** A connected gamepad rumbles for the same events as phone vibration (hit, elimination, damage), on
+  any platform. Each rumble lasts at least 80 ms, since shorter ones can't be felt. The rumble stops when the pulse ends
+  or the app loses focus. The Vibration setting turns it off too.
+
+Part 5 tests: Unity EditMode 57/57 (reload timing per player, held at the end and restarting from zero; controller has
+the progress parameter and the reload state follows it; gamepad rumble strengths and the Vibration switch). Unity
+PlayMode 17 passed and 2 skipped (the two platform tests that need `TEST_ADMIN_DATABASE_URL`). .NET 82/82: no server
+change.
+
 ## Before players get this build
 
 The production server at game.tallygen.com runs protocol 4 and schema 0009. An APK from this code (protocol 6) **cannot
@@ -195,10 +213,8 @@ The firing range and practice work offline either way.
   each speed can only be tuned once they are in.
 - Outfit, helmet and backpack variants, and customisation (which needs the platform to store the choice), are not
   built.
-- Other players' reload progress is not sent (only "reloading"), so their reload animation loops at the weapon's reload
-  length rather than matching their exact progress.
-- The touch layout editor is in the main menu only (not in the in-match pause menu).
-- Gamepad rumble is not used.
+- Other players' reload progress is timed on the client from when "reloading" first arrives, so it can start up to one
+  snapshot (about 33 ms) late, and a reload already under way when a player first comes into view starts from zero.
 - The weapon models are simple original shapes; a licensed weapon pack would look better.
 - **The frame-rate budget has not been measured on a phone.** The checks and telemetry are in, but whether a
   mid-range Android holds 30 FPS needs an APK on the device and `perf.jsonl` pulled with adb.

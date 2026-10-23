@@ -119,6 +119,12 @@ namespace RWBR.Client.Practice
                 float pitch = f.IsPlayer ? _playerPitch : -f.Pitch * Mathf.Rad2Deg;
                 float aim = f.IsPlayer ? _playerAim : 0;
                 WeaponDefinition weapon = sim.WeaponOf(f);
+                float reload = -1;
+                if (f.Combat.Reloading)
+                {
+                    float total = Combatant.Ticks(weapon.ReloadSeconds, PracticeSimulation.TickRate);
+                    reload = 1f - (f.Combat.ReloadDoneTick - sim.Tick) / total;
+                }
                 CharacterBody character = _characters[f.Id];
                 character.SetHidden(hidden);
                 character.Pose(new CharacterMotion
@@ -130,14 +136,9 @@ namespace RWBR.Client.Practice
                     Alive = f.Combat.Alive,
                     Aim = aim,
                     Reloading = f.Combat.Reloading,
+                    ReloadProgress = Mathf.Max(reload, 0f),
                     Weapon = f.Combat.HasWeapon ? weapon.Class : (WeaponClass?)null,
                 }, f.Motor.Height, root.eulerAngles.y, Time.deltaTime);
-                float reload = -1;
-                if (f.Combat.Reloading)
-                {
-                    float total = Combatant.Ticks(weapon.ReloadSeconds, PracticeSimulation.TickRate);
-                    reload = 1f - (f.Combat.ReloadDoneTick - sim.Tick) / total;
-                }
                 _weapons[f.Id].Update(new WeaponPose
                 {
                     Weapon = f.Combat.ActiveWeaponIndex,

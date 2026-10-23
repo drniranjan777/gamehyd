@@ -84,6 +84,7 @@ namespace RWBR.Client.Character
             _animator.SetFloat(AnimatorIds.Pistol, LocomotionMath.UsesPistolPoses(m.Weapon) ? 1f : 0f, Damping, dt);
             _animator.SetBool(AnimatorIds.Armed, m.Weapon.HasValue);
             _animator.SetBool(AnimatorIds.Reloading, m.Reloading);
+            _animator.SetFloat(AnimatorIds.ReloadProgress, m.Reloading ? m.ReloadProgress : 0f);
             _animator.SetBool(AnimatorIds.Dead, !m.Alive);
 
             if (m.Alive)

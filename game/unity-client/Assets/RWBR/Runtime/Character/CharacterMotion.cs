@@ -19,6 +19,8 @@ namespace RWBR.Client.Character
         /// <summary>0 = hip, 1 = aimed.</summary>
         public float Aim;
         public bool Reloading;
+        /// <summary>How far through the reload (0..1); drives the reload clip so it ends when the reload does.</summary>
+        public float ReloadProgress;
         /// <summary>The weapon in hand, or null when unarmed.</summary>
         public WeaponClass? Weapon;
     }
@@ -36,6 +38,7 @@ namespace RWBR.Client.Character
         public const string PistolName = "Pistol";
         public const string ArmedName = "Armed";
         public const string ReloadingName = "Reloading";
+        public const string ReloadProgressName = "ReloadProgress";
         public const string DeadName = "Dead";
         public const string JumpName = "Jump";
         public const string LandName = "Land";
@@ -55,6 +58,7 @@ namespace RWBR.Client.Character
         public static readonly int Pistol = Animator.StringToHash(PistolName);
         public static readonly int Armed = Animator.StringToHash(ArmedName);
         public static readonly int Reloading = Animator.StringToHash(ReloadingName);
+        public static readonly int ReloadProgress = Animator.StringToHash(ReloadProgressName);
         public static readonly int Dead = Animator.StringToHash(DeadName);
         public static readonly int Jump = Animator.StringToHash(JumpName);
         public static readonly int Land = Animator.StringToHash(LandName);
