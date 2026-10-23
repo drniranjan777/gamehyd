@@ -15,6 +15,7 @@ namespace RWBR.Client.Settings
         private const string SensitivityKey = "rwbr.sensitivity";
         private const string AimSensitivityKey = "rwbr.aimSensitivity";
         private const string QualityKey = "rwbr.quality";
+        private const string AutoQualityKey = "rwbr.qualityAuto";
         private const string ShowPerfKey = "rwbr.showPerf";
         private const string MasterKey = "rwbr.volume.master";
         private const string SfxKey = "rwbr.volume.sfx";
@@ -35,6 +36,8 @@ namespace RWBR.Client.Settings
         /// <summary>Look speed while aiming, relative to hip look speed already slowed by the weapon's zoom (1 = matched).</summary>
         public static float AimSensitivity { get; private set; } = 1f;
         public static QualityPreset Quality { get; private set; } = QualityPreset.Medium;
+        /// <summary>Lower the preset when the game misses its frame-rate budget; off once the player picks a preset.</summary>
+        public static bool AutoQuality { get; private set; } = true;
         public static bool ShowPerformance { get; private set; } = true;
         public static float MasterVolume { get; private set; } = 0.8f;
         public static float SfxVolume { get; private set; } = 1f;
@@ -57,6 +60,7 @@ namespace RWBR.Client.Settings
                 Sensitivity = Mathf.Clamp(PlayerPrefs.GetFloat(SensitivityKey, 1f), MinSensitivity, MaxSensitivity);
                 AimSensitivity = Mathf.Clamp(PlayerPrefs.GetFloat(AimSensitivityKey, 1f), MinAimSensitivity, MaxAimSensitivity);
                 Quality = (QualityPreset)Mathf.Clamp(PlayerPrefs.GetInt(QualityKey, DefaultQuality()), 0, 2);
+                AutoQuality = PlayerPrefs.GetInt(AutoQualityKey, 1) == 1;
                 ShowPerformance = PlayerPrefs.GetInt(ShowPerfKey, 1) == 1;
                 MasterVolume = Mathf.Clamp01(PlayerPrefs.GetFloat(MasterKey, 0.8f));
                 SfxVolume = Mathf.Clamp01(PlayerPrefs.GetFloat(SfxKey, 1f));
@@ -85,11 +89,29 @@ namespace RWBR.Client.Settings
             Save();
         }
 
+        /// <summary>The player picked a preset: use it and stop changing it automatically.</summary>
         public static void SetQuality(QualityPreset preset)
         {
             Quality = preset;
+            AutoQuality = false;
             ApplyQuality(preset);
             Save();
+        }
+
+        public static void SetAutoQuality(bool on)
+        {
+            AutoQuality = on;
+            Save();
+        }
+
+        /// <summary>One preset lower, if automatic quality is on and the preset is not already Low. Returns whether it changed.</summary>
+        public static bool LowerQualityAutomatically()
+        {
+            if (!AutoQuality || Quality == QualityPreset.Low) return false;
+            Quality--;
+            ApplyQuality(Quality);
+            Save();
+            return true;
         }
 
         public static void SetVolumes(float master, float sfx, float ui)
@@ -131,6 +153,9 @@ namespace RWBR.Client.Settings
 
         public static void ApplyQuality(QualityPreset preset)
         {
+            // Outside play mode these writes would be saved into ProjectSettings/QualitySettings.asset (EditMode tests
+            // call Load), changing the editor's own quality levels.
+            if (Application.isEditor && !Application.isPlaying) return;
             QualitySettings.vSyncCount = 0;
             switch (preset)
             {
@@ -171,6 +196,7 @@ namespace RWBR.Client.Settings
                 PlayerPrefs.SetFloat(SensitivityKey, Sensitivity);
                 PlayerPrefs.SetFloat(AimSensitivityKey, AimSensitivity);
                 PlayerPrefs.SetInt(QualityKey, (int)Quality);
+                PlayerPrefs.SetInt(AutoQualityKey, AutoQuality ? 1 : 0);
                 PlayerPrefs.SetInt(ShowPerfKey, ShowPerformance ? 1 : 0);
                 PlayerPrefs.SetFloat(MasterKey, MasterVolume);
                 PlayerPrefs.SetFloat(SfxKey, SfxVolume);

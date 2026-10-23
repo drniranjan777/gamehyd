@@ -18,6 +18,7 @@ namespace RWBR.Client.Character
         private const float FootRayUp = 0.5f;
         private const float FootRayDown = 0.9f;
         private const float FootOffset = 0.01f;
+        private static readonly AvatarIKGoal[] AllGoals = { AvatarIKGoal.LeftHand, AvatarIKGoal.RightHand, AvatarIKGoal.LeftFoot, AvatarIKGoal.RightFoot };
 
         [SerializeField] private float handRotationWeight;
         [SerializeField] private float lookWeight = 1f;
@@ -37,6 +38,8 @@ namespace RWBR.Client.Character
         public int FeetPlanted { get; private set; }
         /// <summary>Hand IK weight on the last IK pass.</summary>
         public float HandWeight => _handWeight;
+        /// <summary>Set by the body from the camera distance: Mid skips foot IK, Far skips all IK.</summary>
+        public DetailTier Detail { get; set; }
 
         private void Awake()
         {
@@ -114,6 +117,12 @@ namespace RWBR.Client.Character
         private void OnAnimatorIK(int layerIndex)
         {
             if (layerIndex != 0 || !_motion.Alive) return;
+            FeetPlanted = 0;
+            if (Detail == DetailTier.Far)
+            {
+                ClearIK();
+                return;
+            }
 
             _animator.SetLookAtWeight(lookWeight, 0.35f, 0.8f, 0f, 0.6f);
             _animator.SetLookAtPosition(_lookTarget);
@@ -125,10 +134,19 @@ namespace RWBR.Client.Character
             SetHand(AvatarIKGoal.LeftHand, shown ? w.LeftHandGrip : null, hands);
 
             // Feet: plant on the ground (stairs, kerbs) when standing; running clips keep their own foot placement.
-            FeetPlanted = 0;
-            bool standing = _motion.Grounded && new Vector2(_motion.Velocity.x, _motion.Velocity.z).magnitude < LocomotionMath.StillSpeed;
+            bool standing = Detail == DetailTier.Near && _motion.Grounded && new Vector2(_motion.Velocity.x, _motion.Velocity.z).magnitude < LocomotionMath.StillSpeed;
             PlantFoot(AvatarIKGoal.LeftFoot, standing);
             PlantFoot(AvatarIKGoal.RightFoot, standing);
+        }
+
+        private void ClearIK()
+        {
+            _animator.SetLookAtWeight(0f);
+            foreach (AvatarIKGoal goal in AllGoals)
+            {
+                _animator.SetIKPositionWeight(goal, 0f);
+                _animator.SetIKRotationWeight(goal, 0f);
+            }
         }
 
         private void SetHand(AvatarIKGoal goal, Transform target, float weight)

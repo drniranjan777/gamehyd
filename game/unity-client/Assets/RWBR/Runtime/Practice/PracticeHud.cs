@@ -276,8 +276,10 @@ namespace RWBR.Client.Practice
         {
             if (!GameSettings.ShowPerformance || _perf == null) return;
             float ms = _perf.SmoothedFrameMs;
-            string text = $"{1000f / Mathf.Max(ms, 0.01f):0} fps  {ms:0.0} ms  p95 {_perf.LastP95Ms:0.0}  {GameSettings.Quality}";
-            GUI.Label(new Rect(_w - 330, VirtualHeight - 26, 320, 22), text, new GUIStyle(_small) { alignment = TextAnchor.MiddleRight });
+            string batches = _perf.LastAvgBatches >= 0 ? $"  {_perf.LastAvgBatches} batches" : "";
+            string text = $"{1000f / Mathf.Max(ms, 0.01f):0} fps  {ms:0.0} ms  p95 {_perf.LastP95Ms:0.0}{batches}  {GameSettings.Quality}" +
+                          (_perf.LastWithinBudget ? "" : "  over budget");
+            GUI.Label(new Rect(_w - 530, VirtualHeight - 26, 520, 22), text, new GUIStyle(_small) { alignment = TextAnchor.MiddleRight });
         }
 
         private void DrawTouch()

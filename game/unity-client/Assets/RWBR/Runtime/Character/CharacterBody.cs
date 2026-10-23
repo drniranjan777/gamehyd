@@ -1,6 +1,8 @@
 using RWBR.Client.Combat;
 using RWBR.Client.Practice;
+using RWBR.Client.Settings;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace RWBR.Client.Character
 {
@@ -17,11 +19,14 @@ namespace RWBR.Client.Character
         private Vector3 _lastPosition;
         private Vector3 _velocity;
         private bool _hasLast;
+        private DetailTier _detail;
 
         protected CharacterBody(Transform root) => Root = root;
 
         public Transform Root { get; }
         public abstract bool Rigged { get; }
+        /// <summary>The detail tier picked on the last <see cref="Pose"/> (see <see cref="CharacterDetail"/>).</summary>
+        public DetailTier Detail => _detail;
 
         /// <summary>The rigged prefab if it has been built, else null (cached after the first look).</summary>
         public static GameObject RiggedPrefab
@@ -65,12 +70,23 @@ namespace RWBR.Client.Character
             _lastPosition = p;
             _hasLast = true;
             m.Velocity = _velocity;
+            if (CharacterDetail.Viewer.HasValue)
+            {
+                DetailTier tier = CharacterDetail.Tier(Vector3.Distance(CharacterDetail.Viewer.Value, p), _detail, GameSettings.Quality);
+                if (tier != _detail)
+                {
+                    _detail = tier;
+                    ApplyDetail(tier);
+                }
+            }
             OnPose(m, height, rootYawDegrees, dt);
         }
 
         public Vector3 EstimatedVelocity => _velocity;
 
         protected abstract void OnPose(CharacterMotion m, float height, float rootYawDegrees, float dt);
+        /// <summary>Called when the detail tier changes; bodies start at <see cref="DetailTier.Near"/>.</summary>
+        protected abstract void ApplyDetail(DetailTier tier);
         public abstract void SetHidden(bool hidden);
         public virtual void SetColor(Color color) { }
         public virtual void Bind(WeaponHolder weapon) { }
@@ -99,6 +115,11 @@ namespace RWBR.Client.Character
         }
 
         public override bool Rigged => false;
+
+        protected override void ApplyDetail(DetailTier tier)
+        {
+            foreach (Renderer r in _renderers) r.shadowCastingMode = tier == DetailTier.Far ? ShadowCastingMode.Off : ShadowCastingMode.On;
+        }
 
         protected override void OnPose(CharacterMotion m, float height, float rootYawDegrees, float dt)
         {
@@ -150,6 +171,16 @@ namespace RWBR.Client.Character
 
         public override bool Rigged => true;
         public CharacterAnimator Animator => _animator;
+
+        protected override void ApplyDetail(DetailTier tier)
+        {
+            _animator.Detail = tier;
+            foreach (Renderer r in _renderers)
+            {
+                r.shadowCastingMode = tier == DetailTier.Far ? ShadowCastingMode.Off : ShadowCastingMode.On;
+                if (r is SkinnedMeshRenderer skinned) skinned.quality = tier == DetailTier.Far ? SkinQuality.Bone1 : SkinQuality.Bone2;
+            }
+        }
 
         protected override void OnPose(CharacterMotion m, float height, float rootYawDegrees, float dt) =>
             _animator.Drive(m, rootYawDegrees, dt);

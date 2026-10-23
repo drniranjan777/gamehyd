@@ -107,6 +107,8 @@ namespace RWBR.EditorTools
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel26;
             PlayerSettings.Android.forceInternetPermission = true; // UDP to the match server
+            // Skin characters on the GPU (compute); Unity falls back to the CPU on devices without compute support.
+            PlayerSettings.meshDeformation = MeshDeformation.GPU;
             // Development builds may call a local platform API over plain HTTP (http://<PC LAN IP>:3001); release
             // builds still require HTTPS.
             PlayerSettings.insecureHttpOption = InsecureHttpOption.DevelopmentOnly;

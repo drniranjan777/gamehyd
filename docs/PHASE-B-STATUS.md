@@ -150,6 +150,33 @@ server tracks aim and keeps it through input loss, updated byte budget), Unity E
 on-screen clamping, overlap report, broken saved layouts, vibration off), Unity PlayMode 16/16 (another player's weapon
 follows their pitch and their aim blend from snapshots; the online match runs against the protocol 6 server).
 
+## Part 4 (23 October 2026): mobile performance (task 9)
+
+- **Character detail by distance**, until a character pack with mesh LODs is in. Up to 15 m from the camera a character
+  gets everything. From 15 m the foot IK and its raycasts stop. From 45 m the character uses one-bone skinning, casts no
+  shadow, and runs no IK. A 2 m margin stops characters on a boundary from flickering between tiers. Low quality
+  switches at 0.6× those distances and High at 1.5×. Capsules stop casting shadows at the far tier too.
+- **GPU skinning** is on (`meshDeformation = GPU`, set by the project setup and the Android build). Unity skins on the
+  CPU on devices without compute support.
+- **Budget in telemetry.** Each `perf.jsonl` line now includes `targetFps` (30 on Low and Medium, 60 on High),
+  average and peak `batches`, `setPass` and `triangles`, `autoQuality` and `withinBudget`. A window meets the budget
+  when the average frame rate is within 10 % of the target, the 95th-percentile frame takes at most 1.5 target frames,
+  and average batches stay under 120, 180 or 250 for Low, Medium and High. Draw-call counters exist in development
+  builds only; release builds report them as `null`. The practice overlay shows batches and "over budget".
+- **Automatic quality** (Settings → "Lower quality automatically if the game runs slowly", on by default): after two
+  missed windows in a row the preset drops one step and is saved. It never goes back up on its own. The first window
+  after loading never counts. Picking a preset by hand turns it off.
+- Fixed: running the EditMode tests no longer rewrites the editor's `QualitySettings.asset`. Applying a quality preset
+  outside play mode now does nothing.
+
+Part 4 tests: .NET 82/82 (no server change). Unity EditMode 55/55 (tier distances and hysteresis, per-quality
+distances, budget rules, automatic step-down to Low and stop, picking a preset turns it off, no edit-mode quality
+writes). Unity PlayMode 17 passed and 2 skipped: the two full-stack platform tests need `TEST_ADMIN_DATABASE_URL` and
+the built API, which were not set for this run. New PlayMode checks on the procedural skeleton: feet planted when near,
+no foot IK at mid range with hands still on the grips, no IK far away, and full detail again up close. Capsules drop
+their shadow when far. In the practice scene the camera feeds character detail and the telemetry line carries the
+budget fields. Batch counts read `null` in these headless runs; they need a rendered development build.
+
 ## Before players get this build
 
 The production server at game.tallygen.com runs protocol 4 and schema 0009. An APK from this code (protocol 6) **cannot
@@ -173,7 +200,10 @@ The firing range and practice work offline either way.
 - The touch layout editor is in the main menu only (not in the in-match pause menu).
 - Gamepad rumble is not used.
 - The weapon models are simple original shapes; a licensed weapon pack would look better.
-- Character LODs: the Mixamo characters have a single detail level; LODs need a pack that includes them, or decimated
+- **The frame-rate budget has not been measured on a phone.** The checks and telemetry are in, but whether a
+  mid-range Android holds 30 FPS needs an APK on the device and `perf.jsonl` pulled with adb.
+- Character mesh LODs: the Mixamo characters have a single detail level, so distance detail stands in for now. Real
+  LODs need a pack that includes them, or decimated
   copies.
 - No iOS build has been made (no Mac or Apple account in this setup).
 - Not yet checked on the phone.

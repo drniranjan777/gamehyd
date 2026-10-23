@@ -1,3 +1,4 @@
+using RWBR.Client.Character;
 using UnityEngine;
 
 namespace RWBR.Client.Player
@@ -46,6 +47,8 @@ namespace RWBR.Client.Player
             if (_camera != null) _baseFov = _camera.fieldOfView;
         }
 
+        private void OnDisable() => CharacterDetail.Viewer = null;
+
         private void LateUpdate()
         {
             ICameraTarget t = Target;
@@ -69,6 +72,7 @@ namespace RWBR.Client.Player
             else _current = Mathf.SmoothDamp(_current, allowed, ref _velocity, easeOutSeconds);
 
             transform.SetPositionAndRotation(pivot + back * _current, rotation);
+            CharacterDetail.Viewer = transform.position;
             if (_camera != null) _camera.fieldOfView = _baseFov / (aim?.FovDivisor ?? 1f);
         }
     }

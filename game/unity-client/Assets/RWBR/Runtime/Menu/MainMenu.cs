@@ -561,7 +561,9 @@ namespace RWBR.Client.Menu
             if (!Mathf.Approximately(a, GameSettings.AimSensitivity)) GameSettings.SetAimSensitivity(a);
             int q = GUI.Toolbar(new Rect(40, y += 34, 440, 36), (int)GameSettings.Quality, new[] { "Low", "Medium", "High" }, _button);
             if (q != (int)GameSettings.Quality) GameSettings.SetQuality((QualityPreset)q);
-            GUI.Label(new Rect(40, y += 50, 440, 26), "Volume: master / effects / interface", _small);
+            bool auto = GUI.Toggle(new Rect(40, y += 42, 440, 26), GameSettings.AutoQuality, "  Lower quality automatically if the game runs slowly");
+            if (auto != GameSettings.AutoQuality) GameSettings.SetAutoQuality(auto);
+            GUI.Label(new Rect(40, y += 34, 440, 26), "Volume: master / effects / interface", _small);
             float m = GUI.HorizontalSlider(new Rect(40, y += 28, 140, 20), GameSettings.MasterVolume, 0, 1);
             float fx = GUI.HorizontalSlider(new Rect(190, y, 140, 20), GameSettings.SfxVolume, 0, 1);
             float ui = GUI.HorizontalSlider(new Rect(340, y, 140, 20), GameSettings.UiVolume, 0, 1);

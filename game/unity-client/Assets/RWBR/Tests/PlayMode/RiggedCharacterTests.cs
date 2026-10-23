@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using NUnit.Framework;
 using RWBR.Client.Character;
 using RWBR.Client.Combat;
+using RWBR.Client.Player;
 using RWBR.Shared;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -19,12 +20,24 @@ namespace RWBR.Tests
     {
         private readonly List<GameObject> _spawned = new List<GameObject>();
 
+        /// <summary>
+        /// A scene left loaded by an earlier test keeps its camera reporting where it is, which would put these
+        /// characters at far detail (no IK). The rig tests choose the viewer themselves.
+        /// </summary>
+        [SetUp]
+        public void SilenceSceneCameras()
+        {
+            foreach (ThirdPersonCamera cam in Object.FindObjectsByType<ThirdPersonCamera>(FindObjectsSortMode.None)) cam.enabled = false;
+            CharacterDetail.Viewer = null;
+        }
+
         [TearDown]
         public void Clean()
         {
             foreach (GameObject go in _spawned)
                 if (go != null) Object.Destroy(go);
             _spawned.Clear();
+            CharacterDetail.Viewer = null;
         }
 
         /// <summary>A 1.8 m humanoid in T-pose facing +Z, with Unity's humanoid bone names.</summary>
@@ -167,6 +180,52 @@ namespace RWBR.Tests
             yield return Frames(rig, 0.4f, reloading);
             Assert.AreEqual(0f, rig.Driver.HandWeight, 1e-3f);
             Assert.IsTrue(rig.Animator.GetBool(AnimatorIds.Reloading));
+        }
+
+        [UnityTest]
+        public IEnumerator Distant_characters_drop_foot_IK_then_all_IK()
+        {
+            Rig rig = Spawn();
+            CharacterDetail.Viewer = rig.Root.position + new Vector3(0, 1.6f, -3f);
+            yield return Frames(rig, 0.5f, Standing);
+            Assert.AreEqual(DetailTier.Near, rig.Body.Detail);
+            Assert.AreEqual(2, rig.Driver.FeetPlanted, "near: feet planted");
+
+            CharacterDetail.Viewer = rig.Root.position + new Vector3(0, 1.6f, -30f);
+            yield return Frames(rig, 0.3f, Standing);
+            Assert.AreEqual(DetailTier.Mid, rig.Body.Detail);
+            Assert.AreEqual(DetailTier.Mid, rig.Driver.Detail);
+            Assert.AreEqual(0, rig.Driver.FeetPlanted, "mid: no foot IK");
+            Transform rightHand = rig.Animator.GetBoneTransform(HumanBodyBones.RightHand);
+            Assert.Less(Vector3.Distance(rightHand.position, rig.Weapon.Current.RightHandGrip.position), 0.08f, "mid: hands still on the weapon");
+
+            CharacterDetail.Viewer = rig.Root.position + new Vector3(0, 1.6f, -120f);
+            yield return Frames(rig, 0.3f, Standing);
+            Assert.AreEqual(DetailTier.Far, rig.Body.Detail);
+            Assert.AreEqual(0, rig.Driver.FeetPlanted);
+
+            CharacterDetail.Viewer = rig.Root.position + new Vector3(0, 1.6f, -3f);
+            yield return Frames(rig, 0.3f, Standing);
+            Assert.AreEqual(DetailTier.Near, rig.Body.Detail, "back to full detail up close");
+            Assert.AreEqual(2, rig.Driver.FeetPlanted);
+        }
+
+        [UnityTest]
+        public IEnumerator Capsules_stop_casting_shadows_far_away()
+        {
+            yield return null;
+            if (CharacterBody.RiggedPrefab != null) Assert.Ignore("the rigged prefab is built on this machine");
+            var root = new GameObject("Capsule").transform;
+            _spawned.Add(root.gameObject);
+            CharacterBody body = CharacterBody.Create(root, Color.red);
+            Renderer r = root.GetComponentInChildren<Renderer>();
+            CharacterDetail.Viewer = new Vector3(0, 0, -150f);
+            body.Pose(Standing, 1.8f, 0f, 0.016f);
+            Assert.AreEqual(DetailTier.Far, body.Detail);
+            Assert.AreEqual(UnityEngine.Rendering.ShadowCastingMode.Off, r.shadowCastingMode);
+            CharacterDetail.Viewer = new Vector3(0, 0, -2f);
+            body.Pose(Standing, 1.8f, 0f, 0.016f);
+            Assert.AreEqual(UnityEngine.Rendering.ShadowCastingMode.On, r.shadowCastingMode);
         }
 
         [UnityTest]
