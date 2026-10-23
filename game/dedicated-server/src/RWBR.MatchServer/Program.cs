@@ -5,6 +5,7 @@ using System.Threading;
 using RWBR.MatchServer;
 using RWBR.MatchServer.Platform;
 using RWBR.Shared;
+using RWBR.Shared.Server;
 
 // Single match (dev, load tests):
 //   RWBR.MatchServer [--port 7777] [--players 8] [--tick 30] [--snapshot-every 1] [--fast]

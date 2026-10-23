@@ -5,9 +5,10 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Net;
-using Match = RWBR.MatchServer.Match;
+using Match = RWBR.Shared.Server.Match;
 using System.Numerics;
 using RWBR.Shared;
+using RWBR.Shared.Server;
 using RWBR.Shared.Protocol;
 using Xunit;
 

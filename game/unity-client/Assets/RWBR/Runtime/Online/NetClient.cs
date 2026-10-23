@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using RWBR.Shared;
 using RWBR.Shared.Protocol;
+using RWBR.Shared.Server;
 
 namespace RWBR.Client.Online
 {
@@ -19,6 +20,8 @@ namespace RWBR.Client.Online
     /// <summary>
     /// UDP connection to the authoritative match server (protocol v3). Engine-agnostic: call <see cref="Pump"/>
     /// every frame and read the queued snapshots/events. Optional join ticket + session key for ticket mode.
+    /// <see cref="ConnectLocal"/> joins a match hosted in the game instead (offline bot matches): the same packets,
+    /// passed in memory.
     /// </summary>
     public sealed class NetClient : IDisposable
     {
@@ -29,6 +32,7 @@ namespace RWBR.Client.Online
         private readonly Dictionary<uint, double> _sentAt = new Dictionary<uint, double>();
         private IPEndPoint _server;
         private Socket _socket;
+        private LocalMatch _local;
         private PacketAuth _auth;
         private byte[] _ticket = Array.Empty<byte>();
         private string _name = "Player";
@@ -55,7 +59,9 @@ namespace RWBR.Client.Online
         public int MissingBaselines { get; private set; }
         public double RoundTripMs { get; private set; }
         public double KbpsIn { get; private set; }
-        public string ServerAddress => _server?.ToString() ?? "";
+        public string ServerAddress => _local != null ? "this device" : _server?.ToString() ?? "";
+        /// <summary>Connected to a match hosted in the game (<see cref="ConnectLocal"/>).</summary>
+        public bool IsLocal => _local != null;
 
         public void Connect(string host, int port, string name, byte[] ticket = null, byte[] sessionKey = null)
         {
@@ -66,6 +72,25 @@ namespace RWBR.Client.Online
             _ticket = ticket ?? Array.Empty<byte>();
             _auth?.Dispose();
             _auth = sessionKey != null ? new PacketAuth(sessionKey) : null;
+            ResetSession();
+            _socket = CreateSocket();
+        }
+
+        /// <summary>Joins a match hosted in the game; packets go through <paramref name="local"/> instead of UDP.</summary>
+        public void ConnectLocal(LocalMatch local, string name)
+        {
+            Close();
+            _server = null;
+            _name = name;
+            _ticket = Array.Empty<byte>();
+            _auth?.Dispose();
+            _auth = null;
+            ResetSession();
+            _local = local;
+        }
+
+        private void ResetSession()
+        {
             SessionToken = Guid.Empty;
             PlayerId = ProtocolInfo.NoPlayer;
             Welcome = null;
@@ -75,7 +100,6 @@ namespace RWBR.Client.Online
             History.Clear();
             _recent.Clear();
             _sentAt.Clear();
-            _socket = CreateSocket();
             State = ConnectionState.Connecting;
             _lastHello = double.NegativeInfinity;
         }
@@ -83,7 +107,7 @@ namespace RWBR.Client.Online
         /// <summary>New socket (new local port) and a reconnect Hello with the session token: survives network changes.</summary>
         public void Reconnect()
         {
-            if (_server == null) return;
+            if (_server == null || _local != null) return;
             _socket?.Dispose();
             _socket = CreateSocket();
             State = ConnectionState.Connecting;
@@ -94,10 +118,19 @@ namespace RWBR.Client.Online
         {
             NewSnapshots.Clear();
             NewEliminations.Clear();
-            if (_socket == null) return;
+            if (_socket == null && _local == null) return;
+
+            while (_local != null && _local.TryReceiveForPlayer(out byte[] packet))
+            {
+                if (packet.Length > _buffer.Length) continue;
+                Buffer.BlockCopy(packet, 0, _buffer, 0, packet.Length);
+                _bytesWindow += packet.Length;
+                LastReceiveTime = now;
+                Handle(packet.Length, now);
+            }
 
             EndPoint from = new IPEndPoint(IPAddress.Any, 0);
-            while (true)
+            while (_socket != null)
             {
                 int n;
                 try
@@ -148,7 +181,7 @@ namespace RWBR.Client.Online
 
         public void Leave()
         {
-            if (_socket == null || State != ConnectionState.Connected) return;
+            if ((_socket == null && _local == null) || State != ConnectionState.Connected) return;
             byte[] leave = PacketCodec.EncodeLeave();
             Send(_auth != null ? _auth.Sign(leave) : leave);
             State = ConnectionState.Disconnected;
@@ -217,6 +250,11 @@ namespace RWBR.Client.Online
 
         private void Send(byte[] data)
         {
+            if (_local != null)
+            {
+                _local.SendFromPlayer(data);
+                return;
+            }
             try
             {
                 _socket?.SendTo(data, _server);
@@ -251,6 +289,7 @@ namespace RWBR.Client.Online
         {
             _socket?.Dispose();
             _socket = null;
+            _local = null;
             State = ConnectionState.Disconnected;
         }
 

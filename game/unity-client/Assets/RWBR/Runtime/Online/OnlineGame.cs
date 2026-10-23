@@ -7,6 +7,7 @@ using RWBR.Client.Player;
 using RWBR.Client.Settings;
 using RWBR.Shared;
 using RWBR.Shared.Protocol;
+using RWBR.Shared.Server;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
@@ -79,6 +80,16 @@ namespace RWBR.Client.Online
         public string PlatformUrl { get; set; } = DefaultPlatform;
         public PlatformApi Platform { get; private set; }
         public bool QuickPlayActive { get; private set; }
+
+        /// <summary>Bots for an offline bot match started from the main menu (0 = not a bot match). Read once on start.</summary>
+        public static int RequestedBotMatch { get; set; }
+        /// <summary>Match settings for the requested bot match (tests use a small map and a fast zone); null = the city.</summary>
+        public static MatchConfig RequestedBotConfig { get; set; }
+        public const int DefaultBots = 19;
+        /// <summary>The match hosted in the game for an offline bot match; null when playing on a server.</summary>
+        public LocalMatch Local { get; private set; }
+        private int _localBots;
+        private MatchConfig _localConfig;
         public string QuickPlayStatus { get; private set; }
         public ProfileDto ProfileBefore { get; private set; }
         public ProfileDto ProfileAfter { get; private set; }
@@ -142,6 +153,15 @@ namespace RWBR.Client.Online
         private void Start()
         {
             if (QuickPlayActive) return; // already started by code before the first frame
+            if (RequestedBotMatch > 0)
+            {
+                int bots = RequestedBotMatch;
+                MatchConfig config = RequestedBotConfig;
+                RequestedBotMatch = 0;
+                RequestedBotConfig = null;
+                StartBotMatch(bots, config);
+                return;
+            }
             // Players go through the platform (sign in, matchmaking, assigned server). A direct connection to a dev
             // server happens only when asked for: -server on the command line, or a saved dev server in the editor
             // (local development and the play-mode tests). On phones 127.0.0.1 is the phone itself.
@@ -156,8 +176,29 @@ namespace RWBR.Client.Online
         {
             QuickPlayActive = false;
             Platform = null;
+            Local = null;
             ConnectTo(address, null, null);
         }
+
+        /// <summary>
+        /// Offline Solo match against <paramref name="bots"/> bots on the city: the server's own match rules run in the
+        /// game (<see cref="LocalMatch"/>), so loot, zone, eliminations and the result are exactly as online.
+        /// </summary>
+        public void StartBotMatch(int bots = DefaultBots, MatchConfig config = null)
+        {
+            QuickPlayActive = false;
+            Platform = null;
+            MatchId = null;
+            Error = null;
+            _localBots = bots;
+            _localConfig = config;
+            Local = new LocalMatch(config ?? LocalMatch.BotMatchConfig(CityMap.Build(), bots), bots, seed: Environment.TickCount & 0xFFFF);
+            Net.ConnectLocal(Local, PlayerName);
+            ResetMatchView();
+        }
+
+        /// <summary>Another bot match with the same number of bots (the results screen's Play again).</summary>
+        public void RestartBotMatch() => StartBotMatch(_localBots > 0 ? _localBots : DefaultBots, _localConfig);
 
         /// <summary>
         /// Platform flow: sign in as a guest (account created on first run), queue, wait for a seat, then join the
@@ -273,6 +314,11 @@ namespace RWBR.Client.Online
                 Error = $"Cannot connect: {e.Message}";
                 return;
             }
+            ResetMatchView();
+        }
+
+        private void ResetMatchView()
+        {
             _mapReady = false;
             Prediction = null;
             Interp.Clear();
@@ -300,6 +346,11 @@ namespace RWBR.Client.Online
         private void Update()
         {
             double now = Time.realtimeSinceStartupAsDouble;
+            if (Local != null)
+            {
+                Local.Paused = Paused; // offline, the pause menu stops the match
+                Local.Advance(Time.unscaledDeltaTime);
+            }
             Net.Pump(now);
 
             if (!_mapReady && Net.State == ConnectionState.Connected && Net.Welcome != null) PrepareMap();
@@ -314,7 +365,7 @@ namespace RWBR.Client.Online
             foreach (EliminatedPacket e in Net.NewEliminations) OnEliminated(e);
 
             // Mobile networks drop out (tunnels, Wi-Fi to 4G): after a silence, rejoin from a new socket.
-            if (Net.State == ConnectionState.Connected && Net.Result == null && now - Net.LastReceiveTime > SilenceBeforeReconnect &&
+            if (!Net.IsLocal && Net.State == ConnectionState.Connected && Net.Result == null && now - Net.LastReceiveTime > SilenceBeforeReconnect &&
                 now - _lastReconnectAttempt > SilenceBeforeReconnect)
             {
                 _lastReconnectAttempt = now;

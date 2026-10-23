@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net;
 using System.Numerics;
 using RWBR.Shared;
+using RWBR.Shared.Server;
 using RWBR.Shared.Protocol;
 using Xunit;
 

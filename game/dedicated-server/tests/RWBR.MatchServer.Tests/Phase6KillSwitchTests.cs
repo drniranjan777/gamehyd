@@ -3,8 +3,9 @@ using System.Linq;
 using System.Text.Json;
 using RWBR.MatchServer.Platform;
 using RWBR.Shared;
+using RWBR.Shared.Server;
 using Xunit;
-using Match = RWBR.MatchServer.Match;
+using Match = RWBR.Shared.Server.Match;
 
 namespace RWBR.MatchServer.Tests;
 

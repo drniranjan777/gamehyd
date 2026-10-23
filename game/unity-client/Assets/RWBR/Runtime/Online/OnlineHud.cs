@@ -335,9 +335,12 @@ namespace RWBR.Client.Online
                     : $"Level {after.level}  ·  {after.xp} XP  (+{after.xp - (before?.xp ?? 0)})";
                 GUI.Label(new Rect(r.x, r.y + 118, r.width, 30), progress, _center);
             }
+            if (_game.Local != null)
+                GUI.Label(new Rect(r.x, r.y + 118, r.width, 30), "Offline bot match: not counted on your profile", _center);
             if (GUI.Button(new Rect(r.x + 30, r.yMax - 70, 210, 44), "Play again", _button))
             {
                 if (_game.Platform != null) _game.StartQuickPlay();
+                else if (_game.Local != null) _game.RestartBotMatch();
                 else _game.Connect(_game.ServerAddress);
             }
             if (GUI.Button(new Rect(r.x + 280, r.yMax - 70, 210, 44), "Main menu", _button)) _game.LeaveToMenu();

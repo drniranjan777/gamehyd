@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using RWBR.Bots;
 using RWBR.Shared;
+using RWBR.Shared.Server;
 using RWBR.Shared.Protocol;
 using Xunit;
 using Xunit.Abstractions;

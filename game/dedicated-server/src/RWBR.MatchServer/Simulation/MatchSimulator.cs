@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using RWBR.Shared;
+using RWBR.Shared.Server;
 using RWBR.Shared.Bots;
 using RWBR.Shared.Protocol;
 
@@ -33,14 +34,9 @@ public static class MatchSimulator
     {
         var match = new Match(cfg);
         int n = cfg.MaxPlayers;
-        var bots = new List<SimBot>();
-        for (int i = 0; i < n; i++) bots.Add(new SimBot(new IPEndPoint(IPAddress.Loopback, 10_000 + i), seed * 100 + i, cfg.Map));
-
-        foreach (SimBot b in bots)
-        {
-            byte[] hello = PacketCodec.Encode(new HelloPacket { Name = $"sim{b.EndPoint.Port}" });
-            match.Receive(b.EndPoint, hello, hello.Length);
-        }
+        var bots = new List<InProcessBot>();
+        for (int i = 0; i < n; i++) bots.Add(new InProcessBot(new IPEndPoint(IPAddress.Loopback, 10_000 + i), seed * 100 + i, cfg.Map, $"sim{10_000 + i}"));
+        foreach (InProcessBot b in bots) b.Join(match);
         var index = bots.ToDictionary(b => b.EndPoint);
         var wall = Stopwatch.StartNew();
         long maxTicks = cfg.Ticks(cfg.MaxMatchSeconds + cfg.CountdownSeconds + cfg.FillWaitSeconds + 30);
@@ -48,10 +44,10 @@ public static class MatchSimulator
         while (!match.IsFinished && match.Tick < maxTicks)
         {
             double time = match.Tick / (double)cfg.TickRate;
-            foreach (SimBot b in bots) b.Act(match, time);
+            foreach (InProcessBot b in bots) b.Act(match, time);
             match.Advance();
             foreach (var (to, data) in match.Outbox)
-                if (index.TryGetValue(to, out SimBot? b)) b.Receive(data);
+                if (index.TryGetValue(to, out InProcessBot? b)) b.Receive(data);
             match.Outbox.Clear();
         }
 
@@ -70,47 +66,5 @@ public static class MatchSimulator
             match.Stats.Hits,
             match.Stats.Headshots,
             Math.Round(simSeconds / Math.Max(0.001, wall.Elapsed.TotalSeconds), 1));
-    }
-
-    private sealed class SimBot
-    {
-        private readonly BotBrain _brain;
-        private readonly SnapshotHistory _history = new();
-        private readonly List<InputCommand> _recent = new();
-        private SnapshotPacket? _last;
-        private ushort _id = ProtocolInfo.NoPlayer;
-        private uint _seq;
-
-        public SimBot(IPEndPoint endPoint, int seed, MapLayout map)
-        {
-            EndPoint = endPoint;
-            _brain = new BotBrain(seed, map);
-        }
-
-        public IPEndPoint EndPoint { get; }
-
-        public void Receive(byte[] data)
-        {
-            var r = new PacketReader(data, data.Length);
-            if (r.Type == PacketType.Welcome) _id = PacketCodec.DecodeWelcome(r).PlayerId;
-            else if (r.Type == PacketType.Snapshot)
-            {
-                SnapshotPacket s = SnapshotCodec.Decode(r, _history);
-                _history.Add(s);
-                if (_last == null || s.Tick > _last.Tick) _last = s;
-            }
-        }
-
-        public void Act(Match match, double time)
-        {
-            if (_id == ProtocolInfo.NoPlayer) return;
-            InputCommand cmd = _brain.Decide(_last, _id, time);
-            cmd.Sequence = ++_seq;
-            cmd.AckTick = _last?.Tick ?? 0;
-            _recent.Insert(0, cmd);
-            if (_recent.Count > ProtocolInfo.MaxInputsPerPacket) _recent.RemoveAt(_recent.Count - 1);
-            byte[] packet = PacketCodec.Encode(_recent);
-            match.Receive(EndPoint, packet, packet.Length);
-        }
     }
 }

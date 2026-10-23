@@ -111,6 +111,13 @@ namespace RWBR.Client.Menu
 
         public static void PlayOnline() => SceneManager.LoadScene(OnlineScene);
 
+        /// <summary>Offline Solo battle royale on the city against bots, with the server's match rules.</summary>
+        public static void PlayBotMatch(int bots = OnlineGame.DefaultBots)
+        {
+            OnlineGame.RequestedBotMatch = bots;
+            SceneManager.LoadScene(OnlineScene);
+        }
+
         private async void OpenPlatformScreen(Screen screen)
         {
             _screen = screen;
@@ -292,6 +299,7 @@ namespace RWBR.Client.Menu
             if (GUI.Button(new Rect(40, y, 250, 52), TutorialDirector.Done ? "Training ground" : "Training ground (tutorial)", _button)) PlayTrainingGround();
             if (GUI.Button(new Rect(296, y, 184, 52), "Firing range", _button)) PlayTrainingRange();
             if (Button(y += 56, "City practice: Hyderabad-inspired map")) PlayCityPractice();
+            if (Button(y += 56, $"Bot match: Solo vs {OnlineGame.DefaultBots} bots (offline)")) PlayBotMatch();
             if (Button(y += 56, "Play online")) PlayOnline();
             if (Button(y += 66, "Profile & match history")) OpenPlatformScreen(Screen.Profile);
             if (Button(y += 56, "Loadout")) OpenPlatformScreen(Screen.Loadout);
