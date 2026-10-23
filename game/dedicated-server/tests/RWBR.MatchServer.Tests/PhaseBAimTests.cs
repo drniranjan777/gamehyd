@@ -28,7 +28,7 @@ public class AimTests
     [Fact]
     public void Pitch_and_aiming_reach_other_players_through_delta_snapshots()
     {
-        Assert.Equal((ushort)6, ProtocolInfo.Version);
+        Assert.True(ProtocolInfo.Version >= 6, "pitch and aim arrived in protocol 6");
         var history = new SnapshotHistory();
         SnapshotEntry Entry(float pitch, PlayerFlags flags) => Quantize.Normalize(new SnapshotEntry
         {

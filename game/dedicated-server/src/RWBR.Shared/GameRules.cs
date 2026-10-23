@@ -26,11 +26,11 @@ namespace RWBR.Shared
         // Health, armor, items
         public const float MaxHealth = 100f;
         public const float MaxArmor = 100f;
-        /// <summary>Share of incoming damage absorbed by armor while armor lasts.</summary>
-        public const float ArmorAbsorb = 0.5f;
-        public const float MedkitHeal = 50f;
-        public const float MedkitSeconds = 3f;
-        public const int MaxMedkits = 5;
+        /// <summary>Share of incoming body damage absorbed by a vest while it has points (see <see cref="Items"/>).</summary>
+        public const float ArmorAbsorb = Items.VestAbsorb;
+        public const float MedkitHeal = Items.MedkitHeal;
+        public const float MedkitSeconds = Items.MedkitSeconds;
+        /// <summary>Endless reserve on the firing range (matches limit ammo by backpack weight instead).</summary>
         public const int MaxReserveAmmo = 180;
         public const float PickupRange = 2.0f;
     }

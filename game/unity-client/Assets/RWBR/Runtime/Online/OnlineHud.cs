@@ -72,6 +72,7 @@ namespace RWBR.Client.Online
                 else if (_game.SelfAlive && !_game.Paused) DrawCrosshair();
             SoundCues.Draw(_w, VirtualHeight, Camera.main);
                 DrawVitals(s, self.Value);
+                DrawQuickBar();
                 DrawPrompt();
             }
             DrawFeed();
@@ -79,6 +80,7 @@ namespace RWBR.Client.Online
             if (_game.Touch.Visible && _game.InputOverride == null) DrawTouch();
             else if (!_game.MenusOpen && Cursor.lockState != CursorLockMode.Locked)
                 GUI.Label(new Rect(0, VirtualHeight * 0.62f, _w, 30), "Click to play · Right mouse aim · Esc menu", _center);
+            if (_game.InventoryOpen && !_game.Paused) DrawInventory();
             if (_game.Paused) DrawPause();
             else _editingTouch = false;
             if (net.Result != null) DrawResult(net);
@@ -207,8 +209,11 @@ namespace RWBR.Client.Online
             float hp = self.Health / GameRules.MaxHealth;
             Bar(new Rect(x, y + 16, 260, 22), hp, Color.Lerp(new Color(0.9f, 0.2f, 0.2f), new Color(0.3f, 0.85f, 0.4f), hp));
             GUI.Label(new Rect(x + 6, y + 15, 260, 24), $"{self.Health}", _label);
-            string state = (self.Flags & PlayerFlags.Healing) != 0 ? "  · healing…" : "";
-            GUI.Label(new Rect(x, y + 42, 420, 24), $"Armor {self.Armor}   Medkits {s.SelfMedkits}{state}", _small);
+            string state = (self.Flags & PlayerFlags.Healing) != 0 ? $"  · using {Items.Name(s.SelfHealKind).ToLowerInvariant()}…" : "";
+            Combatant inv = _game.Inventory;
+            string gear = inv == null ? "" :
+                $"Vest {Level(inv.VestLevel)}  Helmet {Level(inv.HelmetLevel)}  Bag {Level(inv.BackpackLevel)} {inv.Weight:0}/{inv.Capacity}";
+            GUI.Label(new Rect(x, y + 42, 520, 24), gear + state, _small);
 
             bool touch = _game.Touch.Visible && _game.InputOverride == null;
             float wx = touch ? _w - 330 : _w - 260, wy = touch ? 60 : VirtualHeight - 92;
@@ -229,16 +234,145 @@ namespace RWBR.Client.Online
                 GUI.Label(r, $" {slot + 1} {(WeaponCatalog.IsValid(w) ? WeaponCatalog.Get(w).DisplayName : "—")}", _small);
             }
             GUI.Label(new Rect(wx + 12, wy + 24, 220, 34), $"<size=30>{self.Ammo}</size>  / {s.SelfReserveAmmo}", new GUIStyle(_label) { richText = true });
+            string fitted = AttachmentNames((Attachments)s.SelfSlotAttach[s.SelfActiveSlot]);
+            if (fitted.Length > 0) GUI.Label(new Rect(wx + 120, wy + 34, 116, 24), fitted, _small);
+        }
+
+        private static string Level(int level) => level > 0 ? $"L{level}" : "—";
+
+        private static string AttachmentNames(Attachments a)
+        {
+            string s = "";
+            if ((a & Attachments.Scope4x) != 0) s += "4x ";
+            if ((a & Attachments.ExtendedMag) != 0) s += "Mag ";
+            if ((a & Attachments.Grip) != 0) s += "Grip";
+            return s.Trim();
+        }
+
+        /// <summary>Quick use: tap a heal to use it, tap a grenade to select it (G or THROW throws it).</summary>
+        private void DrawQuickBar()
+        {
+            Combatant inv = _game.Inventory;
+            if (inv == null || _game.MenusOpen || !_game.SelfAlive) return;
+            // Along the bottom with a keyboard; on touch screens a column at the right edge, clear of the buttons.
+            bool touch = _game.Touch.Visible && _game.InputOverride == null;
+            float x = touch ? _w - 108 : _w / 2 - 250, y = touch ? 96 : VirtualHeight - 58;
+            int i = 0;
+            foreach (ItemKind k in new[] { ItemKind.Bandage, ItemKind.Medkit, ItemKind.EnergyDrink, ItemKind.Frag, ItemKind.Smoke })
+            {
+                int n = inv.Count(k);
+                bool throwable = Items.Category(k) == ItemCategory.Throwable;
+                bool selected = throwable && _game.SelectedThrowable == k;
+                var r = touch ? new Rect(x, y + i * 44, 100, 40) : new Rect(x + i * 100, y, 96, 40);
+                GUI.enabled = n > 0;
+                if (GUI.Button(r, $"{(selected ? "▶" : "")}{ShortName(k)} {n}", _button))
+                {
+                    if (throwable) _game.SelectThrowable(k);
+                    else _game.UseItem(k);
+                }
+                i++;
+            }
+            GUI.enabled = true;
+        }
+
+        private static string ShortName(ItemKind k)
+        {
+            switch (k)
+            {
+                case ItemKind.Bandage: return "Band.";
+                case ItemKind.Medkit: return "Med";
+                case ItemKind.EnergyDrink: return "Drink";
+                case ItemKind.Frag: return "Frag";
+                case ItemKind.Smoke: return "Smoke";
+                default: return Items.Name(k);
+            }
+        }
+
+        private Vector2 _bagScroll, _nearScroll;
+
+        /// <summary>The bag screen: equipment, weapons and attachments, backpack contents, and items within reach.</summary>
+        private void DrawInventory()
+        {
+            Combatant inv = _game.Inventory;
+            if (inv == null) return;
+            Rect r = Panel(Mathf.Min(_w - 40, 980), Mathf.Min(VirtualHeight - 40, 620), "Bag");
+            float x = r.x + 24, y = r.y + 64, col = (r.width - 72) / 2;
+
+            // Left: what you carry.
+            GUI.Label(new Rect(x, y, col, 26), $"Backpack {Level(inv.BackpackLevel)}   weight {inv.Weight:0} / {inv.Capacity}", _label);
+            y += 30;
+            EquipmentRow(ref y, x, col, $"Helmet {Level(inv.HelmetLevel)}  ({inv.HelmetPoints:0} points)", inv.HelmetLevel > 0, ItemKind.Helmet1);
+            EquipmentRow(ref y, x, col, $"Vest {Level(inv.VestLevel)}  ({inv.Armor:0} points)", inv.VestLevel > 0, ItemKind.Vest1);
+            EquipmentRow(ref y, x, col, $"Backpack {Level(inv.BackpackLevel)}", inv.BackpackLevel > 0, ItemKind.Backpack1);
+            for (int slot = 0; slot < Combatant.SlotCount; slot++)
+            {
+                int w = inv.SlotWeapon(slot);
+                string text = w < 0 ? $"Slot {slot + 1}: empty" : $"Slot {slot + 1}: {WeaponCatalog.Get(w).DisplayName}  {inv.SlotAmmo(slot)} rds  {AttachmentNames(inv.SlotAttachments(slot))}";
+                GUI.Label(new Rect(x, y, col - 90, 26), text, _small);
+                GUI.enabled = w >= 0;
+                if (GUI.Button(new Rect(x + col - 84, y, 84, 26), "Drop", _button)) _game.DropWeapon(slot);
+                GUI.enabled = true;
+                y += 30;
+            }
+            float listTop = y + 6, listHeight = r.yMax - 70 - listTop;
+            var stored = new System.Collections.Generic.List<ItemKind>();
+            for (int k = 0; k < Items.KindCount; k++)
+                if (Items.Stored((ItemKind)k) && inv.Count((ItemKind)k) > 0) stored.Add((ItemKind)k);
+            _bagScroll = GUI.BeginScrollView(new Rect(x, listTop, col, listHeight), _bagScroll, new Rect(0, 0, col - 20, Mathf.Max(listHeight, stored.Count * 32)));
+            float iy = 0;
+            if (stored.Count == 0) GUI.Label(new Rect(0, 0, col, 26), "Nothing in the backpack", _small);
+            foreach (ItemKind k in stored)
+            {
+                int n = inv.Count(k);
+                GUI.Label(new Rect(0, iy, col - 230, 26), $"{Items.Name(k)} ×{n}", _small);
+                if (Items.Category(k) == ItemCategory.Heal && GUI.Button(new Rect(col - 226, iy, 66, 26), "Use", _button)) _game.UseItem(k);
+                if (n > 1 && GUI.Button(new Rect(col - 156, iy, 66, 26), "Half", _button)) _game.DropItem(k, n / 2);
+                if (GUI.Button(new Rect(col - 86, iy, 66, 26), "Drop", _button)) _game.DropItem(k, 0);
+                iy += 32;
+            }
+            GUI.EndScrollView();
+
+            // Right: what's on the ground within reach.
+            float rx = x + col + 24, ry = r.y + 64;
+            GUI.Label(new Rect(rx, ry, col, 26), "Nearby", _label);
+            var near = _game.NearbyItems();
+            float nearHeight = r.yMax - 70 - (ry + 30);
+            _nearScroll = GUI.BeginScrollView(new Rect(rx, ry + 30, col, nearHeight), _nearScroll, new Rect(0, 0, col - 20, Mathf.Max(nearHeight, near.Count * 32)));
+            float ny = 0;
+            if (near.Count == 0) GUI.Label(new Rect(0, 0, col, 26), "Nothing within reach", _small);
+            foreach (OnlineGame.NearbyItem item in near)
+            {
+                GUI.Label(new Rect(0, ny, col - 110, 26), item.Useful ? item.Label : $"{item.Label} (no use or no room)", _small);
+                GUI.enabled = item.Useful;
+                if (GUI.Button(new Rect(col - 106, ny, 86, 26), "Take", _button)) _game.PickUp(item.Id);
+                GUI.enabled = true;
+                ny += 32;
+            }
+            GUI.EndScrollView();
+
+            string keys = _game.Touch.Visible ? "" : "  ·  Tab closes";
+            GUI.Label(new Rect(r.x, r.yMax - 64, r.width, 22), $"Drop puts items on the ground next to you{keys}", _center);
+            if (GUI.Button(new Rect(r.x + r.width / 2 - 80, r.yMax - 40, 160, 34), "Close", _button)) _game.InventoryOpen = false;
+        }
+
+        private void EquipmentRow(ref float y, float x, float col, string text, bool worn, ItemKind kind)
+        {
+            GUI.Label(new Rect(x, y, col - 90, 26), text, _small);
+            GUI.enabled = worn;
+            if (GUI.Button(new Rect(x + col - 84, y, 84, 26), "Drop", _button)) _game.DropItem(kind);
+            GUI.enabled = true;
+            y += 30;
         }
 
         private void DrawPrompt()
         {
-            int i = _game.NearestLoot();
-            if (i < 0 || _game.MenusOpen) return;
+            if (!_game.NearestPickup(out OnlineGame.NearbyItem item) || _game.MenusOpen) return;
             string key = _game.Touch.Visible ? "PICK UP" : "[E]";
-            var r = new Rect(_w / 2 - 160, VirtualHeight * 0.64f, 320, 34);
+            int more = _game.NearbyItems().Count - 1;
+            string extra = more > 0 ? (_game.Touch.Visible ? $"  (+{more}: BAG)" : $"  (+{more}: Tab)") : "";
+            var r = new Rect(_w / 2 - 200, VirtualHeight * 0.64f, 400, 34);
             Fill(r, new Color(0, 0, 0, 0.5f));
-            GUI.Label(r, $"{key}  {_game.Map.Loot[i].DisplayName}", _center);
+            GUI.Label(r, $"{key}  {item.Label}{extra}", _center);
         }
 
         private void DrawFeed()
@@ -275,11 +409,12 @@ namespace RWBR.Client.Online
             foreach (TouchControls.ButtonLayout b in TouchControls.Layout)
             {
                 if (b.Button == TouchButton.Interact && !t.InteractAvailable) continue;
-                if (b.Button == TouchButton.Inventory) continue; // no inventory screen online yet
+                if (b.Button == TouchButton.Throw && !t.ThrowAvailable) continue;
                 var c = new Vector2(b.Center.x * _w, (1 - b.Center.y) * VirtualHeight);
                 float r = b.Radius * VirtualHeight;
                 Fill(new Rect(c.x - r, c.y - r, r * 2, r * 2), new Color(1, 1, 1, t.IsHeld(b.Button) || (b.Button == TouchButton.Aim && _game.Aim.Aiming) ? 0.45f : 0.22f));
-                GUI.Label(new Rect(c.x - 50, c.y - 12, 100, 24), b.Label, new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter });
+                string label = b.Button == TouchButton.Throw ? (_game.SelectedThrowable == ItemKind.Smoke ? "SMOKE" : "FRAG") : b.Label;
+                GUI.Label(new Rect(c.x - 50, c.y - 12, 100, 24), label, new GUIStyle(_small) { alignment = TextAnchor.MiddleCenter });
             }
         }
 

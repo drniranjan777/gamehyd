@@ -164,16 +164,20 @@ namespace RWBR.Client.Practice
             Bar(new Rect(x, y, 260, 12), p.Combat.Armor / GameRules.MaxArmor, new Color(0.3f, 0.6f, 1f));
             Bar(new Rect(x, y + 16, 260, 22), hp, Color.Lerp(new Color(0.9f, 0.2f, 0.2f), new Color(0.3f, 0.85f, 0.4f), hp));
             GUI.Label(new Rect(x + 6, y + 15, 260, 24), $"{Mathf.CeilToInt(p.Combat.Health)}", _label);
-            GUI.Label(new Rect(x, y + 42, 400, 24), $"Armor {Mathf.CeilToInt(p.Combat.Armor)}   Medkits {p.Combat.Medkits}", _small);
+            Combatant c = p.Combat;
+            GUI.Label(new Rect(x, y + 42, 560, 24),
+                $"Vest {Lvl(c.VestLevel)}  Helmet {Lvl(c.HelmetLevel)}  Bag {Lvl(c.BackpackLevel)}   Heals {c.Count(ItemKind.Bandage)}/{c.Medkits}/{c.Count(ItemKind.EnergyDrink)}", _small);
 
-            if (p.Combat.Healing)
+            if (c.Healing)
             {
-                long total = Combatant.Ticks(GameRules.MedkitSeconds, PracticeSimulation.TickRate);
-                float frac = 1f - (p.Combat.HealDoneTick - _game.Sim.Tick) / (float)total;
+                long total = Combatant.Ticks(Combatant.HealSeconds(c.HealKind), PracticeSimulation.TickRate);
+                float frac = 1f - (c.HealDoneTick - _game.Sim.Tick) / (float)total;
                 Bar(new Rect(_w / 2 - 110, VirtualHeight / 2 + 60, 220, 14), frac, new Color(0.4f, 1f, 0.5f));
-                GUI.Label(new Rect(_w / 2 - 110, VirtualHeight / 2 + 76, 220, 24), "Using medkit…", _center);
+                GUI.Label(new Rect(_w / 2 - 110, VirtualHeight / 2 + 76, 220, 24), $"Using {Items.Name(c.HealKind).ToLowerInvariant()}…", _center);
             }
         }
+
+        private static string Lvl(int level) => level > 0 ? $"L{level}" : "—";
 
         private void DrawWeapon(PracticeSimulation sim, Fighter p)
         {
@@ -327,16 +331,18 @@ namespace RWBR.Client.Practice
 
         private void DrawInventory(PracticeSimulation sim, Fighter p)
         {
-            Rect r = Panel(460, 330, "Inventory");
+            Rect r = Panel(520, 360, "Inventory");
             float x = r.x + 30, y = r.y + 70;
-            string slots = string.Join("  ·  ", new[] { 0, 1 }.Select(i => p.Combat.SlotWeapon(i) >= 0 ? WeaponCatalog.Get(p.Combat.SlotWeapon(i)).DisplayName : "—"));
-            GUI.Label(new Rect(x, y, 400, 26), $"Weapons:  {slots}", _label);
-            GUI.Label(new Rect(x, y + 32, 400, 26), $"Magazine:  {p.Combat.Ammo} / {sim.PlayerWeapon.MagazineSize}", _label);
-            GUI.Label(new Rect(x, y + 64, 400, 26), $"Reserve ammo:  {p.Combat.ReserveAmmo} / {GameRules.MaxReserveAmmo}", _label);
-            GUI.Label(new Rect(x, y + 96, 400, 26), $"Armor:  {Mathf.CeilToInt(p.Combat.Armor)} / {GameRules.MaxArmor}", _label);
-            GUI.Label(new Rect(x, y + 128, 260, 26), $"Medkits:  {p.Combat.Medkits} / {GameRules.MaxMedkits}", _label);
-            GUI.enabled = p.Combat.Medkits > 0 && p.Combat.Health < GameRules.MaxHealth && !p.Combat.Healing;
-            if (GUI.Button(new Rect(x + 260, y + 124, 120, 34), "Use", _button))
+            Combatant c = p.Combat;
+            string slots = string.Join("  ·  ", new[] { 0, 1 }.Select(i => c.SlotWeapon(i) >= 0 ? WeaponCatalog.Get(c.SlotWeapon(i)).DisplayName : "—"));
+            GUI.Label(new Rect(x, y, 460, 26), $"Weapons:  {slots}", _label);
+            GUI.Label(new Rect(x, y + 32, 460, 26), $"Magazine:  {c.Ammo} / {sim.PlayerWeapon.MagazineSize}", _label);
+            string ammo = c.HasWeapon ? Items.Name(c.ActiveAmmoKind) : "Ammo";
+            GUI.Label(new Rect(x, y + 64, 460, 26), $"{ammo}:  {c.ReserveAmmo}     Backpack {Lvl(c.BackpackLevel)}: {c.Weight:0} / {c.Capacity}", _label);
+            GUI.Label(new Rect(x, y + 96, 460, 26), $"Vest {Lvl(c.VestLevel)} ({c.Armor:0})   Helmet {Lvl(c.HelmetLevel)} ({c.HelmetPoints:0})", _label);
+            GUI.Label(new Rect(x, y + 128, 300, 26), $"Bandages {c.Count(ItemKind.Bandage)}  Medkits {c.Medkits}  Drinks {c.Count(ItemKind.EnergyDrink)}", _label);
+            GUI.enabled = c.BestHeal() != ItemKind.None && !c.Healing;
+            if (GUI.Button(new Rect(x + 340, y + 124, 120, 34), "Heal", _button))
             {
                 _game.RequestHeal();
                 _game.InventoryOpen = false;

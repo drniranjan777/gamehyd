@@ -126,13 +126,14 @@ public class CombatantTests
     [Fact]
     public void Medkit_heals_after_its_duration_and_is_consumed()
     {
-        var c = new Combatant { Health = 30, Medkits = 1 };
+        var c = new Combatant { Health = 20, Medkits = 1 };
         Assert.True(c.TryStartHeal(0, 30));
         Assert.False(c.TryStartHeal(1, 30));
-        c.Update(89, Rifle);
-        Assert.Equal(30f, c.Health);
-        c.Update(90, Rifle);
-        Assert.Equal(80f, c.Health);
+        int ticks = Combatant.Ticks(Items.MedkitSeconds, 30);
+        c.Update(ticks - 1, Rifle);
+        Assert.Equal(20f, c.Health);
+        c.Update(ticks, Rifle);
+        Assert.Equal(20f + Items.MedkitHeal, c.Health);
         Assert.Equal(0, c.Medkits);
         Assert.False(c.TryStartHeal(91, 30));
     }

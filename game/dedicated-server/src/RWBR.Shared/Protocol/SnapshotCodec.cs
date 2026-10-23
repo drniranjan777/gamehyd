@@ -63,11 +63,17 @@ namespace RWBR.Shared.Protocol
     }
 
     /// <summary>
-    /// Snapshot wire format (protocol v6). Entries are delta-encoded against a baseline snapshot the receiver
+    /// Snapshot wire format (protocol v7). Entries are delta-encoded against a baseline snapshot the receiver
     /// acknowledged (the AckTick in its inputs); unchanged players cost 3 bytes, moving players about 12.
+    /// The recipient's backpack and equipment follow the header. Ground items near the recipient are sent only when they
+    /// differ from the baseline (one byte otherwise); grenades and smoke near the recipient are sent while there are any.
     /// </summary>
     public static class SnapshotCodec
     {
+        /// <summary>Most ground items and projectiles sent to one player per snapshot (the nearest ones).</summary>
+        public const int MaxGroundItems = 24;
+        public const int MaxProjectiles = 12;
+
         [Flags]
         private enum Field : byte
         {
@@ -84,7 +90,8 @@ namespace RWBR.Shared.Protocol
             All = PositionFull | Yaw | Health | Armor | Ammo | Flags | Weapon,
         }
 
-        public static byte[] Encode(SnapshotPacket p, SnapshotPacket? baseline)
+        /// <param name="sendGround">False when the recipient's ground items are the same as in <paramref name="baseline"/>.</param>
+        public static byte[] Encode(SnapshotPacket p, SnapshotPacket? baseline, bool sendGround = true)
         {
             var w = new PacketWriter(PacketType.Snapshot);
             w.U32(p.Tick);
@@ -107,6 +114,19 @@ namespace RWBR.Shared.Protocol
             {
                 w.U8(p.SelfSlotWeapon[i]);
                 w.U8(p.SelfSlotAmmo[i]);
+                w.U8(p.SelfSlotAttach[i]);
+            }
+            w.U8(p.SelfVest);
+            w.U8(p.SelfHelmet);
+            w.U8(p.SelfHelmetPoints);
+            w.U8(p.SelfBackpack);
+            w.U8((byte)p.SelfHealKind);
+            int items = Math.Min(p.SelfItems.Count, 255);
+            w.U8((byte)items);
+            for (int i = 0; i < items; i++)
+            {
+                w.U8((byte)p.SelfItems[i].Kind);
+                w.U16(p.SelfItems[i].Count);
             }
 
             Dictionary<ushort, SnapshotEntry>? baseById = Index(baseline);
@@ -120,8 +140,47 @@ namespace RWBR.Shared.Protocol
 
             w.U8((byte)p.LootTaken.Length);
             foreach (byte x in p.LootTaken) w.U8(x);
+
+            if (baseline != null && !sendGround) w.U8(0);
+            else
+            {
+                int n = Math.Min(p.Ground.Count, MaxGroundItems);
+                w.U8((byte)(n + 1));
+                for (int i = 0; i < n; i++)
+                {
+                    GroundItemEntry g = p.Ground[i];
+                    w.U16(g.Id);
+                    w.U8((byte)g.Kind);
+                    w.U16(g.Count);
+                    w.U8(g.Ammo);
+                    w.U8((byte)g.Attach);
+                    WriteDecimetres(w, g.X, g.Y, g.Z);
+                }
+            }
+            int pn = Math.Min(p.Projectiles.Count, MaxProjectiles);
+            w.U8((byte)pn);
+            for (int i = 0; i < pn; i++)
+            {
+                ProjectileEntry e = p.Projectiles[i];
+                w.U16(e.Id);
+                w.U8((byte)e.Kind);
+                w.U8((byte)e.State);
+                WriteDecimetres(w, e.X, e.Y, e.Z);
+            }
             return w.ToArray();
         }
+
+        private static void WriteDecimetres(PacketWriter w, float x, float y, float z)
+        {
+            w.I16(Decimetres(x));
+            w.I16(Decimetres(y));
+            w.I16(Decimetres(z));
+        }
+
+        private static short Decimetres(float metres) => (short)Math.Clamp((int)Math.Round(metres * 10f), short.MinValue, short.MaxValue);
+
+        /// <summary>A position as the receiver sees it (decimetre precision).</summary>
+        public static float RoundDecimetres(float metres) => Decimetres(metres) / 10f;
 
         public static SnapshotPacket Decode(PacketReader r, SnapshotHistory? history)
         {
@@ -153,7 +212,15 @@ namespace RWBR.Shared.Protocol
             {
                 p.SelfSlotWeapon[i] = r.U8();
                 p.SelfSlotAmmo[i] = r.U8();
+                p.SelfSlotAttach[i] = r.U8();
             }
+            p.SelfVest = r.U8();
+            p.SelfHelmet = r.U8();
+            p.SelfHelmetPoints = r.U8();
+            p.SelfBackpack = r.U8();
+            p.SelfHealKind = (ItemKind)r.U8();
+            int items = r.U8();
+            for (int i = 0; i < items; i++) p.SelfItems.Add(new ItemCount { Kind = (ItemKind)r.U8(), Count = r.U16() });
 
             Dictionary<ushort, SnapshotEntry>? baseById = Index(baseline);
             int n = r.U8();
@@ -161,6 +228,34 @@ namespace RWBR.Shared.Protocol
 
             p.LootTaken = new byte[r.U8()];
             for (int i = 0; i < p.LootTaken.Length; i++) p.LootTaken[i] = r.U8();
+
+            int ground = r.U8();
+            if (ground == 0)
+            {
+                if (baseline != null) p.Ground.AddRange(baseline.Ground); // unchanged since the baseline
+            }
+            else
+            {
+                if (ground - 1 > MaxGroundItems) throw new PacketFormatException("ground items");
+                for (int i = 0; i < ground - 1; i++)
+                {
+                    var g = new GroundItemEntry { Id = r.U16(), Kind = (ItemKind)r.U8(), Count = r.U16(), Ammo = r.U8(), Attach = (Attachments)r.U8() };
+                    g.X = r.I16() / 10f;
+                    g.Y = r.I16() / 10f;
+                    g.Z = r.I16() / 10f;
+                    p.Ground.Add(g);
+                }
+            }
+            int pn = r.U8();
+            if (pn > MaxProjectiles) throw new PacketFormatException("projectiles");
+            for (int i = 0; i < pn; i++)
+            {
+                var e = new ProjectileEntry { Id = r.U16(), Kind = (ItemKind)r.U8(), State = (ProjectileState)r.U8() };
+                e.X = r.I16() / 10f;
+                e.Y = r.I16() / 10f;
+                e.Z = r.I16() / 10f;
+                p.Projectiles.Add(e);
+            }
             return p;
         }
 

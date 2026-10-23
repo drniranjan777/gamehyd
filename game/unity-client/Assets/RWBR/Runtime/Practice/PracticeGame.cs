@@ -365,7 +365,7 @@ namespace RWBR.Client.Practice
                         break;
                     case SimEventType.Pickup:
                         if (byPlayer) audio.PlayUi(Sfx.Pickup);
-                        if (byPlayer) Feed.Add(new FeedEntry { Text = $"Picked up {(e.Loot == LootType.Weapon || e.Loot == LootType.Rifle ? Sim.PlayerWeapon.DisplayName : e.Loot.ToString())}", Time = Time.time });
+                        if (byPlayer) Feed.Add(new FeedEntry { Text = $"Picked up {Items.Label(e.Item, e.Count)}", Time = Time.time });
                         break;
                 }
             }

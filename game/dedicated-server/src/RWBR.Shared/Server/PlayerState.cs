@@ -68,5 +68,9 @@ namespace RWBR.Shared.Server
 
         /// <summary>Ring buffer of motor states by tick, used to rewind targets for lag compensation.</summary>
         public MotorState[] History { get; }
+
+        /// <summary>Hash of the ground items sent in each recent snapshot (by tick), to resend them only on change.</summary>
+        public ulong[] GroundHash { get; } = new ulong[SnapshotHistory.Size];
+        public long[] GroundHashTick { get; } = new long[SnapshotHistory.Size];
     }
 }

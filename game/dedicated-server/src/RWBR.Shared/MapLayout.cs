@@ -76,7 +76,9 @@ namespace RWBR.Shared
             Version = version;
             HalfSize = halfSize;
             Obstacles = obstacles;
-            Loot = loot ?? Array.Empty<LootSpawn>();
+            var resolved = new LootSpawn[loot?.Count ?? 0];
+            for (int i = 0; i < resolved.Length; i++) resolved[i] = LootTable.Resolve(version, loot![i]);
+            Loot = resolved;
             Kinds = kinds;
             Districts = districts ?? Array.Empty<District>();
             Spawns = spawns ?? Array.Empty<Vector3>();

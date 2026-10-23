@@ -17,6 +17,8 @@ namespace RWBR.Client.Audio
         Kill,
         UiClick,
         ZoneWarning,
+        Explosion,
+        Throw,
     }
 
     /// <summary>
@@ -184,6 +186,8 @@ namespace RWBR.Client.Audio
                 case Sfx.Headshot: return Tone("headshot", 0.12f, new[] { (0.0f, 3200f), (0.05f, 4200f) }, 0.05f, 0.4f);
                 case Sfx.Kill: return Tone("kill", 0.3f, new[] { (0.0f, 880f), (0.1f, 1100f), (0.2f, 1760f) }, 0.1f, 0.4f);
                 case Sfx.ZoneWarning: return Tone("zone", 0.6f, new[] { (0.0f, 220f), (0.3f, 196f) }, 0.3f, 0.3f);
+                case Sfx.Explosion: return Synth("explosion", 1.4f, 0.35f, 0.9f, 250f, 1f);
+                case Sfx.Throw: return Synth("throw", 0.15f, 0.05f, 0.2f, 1500f, 0.35f);
                 default: return Tone("click", 0.04f, new[] { (0.0f, 1500f) }, 0.04f, 0.3f);
             }
         }

@@ -21,10 +21,11 @@ namespace RWBR.Shared
         private const uint Seed = 0x48594431; // "HYD1"
         private const float AvenueHalfWidth = 10f;
 
-        private static MapLayout? _cached;
+        // Built once, even when several threads ask at the same time (the server, tests running in parallel).
+        private static readonly System.Lazy<MapLayout> Cached = new System.Lazy<MapLayout>(Generate);
 
         /// <summary>The map is immutable, so one shared instance is enough (queries are thread-safe).</summary>
-        public static MapLayout Build() => _cached ??= Generate();
+        public static MapLayout Build() => Cached.Value;
 
         private sealed class Builder
         {

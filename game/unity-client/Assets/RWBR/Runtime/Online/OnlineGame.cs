@@ -49,8 +49,10 @@ namespace RWBR.Client.Online
         private float _nextZoneWarning;
 
         /// <summary>Balance of the weapon in the local player's hand (from the server's snapshot).</summary>
+        /// <summary>The weapon in hand with its attachments (zoom, recoil, magazine).</summary>
         public WeaponDefinition SelfWeapon =>
-            Self is { } me && WeaponCatalog.IsValid(me.Weapon) ? WeaponCatalog.Get(me.Weapon) : WeaponCatalog.Get(WeaponCatalog.Rifle);
+            Inventory?.ActiveWeapon ??
+            (Self is { } me && WeaponCatalog.IsValid(me.Weapon) ? WeaponCatalog.Get(me.Weapon) : WeaponCatalog.Get(WeaponCatalog.Rifle));
         private GreyboxWorld _world;
         private OnlineViews _views;
         private int _tickRate = 30;
@@ -59,7 +61,11 @@ namespace RWBR.Client.Online
         private long _localTick;
         private long _nextLocalShotTick;
         private bool _crouchToggle;
-        private bool _jumpLatched, _reloadLatched, _interactLatched, _healLatched;
+        private bool _jumpLatched, _reloadLatched, _interactLatched, _healLatched, _throwLatched;
+        // One inventory action from the bag screen or quick bar, sent with the next input.
+        private InputButtons _actionButtons;
+        private ItemKind _actionItem;
+        private ushort _actionTarget;
         private bool _aimToggle;
         private bool _mapReady;
         private double _lastReconnectAttempt;
@@ -122,7 +128,26 @@ namespace RWBR.Client.Online
         }
 
         public bool SelfAlive => Self is { } s && (s.Flags & PlayerFlags.Alive) != 0;
-        public bool MenusOpen => Paused || Net.State != ConnectionState.Connected || Net.Result != null || Error != null;
+        public bool MenusOpen => Paused || InventoryOpen || Net.State != ConnectionState.Connected || Net.Result != null || Error != null;
+
+        /// <summary>The bag screen (inventory, equipment and items on the ground nearby).</summary>
+        public bool InventoryOpen { get; set; }
+        /// <summary>Your inventory as the last snapshot described it (null before the first one).</summary>
+        public Combatant Inventory { get; private set; }
+        /// <summary>The grenade THROW and G throw.</summary>
+        public ItemKind SelectedThrowable { get; private set; } = ItemKind.Frag;
+
+        public struct NearbyItem
+        {
+            /// <summary>Loot spot index, or a ground item id (at or above ProtocolInfo.FirstGroundItemId).</summary>
+            public ushort Id;
+            public ItemKind Kind;
+            public int Count;
+            public string Label;
+            /// <summary>Picking it up would do something (room in the backpack, an upgrade, a free slot).</summary>
+            public bool Useful;
+            public float Distance;
+        }
 
         public Vector3 CameraPivot
         {
@@ -323,6 +348,9 @@ namespace RWBR.Client.Online
             Prediction = null;
             Interp.Clear();
             _views.Clear();
+            InventoryOpen = false;
+            Inventory = null;
+            _actionButtons = InputButtons.None;
             _lastHealth.Clear();
             Feed.Clear();
             _sequence = 0;
@@ -363,6 +391,7 @@ namespace RWBR.Client.Online
                 RemoteShots(s);
             }
             foreach (EliminatedPacket e in Net.NewEliminations) OnEliminated(e);
+            if (Net.NewSnapshots.Count > 0 && Self is { } mine) Inventory = Combatant.FromSnapshot(Net.Latest, mine);
 
             // Mobile networks drop out (tunnels, Wi-Fi to 4G): after a silence, rejoin from a new socket.
             if (!Net.IsLocal && Net.State == ConnectionState.Connected && Net.Result == null && now - Net.LastReceiveTime > SilenceBeforeReconnect &&
@@ -392,6 +421,9 @@ namespace RWBR.Client.Online
                 _reloadLatched |= frame.ReloadPressed;
                 _interactLatched |= frame.InteractPressed;
                 _healLatched |= frame.HealPressed;
+                _throwLatched |= frame.ThrowPressed;
+                if (frame.CycleThrowablePressed) CycleThrowable();
+                if (frame.InventoryToggled) InventoryOpen = !InventoryOpen;
                 int activeSlot = Net.Latest?.SelfActiveSlot ?? 0;
                 _switchLatched |= frame.SwitchPressed || (frame.SelectSlot >= 0 && frame.SelectSlot != activeSlot);
                 if (frame.CrouchToggled) _crouchToggle = !_crouchToggle;
@@ -412,7 +444,9 @@ namespace RWBR.Client.Online
             if (Prediction != null)
             {
                 Prediction.DecayOffset(Time.deltaTime);
-                Touch.InteractAvailable = SelfAlive && NearestLoot() >= 0;
+                Touch.InteractAvailable = SelfAlive && NearestPickup(out _);
+                Touch.ThrowAvailable = SelfAlive && Inventory != null &&
+                                       (Inventory.Count(ItemKind.Frag) > 0 || Inventory.Count(ItemKind.Smoke) > 0);
                 _views.SetSelfView(ViewPitch + Aim.KickPitch, Aim.Eased, Aim.Scoped, _tickRate);
                 _views.Render(Net.PlayerId, Prediction.RenderPosition, ViewYaw, Prediction.Predicted, Interp, Net.Latest, Time.time);
                 MatchSounds();
@@ -535,8 +569,27 @@ namespace RWBR.Client.Online
             if (_healLatched) buttons |= InputButtons.Heal;
             if (_switchLatched) buttons |= InputButtons.SwitchWeapon;
             if (Aim.Aiming) buttons |= InputButtons.Aim;
+            ItemKind item = ItemKind.None;
+            ushort target = 0;
+            if (_actionButtons != InputButtons.None)
+            {
+                buttons |= _actionButtons;
+                item = _actionItem;
+                target = _actionTarget;
+                _actionButtons = InputButtons.None;
+            }
+            else if (_throwLatched && Inventory != null)
+            {
+                if (Inventory.Count(SelectedThrowable) == 0) CycleThrowable();
+                if (Inventory.Count(SelectedThrowable) > 0)
+                {
+                    buttons |= InputButtons.Throw;
+                    item = SelectedThrowable;
+                    GameAudio.Instance.PlayUi(Sfx.Throw);
+                }
+            }
             _switchLatched = false;
-            _jumpLatched = _reloadLatched = _interactLatched = _healLatched = false;
+            _jumpLatched = _reloadLatched = _interactLatched = _healLatched = _throwLatched = false;
             if ((buttons & InputButtons.Jump) != 0) _crouchToggle = false;
 
             // Same trick as practice mode: rotate the stick into the aim frame so movement follows the camera.
@@ -552,7 +605,84 @@ namespace RWBR.Client.Online
                 Yaw = yaw,
                 Pitch = pitch,
                 Buttons = buttons,
+                Item = item,
+                Target = target,
             };
+        }
+
+        // ---- Inventory actions (bag screen, quick bar) ----
+
+        /// <summary>Use a heal (bandage, medkit, energy drink).</summary>
+        public void UseItem(ItemKind kind) => Queue(InputButtons.UseItem, kind, 0);
+
+        /// <summary>Drop <paramref name="count"/> of a backpack item (0 = all), or equipment.</summary>
+        public void DropItem(ItemKind kind, int count = 0) => Queue(InputButtons.DropItem, kind, (ushort)Math.Max(0, count));
+
+        public void DropWeapon(int slot) => Queue(InputButtons.DropItem, ItemKind.Weapon, (ushort)slot);
+
+        /// <summary>Pick up a particular loot spot or ground item (see <see cref="NearbyItems"/>).</summary>
+        public void PickUp(ushort id) => Queue(InputButtons.Interact, ItemKind.None, InputCommand.PickUpTarget(id));
+
+        public void SelectThrowable(ItemKind kind)
+        {
+            if (Items.Category(kind) == ItemCategory.Throwable) SelectedThrowable = kind;
+        }
+
+        public void CycleThrowable() => SelectedThrowable = SelectedThrowable == ItemKind.Frag ? ItemKind.Smoke : ItemKind.Frag;
+
+        private void Queue(InputButtons buttons, ItemKind item, ushort target)
+        {
+            _actionButtons = buttons;
+            _actionItem = item;
+            _actionTarget = target;
+        }
+
+        /// <summary>
+        /// Loot spots and ground items within reach, nearest first, with whether picking each up would do anything
+        /// (the same rules the server applies).
+        /// </summary>
+        public List<NearbyItem> NearbyItems()
+        {
+            var list = new List<NearbyItem>();
+            SnapshotPacket s = Net.Latest;
+            if (Map == null || s == null || Prediction == null) return list;
+            MotorState me = Prediction.Predicted;
+            for (int i = 0; i < Map.Loot.Count; i++)
+            {
+                LootSpawn l = Map.Loot[i];
+                if (s.IsLootTaken(i) || !Simulation.CanReach(me, l.Position)) continue;
+                list.Add(Nearby((ushort)i, l.Kind, l.Count, l.Position, me));
+            }
+            foreach (GroundItemEntry g in s.Ground)
+            {
+                var at = new SVector3(g.X, g.Y, g.Z);
+                if (Simulation.CanReach(me, at)) list.Add(Nearby(g.Id, g.Kind, g.Count, at, me));
+            }
+            list.Sort((a, b) => a.Distance.CompareTo(b.Distance));
+            return list;
+        }
+
+        private NearbyItem Nearby(ushort id, ItemKind kind, int count, SVector3 at, MotorState me) => new NearbyItem
+        {
+            Id = id,
+            Kind = kind,
+            Count = count,
+            Label = Items.Label(kind, count),
+            Useful = Inventory == null || Inventory.CanTake(kind, count) > 0,
+            Distance = SVector3.Distance(me.Position, at),
+        };
+
+        /// <summary>The item the pick-up button would take: the nearest useful one in reach.</summary>
+        public bool NearestPickup(out NearbyItem item)
+        {
+            foreach (NearbyItem n in NearbyItems())
+            {
+                if (!n.Useful) continue;
+                item = n;
+                return true;
+            }
+            item = default;
+            return false;
         }
 
         private void AimAngles(out float yaw, out float pitch)
@@ -726,24 +856,6 @@ namespace RWBR.Client.Online
                 GameAudio.Instance.PlayUi(Sfx.Kill);
             }
             Feed.Add(new FeedEntry { Text = text, Time = Time.time });
-        }
-
-        public int NearestLoot()
-        {
-            if (Map == null || Net.Latest == null || Prediction == null) return -1;
-            int best = -1;
-            float bestDist = float.MaxValue;
-            for (int i = 0; i < Map.Loot.Count; i++)
-            {
-                if (Net.Latest.IsLootTaken(i) || !Simulation.CanReach(Prediction.Predicted, Map.Loot[i].Position)) continue;
-                float d = SVector3.DistanceSquared(Prediction.Predicted.Position, Map.Loot[i].Position);
-                if (d < bestDist)
-                {
-                    bestDist = d;
-                    best = i;
-                }
-            }
-            return best;
         }
 
         private PlayerInputFrame ReadInput()

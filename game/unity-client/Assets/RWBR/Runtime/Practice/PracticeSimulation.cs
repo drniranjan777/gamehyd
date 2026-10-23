@@ -30,6 +30,9 @@ namespace RWBR.Client.Practice
         public SVector3 To;
         public float Damage;
         public LootType Loot;
+        /// <summary>For pickups: what was picked up.</summary>
+        public ItemKind Item;
+        public int Count;
         public bool Headshot;
     }
 
@@ -113,8 +116,7 @@ namespace RWBR.Client.Practice
         public WeaponDefinition WeaponOf(Fighter f)
         {
             if (!f.IsPlayer) return EnemyWeapon;
-            int i = f.Combat.ActiveWeaponIndex;
-            return WeaponCatalog.Get(WeaponCatalog.IsValid(i) ? i : WeaponCatalog.Rifle);
+            return f.Combat.ActiveWeapon ?? WeaponCatalog.Get(WeaponCatalog.Rifle); // with its attachments
         }
 
         public void Reset()
@@ -283,7 +285,7 @@ namespace RWBR.Client.Practice
             for (int i = 0; i < Map.Loot.Count; i++)
             {
                 LootSpawn item = Map.Loot[i];
-                if (LootTaken[i] || !Simulation.CanReach(f.Motor, item.Position) || !f.Combat.CanPickUp(item)) continue;
+                if (LootTaken[i] || !Usable(item) || !Simulation.CanReach(f.Motor, item.Position) || !f.Combat.CanPickUp(item)) continue;
                 float d = SVector3.DistanceSquared(f.Motor.Position, item.Position);
                 if (d < bestDist)
                 {
@@ -294,6 +296,9 @@ namespace RWBR.Client.Practice
             return best;
         }
 
+        /// <summary>Practice has no grenades (only full matches simulate them), so grenade loot is not offered.</summary>
+        public static bool Usable(LootSpawn item) => Items.Category(item.Kind) != ItemCategory.Throwable;
+
         private void TryPickUp(Fighter f)
         {
             int i = NearestPickup(f);
@@ -301,7 +306,12 @@ namespace RWBR.Client.Practice
             if (!(IsRange && Map.Loot[i].WeaponIndex >= 0)) LootTaken[i] = true; // the range's weapon rack never empties
             int w = Map.Loot[i].WeaponIndex;
             f.Combat.PickUp(Map.Loot[i], w >= 0 ? WeaponCatalog.Get(w) : WeaponOf(f));
-            Events.Add(new SimEvent { Type = SimEventType.Pickup, Actor = f.Id, Loot = Map.Loot[i].Type, To = Map.Loot[i].Position });
+            f.Combat.Dropped.Clear(); // practice has no ground items: a replaced weapon or vest is gone
+            Events.Add(new SimEvent
+            {
+                Type = SimEventType.Pickup, Actor = f.Id, Loot = Map.Loot[i].Type, Item = Map.Loot[i].Kind, Count = Map.Loot[i].Count,
+                To = Map.Loot[i].Position,
+            });
         }
 
         public float CurrentSpread(Fighter f, InputCommand cmd, WeaponDefinition weapon)
@@ -336,7 +346,7 @@ namespace RWBR.Client.Practice
                 if (p.Target < 0) continue;
                 Fighter hit = _targetFighters[p.Target];
                 if (!hit.Combat.Alive) continue;
-                float lost = hit.Combat.ApplyDamage(p.Damage);
+                float lost = hit.Combat.ApplyDamage(p.Damage, p.Headshot);
                 hit.Combat.CancelHeal();
                 Events.Add(new SimEvent { Type = SimEventType.Hit, Actor = shooter.Id, Target = hit.Id, From = origin, To = p.End, Damage = lost, Headshot = p.Headshot });
                 if (!hit.Combat.Alive)

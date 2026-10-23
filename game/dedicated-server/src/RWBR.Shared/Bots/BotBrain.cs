@@ -25,12 +25,15 @@ namespace RWBR.Shared.Bots
 
         private Vector3? _goal;
         private int _goalLoot = -1;
+        /// <summary>Ground item (dropped or left by an eliminated player) the bot is going for, or -1.</summary>
+        private int _goalGround = -1;
         private List<Vector3>? _path;
         private int _pathIndex;
         private double _lastPlan = -100, _lastProgress;
         private Vector3 _progressFrom;
         private Vector3 _roamTarget;
         private double _roamUntil;
+        private double _goalSince;
 
         public BotBrain(int seed, MapLayout? map = null)
         {
@@ -67,6 +70,7 @@ namespace RWBR.Shared.Bots
                 {
                     Vector3 to = pos + new Vector3(0, 1.2f, 0) - eye;
                     if (Simulation.WallDistance(eye, Vector3.Normalize(to), to.Length(), _map) < to.Length() - 0.3f) continue; // behind cover
+                    if (ThroughSmoke(snap, eye, pos + new Vector3(0, 1.2f, 0))) continue; // hidden by smoke
                 }
                 best = d;
                 target = p;
@@ -88,6 +92,7 @@ namespace RWBR.Shared.Bots
 
             Vector3 worldMove;
             var buttons = InputButtons.None;
+            ushort pickUp = 0;
             if (_nav == null)
             {
                 // Original behaviour: head for the zone centre when near the edge; otherwise close in and strafe.
@@ -104,13 +109,17 @@ namespace RWBR.Shared.Bots
             }
             else
             {
-                PlanIfNeeded(snap, me, time, armed, outOfAmmo);
+                PlanIfNeeded(snap, self, me, time, armed, outOfAmmo);
                 worldMove = FollowPath(me);
-                if (_goalLoot >= 0 && Vector2.Distance(new Vector2(me.X, me.Z), new Vector2(_goal!.Value.X, _goal.Value.Z)) < GameRules.PickupRange * 0.8f)
+                if ((_goalLoot >= 0 || _goalGround >= 0) && Vector2.Distance(new Vector2(me.X, me.Z), new Vector2(_goal!.Value.X, _goal.Value.Z)) < GameRules.PickupRange * 0.8f)
                 {
                     buttons |= InputButtons.Interact;
-                    if (snap.IsLootTaken(_goalLoot)) ClearGoal();
+                    pickUp = PickUpTarget();
+                    if (_goalLoot >= 0 ? snap.IsLootTaken(_goalLoot) : !GroundHas(snap, _goalGround)) ClearGoal();
+                    else if (time - _goalSince > 3) ClearGoal(); // no room for it: look for something else
                 }
+                // Heal when nobody is in sight.
+                if (!hasTarget && self.Health < 70 && (self.Flags & PlayerFlags.Healing) == 0 && HasHeal(snap)) buttons |= InputButtons.Heal;
                 if (!hasTarget || !canFight) yaw = worldMove.LengthSquared() > 0.01f ? (float)Math.Atan2(worldMove.X, worldMove.Z) : yaw;
                 Unstick(me, time, ref buttons);
             }
@@ -127,21 +136,45 @@ namespace RWBR.Shared.Bots
                 Yaw = yaw,
                 Pitch = pitch,
                 Buttons = buttons,
+                Target = pickUp,
             };
+        }
+
+        private ushort PickUpTarget() =>
+            InputCommand.PickUpTarget((ushort)(_goalGround >= 0 ? _goalGround : _goalLoot));
+
+        private static bool GroundHas(SnapshotPacket snap, int id)
+        {
+            foreach (GroundItemEntry g in snap.Ground)
+                if (g.Id == id) return true;
+            return false;
+        }
+
+        private static bool HasHeal(SnapshotPacket snap) =>
+            snap.SelfCount(ItemKind.Bandage) > 0 || snap.SelfCount(ItemKind.Medkit) > 0 || snap.SelfCount(ItemKind.EnergyDrink) > 0;
+
+        private static bool ThroughSmoke(SnapshotPacket snap, Vector3 from, Vector3 to)
+        {
+            foreach (ProjectileEntry p in snap.Projectiles)
+                if (p.State == ProjectileState.Cloud &&
+                    Server.Match.SegmentNearPoint(from, to, new Vector3(p.X, p.Y + 1.5f, p.Z), Server.Match.SmokeRadius)) return true;
+            return false;
         }
 
         private static bool OutsideZone(SnapshotPacket snap, Vector3 p, float fraction) =>
             new Vector2(p.X - snap.ZoneX, p.Z - snap.ZoneZ).Length() > snap.ZoneRadius * fraction;
 
         /// <summary>Chooses a goal (zone, loot, roam) and a path to it, at most every couple of seconds.</summary>
-        private void PlanIfNeeded(SnapshotPacket snap, Vector3 me, double time, bool armed, bool outOfAmmo)
+        private void PlanIfNeeded(SnapshotPacket snap, SnapshotEntry self, Vector3 me, double time, bool armed, bool outOfAmmo)
         {
-            bool goalGone = _goalLoot >= 0 && snap.IsLootTaken(_goalLoot);
+            bool goalGone = (_goalLoot >= 0 && snap.IsLootTaken(_goalLoot)) || (_goalGround >= 0 && !GroundHas(snap, _goalGround));
             if (_path != null && !goalGone && time - _lastPlan < RepathSeconds && _pathIndex < _path.Count) return;
             _lastPlan = time;
 
             Vector3 goal;
             _goalLoot = -1;
+            _goalGround = -1;
+            _goalSince = time;
             var zone = new Vector3(snap.ZoneX, 0, snap.ZoneZ);
             if (OutsideZone(snap, me, 0.8f))
             {
@@ -149,10 +182,11 @@ namespace RWBR.Shared.Bots
                 Vector3 dir = Vector3.Normalize(zone - new Vector3(me.X, 0, me.Z));
                 goal = zone - dir * snap.ZoneRadius * 0.3f;
             }
-            else if (FindLoot(snap, me, !armed ? LootNeed.Weapon : outOfAmmo ? LootNeed.Ammo : LootNeed.Any, out int loot))
+            else if (FindLoot(snap, self, me, !armed ? LootNeed.Weapon : outOfAmmo ? LootNeed.Ammo : LootNeed.Any, out int loot, out int ground, out Vector3 at))
             {
                 _goalLoot = loot;
-                goal = _map!.Loot[loot].Position;
+                _goalGround = ground;
+                goal = at;
             }
             else
             {
@@ -180,30 +214,69 @@ namespace RWBR.Shared.Bots
             Any,
         }
 
-        /// <summary>Nearest untaken ground-level loot of the needed kind, inside the zone and within a detour radius.</summary>
-        private bool FindLoot(SnapshotPacket snap, Vector3 me, LootNeed need, out int index)
+        /// <summary>
+        /// Nearest untaken ground-level map loot or ground item of the needed kind, inside the zone and within a detour
+        /// radius: a weapon when unarmed, ammo for the weapon in hand when out, otherwise anything useful (ammo for the
+        /// weapon in hand, heals, grenades, attachments, and armour or a backpack better than the one worn).
+        /// </summary>
+        private bool FindLoot(SnapshotPacket snap, SnapshotEntry self, Vector3 me, LootNeed need, out int index, out int ground, out Vector3 at)
         {
             index = -1;
+            ground = -1;
+            at = default;
             float best = need == LootNeed.Any ? 25f : LootDetour;
+            ItemKind ammo = WeaponCatalog.IsValid(self.Weapon) ? Items.AmmoFor(WeaponCatalog.Get(self.Weapon).Class) : ItemKind.None;
             IReadOnlyList<LootSpawn> loot = _map!.Loot;
             for (int i = 0; i < loot.Count; i++)
             {
                 LootSpawn l = loot[i];
-                bool wanted = need switch
-                {
-                    LootNeed.Weapon => l.WeaponIndex >= 0,
-                    LootNeed.Ammo => l.Type == LootType.Ammo,
-                    _ => l.Type == LootType.Armor || l.Type == LootType.Medkit || l.Type == LootType.Ammo,
-                };
-                if (!wanted || l.Position.Y > 1f || snap.IsLootTaken(i) || OutsideZone(snap, l.Position, 0.9f)) continue;
+                if (!Wanted(snap, need, ammo, l.Kind) || l.Position.Y > 1f || snap.IsLootTaken(i) || OutsideZone(snap, l.Position, 0.9f)) continue;
                 float d = Vector2.Distance(new Vector2(me.X, me.Z), new Vector2(l.Position.X, l.Position.Z));
-                if (d < best && _nav!.IsWalkable(l.Position))
+                if (d < best && d < Detour(need, l.Kind) && _nav!.IsWalkable(l.Position))
                 {
                     best = d;
                     index = i;
+                    at = l.Position;
                 }
             }
-            return index >= 0;
+            foreach (GroundItemEntry g in snap.Ground)
+            {
+                var p = new Vector3(g.X, g.Y, g.Z);
+                if (!Wanted(snap, need, ammo, g.Kind) || p.Y > 1f || OutsideZone(snap, p, 0.9f)) continue;
+                float d = Vector2.Distance(new Vector2(me.X, me.Z), new Vector2(p.X, p.Z));
+                if (d < best && d < Detour(need, g.Kind) && _nav!.IsWalkable(p))
+                {
+                    best = d;
+                    index = -1;
+                    ground = g.Id;
+                    at = p;
+                }
+            }
+            return index >= 0 || ground >= 0;
+        }
+
+        /// <summary>Grenades and attachments are only worth a short detour; what keeps a bot fighting is worth more.</summary>
+        private static float Detour(LootNeed need, ItemKind kind)
+        {
+            ItemCategory c = Items.Category(kind);
+            return need == LootNeed.Any && (c == ItemCategory.Throwable || c == ItemCategory.Attachment) ? 10f : float.MaxValue;
+        }
+
+        private static bool Wanted(SnapshotPacket snap, LootNeed need, ItemKind ammo, ItemKind kind)
+        {
+            if (need == LootNeed.Weapon) return kind == ItemKind.Weapon;
+            if (need == LootNeed.Ammo) return kind == ammo;
+            switch (Items.Category(kind))
+            {
+                case ItemCategory.Ammo: return kind == ammo;
+                case ItemCategory.Heal:
+                case ItemCategory.Throwable:
+                case ItemCategory.Attachment: return true;
+                case ItemCategory.Vest: return Items.Level(kind) > snap.SelfVest;
+                case ItemCategory.Helmet: return Items.Level(kind) > snap.SelfHelmet;
+                case ItemCategory.Backpack: return Items.Level(kind) > snap.SelfBackpack;
+                default: return false;
+            }
         }
 
         private Vector3 FollowPath(Vector3 me)
@@ -242,6 +315,7 @@ namespace RWBR.Shared.Bots
         {
             _goal = null;
             _goalLoot = -1;
+            _goalGround = -1;
             _path = null;
         }
     }

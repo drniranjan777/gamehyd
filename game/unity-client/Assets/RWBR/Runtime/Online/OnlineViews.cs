@@ -4,6 +4,8 @@ using RWBR.Client.Combat;
 using RWBR.Client.Practice;
 using RWBR.Shared;
 using RWBR.Shared.Protocol;
+using RWBR.Shared.Server;
+using RWBR.Client.Audio;
 using UnityEngine;
 using SVector3 = System.Numerics.Vector3;
 
@@ -25,6 +27,24 @@ namespace RWBR.Client.Online
         private readonly Dictionary<ushort, float> _remoteAim = new Dictionary<ushort, float>();
         private readonly ReloadTracker _reloads = new ReloadTracker();
         private readonly List<GameObject> _loot = new List<GameObject>();
+        private readonly Dictionary<ushort, GameObject> _ground = new Dictionary<ushort, GameObject>();
+        private readonly Dictionary<ushort, (GameObject Go, ProjectileState State)> _projectiles = new Dictionary<ushort, (GameObject, ProjectileState)>();
+        private readonly List<(GameObject Go, float Born)> _blasts = new List<(GameObject, float)>();
+        private readonly List<ushort> _gone = new List<ushort>();
+        private Material _fxMaterial;
+
+        /// <summary>Explosions shown so far (tests and diagnostics).</summary>
+        public int ExplosionsShown { get; private set; }
+        public int GroundItemsShown => _ground.Count;
+        public int SmokeCloudsShown
+        {
+            get
+            {
+                int n = 0;
+                foreach (var p in _projectiles.Values) n += p.State == ProjectileState.Cloud ? 1 : 0;
+                return n;
+            }
+        }
         private readonly List<(LineRenderer Line, float Until)> _tracers = new List<(LineRenderer, float)>();
         private readonly HashSet<ushort> _seen = new HashSet<ushort>();
         private Material _lineMaterial;
@@ -64,12 +84,13 @@ namespace RWBR.Client.Online
             Clear();
             _map = map;
             _lineMaterial = new Material(Shader.Find("Sprites/Default"));
+            _fxMaterial = new Material(Shader.Find("Sprites/Default")) { renderQueue = 3100 };
             Effects = new CombatEffects(_root);
             for (int i = 0; i < map.Loot.Count; i++)
             {
                 LootSpawn item = map.Loot[i];
-                GameObject go = PracticeViews.CreatePrimitive(PrimitiveType.Cube, _root, $"Loot_{i:00}_{item.Type}", PracticeViews.LootColor(item.Type));
-                go.transform.localScale = item.Type == LootType.Rifle ? new Vector3(0.9f, 0.18f, 0.18f) : Vector3.one * 0.4f;
+                GameObject go = PracticeViews.CreatePrimitive(PrimitiveType.Cube, _root, $"Loot_{i:00}_{item.Kind}", PracticeViews.LootColor(item.Kind));
+                go.transform.localScale = PracticeViews.LootScale(item.Kind);
                 _loot.Add(go);
             }
 
@@ -145,6 +166,13 @@ namespace RWBR.Client.Online
                 }
             }
 
+            if (latest != null)
+            {
+                SyncGround(latest, time);
+                SyncProjectiles(latest, time);
+            }
+            UpdateBlasts(time);
+
             if (_zoneRing != null && latest != null)
             {
                 for (int i = 0; i < RingSegments; i++)
@@ -192,6 +220,12 @@ namespace RWBR.Client.Online
         {
             foreach (GameObject go in _bodies.Values) Object.Destroy(go);
             foreach (GameObject go in _loot) Object.Destroy(go);
+            foreach (GameObject go in _ground.Values) Object.Destroy(go);
+            foreach (var p in _projectiles.Values) Object.Destroy(p.Go);
+            foreach (var b in _blasts) Object.Destroy(b.Go);
+            _ground.Clear();
+            _projectiles.Clear();
+            _blasts.Clear();
             foreach ((LineRenderer line, float _) in _tracers) Object.Destroy(line.gameObject);
             if (_zoneRing != null) Object.Destroy(_zoneRing.gameObject);
             if (Effects != null) Effects.Destroy();
@@ -204,6 +238,110 @@ namespace RWBR.Client.Online
             _loot.Clear();
             _tracers.Clear();
             SelfTransform = null;
+        }
+
+        /// <summary>Dropped items near you, as floating boxes like map loot.</summary>
+        private void SyncGround(SnapshotPacket latest, float time)
+        {
+            _seenItems.Clear();
+            foreach (GroundItemEntry g in latest.Ground)
+            {
+                _seenItems.Add(g.Id);
+                if (!_ground.TryGetValue(g.Id, out GameObject go))
+                {
+                    go = PracticeViews.CreatePrimitive(PrimitiveType.Cube, _root, $"Ground_{g.Id}_{g.Kind}", PracticeViews.LootColor(g.Kind));
+                    go.transform.localScale = PracticeViews.LootScale(g.Kind) * 0.85f;
+                    _ground[g.Id] = go;
+                }
+                go.transform.SetPositionAndRotation(new Vector3(g.X, g.Y + 0.35f + Mathf.Sin(time * 2f + g.Id) * 0.05f, g.Z),
+                    Quaternion.Euler(0, time * 45f + g.Id * 37f, 0));
+            }
+            _gone.Clear();
+            foreach (ushort id in _ground.Keys)
+                if (!_seenItems.Contains(id)) _gone.Add(id);
+            foreach (ushort id in _gone)
+            {
+                Object.Destroy(_ground[id]);
+                _ground.Remove(id);
+            }
+        }
+
+        private readonly HashSet<ushort> _seenItems = new HashSet<ushort>();
+
+        /// <summary>Grenades in flight, the flash and sound when a frag goes off, and smoke clouds.</summary>
+        private void SyncProjectiles(SnapshotPacket latest, float time)
+        {
+            _seenItems.Clear();
+            foreach (ProjectileEntry p in latest.Projectiles)
+            {
+                _seenItems.Add(p.Id);
+                var at = new Vector3(p.X, p.Y, p.Z);
+                if (!_projectiles.TryGetValue(p.Id, out var known))
+                {
+                    GameObject g = PracticeViews.CreatePrimitive(PrimitiveType.Sphere, _root, $"Grenade_{p.Id}", PracticeViews.LootColor(p.Kind));
+                    g.transform.localScale = Vector3.one * 0.18f;
+                    g.transform.position = at;
+                    known = (g, ProjectileState.Flying);
+                }
+                if (p.State != known.State)
+                {
+                    if (p.State == ProjectileState.Exploded) Blast(at, time);
+                    if (p.State == ProjectileState.Cloud) MakeCloud(known.Go);
+                    known.State = p.State;
+                }
+                if (p.State == ProjectileState.Flying)
+                    known.Go.transform.position = Vector3.Lerp(known.Go.transform.position, at, Mathf.Clamp01(Time.deltaTime * 20f));
+                else if (p.State == ProjectileState.Cloud)
+                    known.Go.transform.position = at + Vector3.up * 1.5f;
+                else if (known.Go.activeSelf) known.Go.SetActive(false);
+                _projectiles[p.Id] = known;
+            }
+            _gone.Clear();
+            foreach (ushort id in _projectiles.Keys)
+                if (!_seenItems.Contains(id)) _gone.Add(id);
+            foreach (ushort id in _gone)
+            {
+                Object.Destroy(_projectiles[id].Go);
+                _projectiles.Remove(id);
+            }
+        }
+
+        private void MakeCloud(GameObject g)
+        {
+            var r = g.GetComponent<Renderer>();
+            r.sharedMaterial = _fxMaterial;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            PracticeViews.SetColor(g, new Color(0.78f, 0.78f, 0.8f, 0.92f));
+            g.transform.localScale = Vector3.one * Match.SmokeRadius * 2f;
+        }
+
+        private void Blast(Vector3 at, float time)
+        {
+            ExplosionsShown++;
+            GameObject flash = PracticeViews.CreatePrimitive(PrimitiveType.Sphere, _root, "Explosion", new Color(1f, 0.6f, 0.2f, 0.8f));
+            var r = flash.GetComponent<Renderer>();
+            r.sharedMaterial = _fxMaterial;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            PracticeViews.SetColor(flash, new Color(1f, 0.6f, 0.2f, 0.8f));
+            flash.transform.position = at + Vector3.up * 0.4f;
+            _blasts.Add((flash, time));
+            GameAudio.Instance.PlayAt(Sfx.Explosion, at, 1f, 250f);
+        }
+
+        private void UpdateBlasts(float time)
+        {
+            for (int i = _blasts.Count - 1; i >= 0; i--)
+            {
+                float t = (time - _blasts[i].Born) / 0.45f;
+                if (t >= 1f)
+                {
+                    Object.Destroy(_blasts[i].Go);
+                    _blasts.RemoveAt(i);
+                    continue;
+                }
+                _blasts[i].Go.transform.localScale = Vector3.one * Mathf.Lerp(1f, Match.FragRadius * 2f, Mathf.Sqrt(t));
+                PracticeViews.SetColor(_blasts[i].Go, new Color(1f, 0.6f - 0.4f * t, 0.2f, 0.8f * (1f - t)));
+            }
         }
 
         private GameObject Body(ushort id, bool self)

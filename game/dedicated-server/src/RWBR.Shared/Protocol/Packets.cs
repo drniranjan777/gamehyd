@@ -62,7 +62,9 @@ namespace RWBR.Shared.Protocol
 
     public static class ProtocolInfo
     {
-        public const ushort Version = 6;
+        public const ushort Version = 7;
+        /// <summary>Ground items (dropped or left by eliminated players) start at this id; lower ids are map loot spots.</summary>
+        public const ushort FirstGroundItemId = 0x8000;
         public const ushort NoPlayer = ushort.MaxValue;
         public const int MaxInputsPerPacket = 3;
         public const int MaxNameBytes = 24;
@@ -130,8 +132,61 @@ namespace RWBR.Shared.Protocol
         public List<SnapshotEntry> Players = new List<SnapshotEntry>();
         /// <summary>Bit i set = loot spawn i has been taken.</summary>
         public byte[] LootTaken = Array.Empty<byte>();
+        /// <summary>Dropped items near the recipient (nearest first, at most <see cref="SnapshotCodec.MaxGroundItems"/>).</summary>
+        public List<GroundItemEntry> Ground = new List<GroundItemEntry>();
+        /// <summary>Grenades and smoke clouds near the recipient.</summary>
+        public List<ProjectileEntry> Projectiles = new List<ProjectileEntry>();
+
+        // Recipient-only equipment and backpack.
+        public byte SelfVest, SelfHelmet, SelfBackpack;
+        public byte SelfHelmetPoints;
+        public ItemKind SelfHealKind;
+        public byte[] SelfSlotAttach = { 0, 0 };
+        /// <summary>Backpack contents: units per item kind (zero counts are left out).</summary>
+        public List<ItemCount> SelfItems = new List<ItemCount>();
 
         public bool IsLootTaken(int id) => id / 8 < LootTaken.Length && (LootTaken[id / 8] & (1 << (id % 8))) != 0;
+
+        public int SelfCount(ItemKind kind)
+        {
+            foreach (ItemCount c in SelfItems)
+                if (c.Kind == kind) return c.Count;
+            return 0;
+        }
+    }
+
+    public struct ItemCount
+    {
+        public ItemKind Kind;
+        public ushort Count;
+    }
+
+    /// <summary>An item lying on the ground. Positions are sent in decimetres.</summary>
+    public struct GroundItemEntry
+    {
+        public ushort Id;
+        public ItemKind Kind;
+        public ushort Count;
+        public byte Ammo;
+        public Attachments Attach;
+        public float X, Y, Z;
+    }
+
+    public enum ProjectileState : byte
+    {
+        Flying = 0,
+        /// <summary>A frag that just went off (shown for a few ticks for the blast effect).</summary>
+        Exploded = 1,
+        /// <summary>A smoke grenade's cloud.</summary>
+        Cloud = 2,
+    }
+
+    public struct ProjectileEntry
+    {
+        public ushort Id;
+        public ItemKind Kind;
+        public ProjectileState State;
+        public float X, Y, Z;
     }
 
     public sealed class EliminatedPacket
@@ -197,6 +252,8 @@ namespace RWBR.Shared.Protocol
                 w.F32(c.Yaw);
                 w.F32(c.Pitch);
                 w.U16((ushort)c.Buttons);
+                w.U8((byte)c.Item);
+                w.U16(c.Target);
             }
             return w.ToArray();
         }
@@ -217,6 +274,8 @@ namespace RWBR.Shared.Protocol
                     Yaw = r.F32(),
                     Pitch = r.F32(),
                     Buttons = (InputButtons)r.U16(),
+                    Item = (ItemKind)r.U8(),
+                    Target = r.U16(),
                 });
             }
             return list;

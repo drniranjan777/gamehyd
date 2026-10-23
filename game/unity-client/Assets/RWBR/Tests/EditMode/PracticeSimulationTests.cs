@@ -98,18 +98,19 @@ namespace RWBR.Tests
         }
 
         [Test]
-        public void Medkit_restores_health_after_three_seconds()
+        public void Medkit_restores_health_after_its_use_time()
         {
             PracticeSimulation sim = NewSim();
             SidelineEnemies(sim, except: 0);
             sim.Enemies[0].Motor = MotorState.StandingAt(new SVector3(-90, 0, 90));
-            sim.Player.Combat.Health = 40;
+            sim.Player.Combat.Health = 20;
             sim.Player.Combat.Medkits = 1;
 
             sim.Step(Cmd(InputButtons.Heal));
             Assert.IsTrue(sim.Player.Combat.Healing);
-            for (int i = 0; i < PracticeSimulation.TickRate * 3 + 1; i++) sim.Step(Cmd());
-            Assert.AreEqual(90f, sim.Player.Combat.Health, 0.01f);
+            Assert.AreEqual(ItemKind.Medkit, sim.Player.Combat.HealKind);
+            for (int i = 0; i < PracticeSimulation.TickRate * Items.MedkitSeconds + 1; i++) sim.Step(Cmd());
+            Assert.AreEqual(20f + Items.MedkitHeal, sim.Player.Combat.Health, 0.01f);
             Assert.AreEqual(0, sim.Player.Combat.Medkits);
         }
     }

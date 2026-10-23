@@ -20,6 +20,7 @@ namespace RWBR.Client.Player
         Pause,
         Switch,
         Aim,
+        Throw,
     }
 
     /// <summary>
@@ -70,6 +71,7 @@ namespace RWBR.Client.Player
             new ButtonLayout { Button = TouchButton.Pause, Label = "| |", Center = new Vector2(0.96f, 0.90f), Radius = 0.045f },
             new ButtonLayout { Button = TouchButton.Switch, Label = "SWAP", Center = new Vector2(0.80f, 0.55f), Radius = 0.05f },
             new ButtonLayout { Button = TouchButton.Aim, Label = "AIM", Center = new Vector2(0.73f, 0.27f), Radius = 0.06f },
+            new ButtonLayout { Button = TouchButton.Throw, Label = "THROW", Center = new Vector2(0.59f, 0.12f), Radius = 0.055f },
         };
 
         public const float MinButtonScale = 0.7f;
@@ -204,6 +206,8 @@ namespace RWBR.Client.Player
         public bool ForceVisible { get; set; }
         /// <summary>Set by the game each frame: the pick-up button only responds when something is in reach.</summary>
         public bool InteractAvailable { get; set; }
+        /// <summary>Whether the THROW button is shown and works (a grenade is carried).</summary>
+        public bool ThrowAvailable { get; set; }
 
         /// <summary>Current stick origin and knob in screen pixels (bottom-left origin), for drawing.</summary>
         public Vector2? StickOrigin { get; private set; }
@@ -270,6 +274,7 @@ namespace RWBR.Client.Player
             foreach (ButtonLayout b in Layout)
             {
                 if (b.Button == TouchButton.Interact && !InteractAvailable) continue;
+                if (b.Button == TouchButton.Throw && !ThrowAvailable) continue;
                 Vector2 c = new Vector2(b.Center.x * Screen.width, b.Center.y * Screen.height);
                 if (Vector2.Distance(pos, c) > b.Radius * Screen.height) continue;
 
@@ -284,6 +289,7 @@ namespace RWBR.Client.Player
                     case TouchButton.Pause: f.PausePressed = true; break;
                     case TouchButton.Switch: f.SwitchPressed = true; break;
                     case TouchButton.Aim: f.AimToggled = true; break;
+                    case TouchButton.Throw: f.ThrowPressed = true; break;
                 }
                 return new Tracked { Role = Role.Button, Button = b.Button, Origin = pos, Last = pos };
             }

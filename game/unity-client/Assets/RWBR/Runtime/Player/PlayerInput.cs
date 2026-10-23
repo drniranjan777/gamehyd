@@ -28,6 +28,10 @@ namespace RWBR.Client.Player
         public bool SwitchPressed;
         /// <summary>Select a slot directly (keys 1/2): 0 or 1, or -1 for none.</summary>
         public int SelectSlot;
+        /// <summary>Throw the selected grenade (G, left shoulder, touch THROW).</summary>
+        public bool ThrowPressed;
+        /// <summary>Switch between frag and smoke (T, d-pad right).</summary>
+        public bool CycleThrowablePressed;
 
         public void Merge(PlayerInputFrame other)
         {
@@ -45,6 +49,8 @@ namespace RWBR.Client.Player
             InventoryToggled |= other.InventoryToggled;
             PausePressed |= other.PausePressed;
             SwitchPressed |= other.SwitchPressed;
+            ThrowPressed |= other.ThrowPressed;
+            CycleThrowablePressed |= other.CycleThrowablePressed;
             if (other.SelectSlot >= 0) SelectSlot = other.SelectSlot;
         }
     }
@@ -80,6 +86,8 @@ namespace RWBR.Client.Player
                 f.InventoryToggled = kb.tabKey.wasPressedThisFrame || kb.iKey.wasPressedThisFrame;
                 f.PausePressed = kb.escapeKey.wasPressedThisFrame;
                 f.SwitchPressed = kb.qKey.wasPressedThisFrame;
+                f.ThrowPressed = kb.gKey.wasPressedThisFrame;
+                f.CycleThrowablePressed = kb.tKey.wasPressedThisFrame;
                 if (kb.digit1Key.wasPressedThisFrame) f.SelectSlot = 0;
                 if (kb.digit2Key.wasPressedThisFrame) f.SelectSlot = 1;
             }
@@ -107,6 +115,8 @@ namespace RWBR.Client.Player
                 f.InventoryToggled |= pad.selectButton.wasPressedThisFrame;
                 f.PausePressed |= pad.startButton.wasPressedThisFrame;
                 f.SwitchPressed |= pad.rightShoulder.wasPressedThisFrame;
+                f.ThrowPressed |= pad.leftShoulder.wasPressedThisFrame;
+                f.CycleThrowablePressed |= pad.dpad.right.wasPressedThisFrame;
             }
             f.Move = Vector2.ClampMagnitude(f.Move, 1f);
             return f;

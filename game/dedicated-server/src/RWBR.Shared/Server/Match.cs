@@ -38,7 +38,7 @@ namespace RWBR.Shared.Server
     /// <see cref="Receive"/>, calls <see cref="Advance"/> at the configured rate and sends <see cref="Outbox"/>.
     /// Clients only ever contribute inputs; movement, hits, damage, eliminations and the winner are decided here.
     /// </summary>
-    public sealed class Match
+    public sealed partial class Match
     {
         // Keep at most this many unprocessed inputs per player; one is consumed per tick.
         private const int MaxPendingInputs = 4;
@@ -161,6 +161,7 @@ namespace RWBR.Shared.Server
                     break;
                 case MatchPhase.Active:
                     SimulatePlayers(allowFire: true);
+                    StepProjectiles();
                     ApplyZoneDamage();
                     CheckForEnd();
                     break;
@@ -273,6 +274,7 @@ namespace RWBR.Shared.Server
                 player.Auth = new PacketAuth(JoinTicket.DeriveSessionKey(_cfg.TicketSecret!, ticket.TicketId));
             }
             player.Motor = MotorState.StandingAt(_cfg.Map.SpawnPoint(_players.Count, _cfg.MaxPlayers));
+            player.Combat.Balance = _cfg.WeaponDef;
             player.Combat.Reset(_cfg.Weapon, _cfg.StartWithWeapon, _cfg.StartingReserveAmmo, _cfg.StartingWeaponIndex);
             _players.Add(player);
             _byEndpoint[from] = player;
@@ -387,6 +389,7 @@ namespace RWBR.Shared.Server
             _zoneStartRadius = _cfg.Map.HalfSize * 1.4143f; // covers the map corners
             Array.Clear(_lootTaken, 0, _lootTaken.Length);
             WithdrawDisabledLoot();
+            ClearItems();
             for (int i = 0; i < _players.Count; i++)
             {
                 PlayerState p = _players[i];
@@ -429,10 +432,13 @@ namespace RWBR.Shared.Server
                 p.Combat.Update(Tick, ActiveWeapon(p));
                 if (!allowFire) continue;
 
-                if (cmd.Has(InputButtons.Interact)) TryPickUp(p);
+                if (cmd.Has(InputButtons.Interact)) TryPickUp(p, cmd.Target);
+                if (cmd.Has(InputButtons.DropItem) && p.Combat.Drop(cmd.Item, cmd.Target)) PlaceDrops(p);
                 if (cmd.Has(InputButtons.SwitchWeapon))
-                    p.Combat.TrySwitch(Tick, _cfg.WeaponDef(p.Combat.SlotWeapon(1 - p.Combat.ActiveSlot)), _cfg.TickRate);
+                    p.Combat.TrySwitch(Tick, p.Combat.WeaponIn(1 - p.Combat.ActiveSlot) ?? _cfg.Weapon, _cfg.TickRate);
                 if (cmd.Has(InputButtons.Heal)) p.Combat.TryStartHeal(Tick, _cfg.TickRate);
+                if (cmd.Has(InputButtons.UseItem)) p.Combat.TryStartHeal(Tick, _cfg.TickRate, cmd.Item);
+                if (cmd.Has(InputButtons.Throw)) Throw(p, cmd.Item);
                 if (cmd.Has(InputButtons.Reload)) p.Combat.TryStartReload(Tick, ActiveWeapon(p), _cfg.TickRate);
                 if (!cmd.Has(InputButtons.Fire)) continue;
 
@@ -442,33 +448,7 @@ namespace RWBR.Shared.Server
             }
         }
 
-        /// <summary>Server-validated pickup of the nearest untaken, useful loot within reach.</summary>
-        private void TryPickUp(PlayerState p)
-        {
-            IReadOnlyList<LootSpawn> loot = _cfg.Map.Loot;
-            int best = -1;
-            float bestDist = float.MaxValue;
-            for (int i = 0; i < loot.Count; i++)
-            {
-                if (_lootTaken[i] || !Simulation.CanReach(p.Motor, loot[i].Position) || !p.Combat.CanPickUp(loot[i])) continue;
-                float d = Vector3.DistanceSquared(p.Position, loot[i].Position);
-                if (d < bestDist)
-                {
-                    bestDist = d;
-                    best = i;
-                }
-            }
-            if (best < 0)
-            {
-                Stats.PickupsRejected++;
-                return;
-            }
-            _lootTaken[best] = true;
-            p.Combat.PickUp(loot[best], _cfg.WeaponDef(loot[best].WeaponIndex));
-            Stats.Pickups++;
-        }
-
-        private WeaponDefinition ActiveWeapon(PlayerState p) => _cfg.WeaponDef(p.Combat.ActiveWeaponIndex);
+        private WeaponDefinition ActiveWeapon(PlayerState p) => p.Combat.ActiveWeapon ?? _cfg.Weapon;
 
         private readonly List<TargetCapsule> _targets = new();
         private readonly List<PlayerState> _targetPlayers = new();
@@ -505,7 +485,7 @@ namespace RWBR.Shared.Server
                 if (!victim.Alive) continue;
                 Stats.Hits++;
                 if (pellet.Headshot) Stats.Headshots++;
-                victim.Combat.ApplyDamage(pellet.Damage);
+                victim.Combat.ApplyDamage(pellet.Damage, pellet.Headshot);
                 victim.Combat.CancelHeal();
                 if (!victim.Combat.Alive) Eliminate(victim, shooter);
             }
@@ -561,6 +541,8 @@ namespace RWBR.Shared.Server
             victim.Health = 0;
             victim.EliminatedAtTick = Tick;
             victim.Placement = AliveCount() + 1;
+            victim.Combat.DropAll(); // everything they carried is left where they fell
+            PlaceDrops(victim);
             if (killer != null) killer.Kills++;
             Broadcast(PacketCodec.Encode(new EliminatedPacket
             {
@@ -674,7 +656,8 @@ namespace RWBR.Shared.Server
                 if (baseline == snapshot) baseline = null;
                 if (baseline != null) Stats.DeltaSnapshots++;
                 else Stats.FullSnapshots++;
-                Send(p.EndPoint, SnapshotCodec.Encode(snapshot, baseline));
+                bool sendGround = FillSelf(snapshot, p, baseline);
+                Send(p.EndPoint, SnapshotCodec.Encode(snapshot, baseline, sendGround));
             }
         }
 

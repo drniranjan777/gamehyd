@@ -76,8 +76,8 @@ namespace RWBR.Client.Practice
             for (int i = 0; i < sim.Map.Loot.Count; i++)
             {
                 LootSpawn item = sim.Map.Loot[i];
-                GameObject go = CreatePrimitive(PrimitiveType.Cube, _root, $"Loot_{i:00}_{item.Type}", LootColor(item.Type));
-                go.transform.localScale = item.Type == LootType.Rifle ? new Vector3(0.9f, 0.18f, 0.18f) : Vector3.one * 0.4f;
+                GameObject go = CreatePrimitive(PrimitiveType.Cube, _root, $"Loot_{i:00}_{item.Kind}", LootColor(item.Kind));
+                go.transform.localScale = LootScale(item.Kind);
                 _loot.Add(go);
             }
 
@@ -154,7 +154,7 @@ namespace RWBR.Client.Practice
 
             for (int i = 0; i < _loot.Count; i++)
             {
-                bool visible = !sim.LootTaken[i];
+                bool visible = !sim.LootTaken[i] && PracticeSimulation.Usable(sim.Map.Loot[i]);
                 if (_loot[i].activeSelf != visible) _loot[i].SetActive(visible);
                 if (!visible) continue;
                 Vector3 p = sim.Map.Loot[i].Position.ToUnity();
@@ -203,15 +203,40 @@ namespace RWBR.Client.Practice
             TracersCreated++;
         }
 
-        public static Color LootColor(LootType type)
+        /// <summary>Placeholder item look by category until item art exists: colour and size of a floating box.</summary>
+        public static Color LootColor(ItemKind kind)
         {
-            switch (type)
+            switch (kind)
             {
-                case LootType.Rifle: return new Color(0.95f, 0.75f, 0.2f);
-                case LootType.Ammo: return new Color(0.55f, 0.75f, 0.3f);
-                case LootType.Medkit: return new Color(0.95f, 0.95f, 0.95f);
-                case LootType.Armor: return new Color(0.25f, 0.55f, 0.95f);
+                case ItemKind.AmmoLight: return new Color(0.75f, 0.85f, 0.35f);
+                case ItemKind.AmmoMedium: return new Color(0.5f, 0.75f, 0.3f);
+                case ItemKind.AmmoShells: return new Color(0.85f, 0.35f, 0.25f);
+                case ItemKind.AmmoHeavy: return new Color(0.35f, 0.55f, 0.3f);
+                case ItemKind.Frag: return new Color(0.3f, 0.35f, 0.2f);
+                case ItemKind.Smoke: return new Color(0.6f, 0.6f, 0.6f);
+            }
+            switch (Items.Category(kind))
+            {
+                case ItemCategory.Weapon: return new Color(0.95f, 0.75f, 0.2f);
+                case ItemCategory.Heal: return new Color(0.95f, 0.95f, 0.95f);
+                case ItemCategory.Vest: return new Color(0.25f, 0.55f, 0.95f);
+                case ItemCategory.Helmet: return new Color(0.3f, 0.85f, 0.9f);
+                case ItemCategory.Backpack: return new Color(0.55f, 0.4f, 0.25f);
+                case ItemCategory.Attachment: return new Color(0.7f, 0.4f, 0.9f);
                 default: return Color.magenta;
+            }
+        }
+
+        public static Vector3 LootScale(ItemKind kind)
+        {
+            switch (Items.Category(kind))
+            {
+                case ItemCategory.Weapon: return new Vector3(0.9f, 0.18f, 0.18f);
+                case ItemCategory.Ammo:
+                case ItemCategory.Attachment: return Vector3.one * 0.3f;
+                case ItemCategory.Throwable: return Vector3.one * 0.22f;
+                case ItemCategory.Backpack: return new Vector3(0.45f, 0.55f, 0.3f);
+                default: return Vector3.one * 0.4f;
             }
         }
 
