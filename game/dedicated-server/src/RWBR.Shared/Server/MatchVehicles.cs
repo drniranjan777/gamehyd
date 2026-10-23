@@ -127,8 +127,9 @@ namespace RWBR.Shared.Server
             foreach (PlayerState p in _players)
             {
                 if (!p.Alive || p.Vehicle != null || !VehicleSim.Touches(v.State, p.Position, GameRules.PlayerRadius)) continue;
+                bool teammate = v.Driver != null && SameTeam(v.Driver, p);
                 if (Math.Abs(p.Position.Y - v.State.Position.Y) > VehicleSim.Height) continue; // on a roof above it, or below a bridge
-                if (speed >= VehicleSim.RunOverMinSpeed)
+                if (speed >= VehicleSim.RunOverMinSpeed && !teammate)
                 {
                     p.Combat.ApplyDamage(speed * VehicleSim.RunOverDamagePerMps);
                     p.Combat.CancelHeal();

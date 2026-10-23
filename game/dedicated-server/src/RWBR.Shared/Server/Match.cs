@@ -283,7 +283,7 @@ namespace RWBR.Shared.Server
                 return;
             }
 
-            PlayerState player = AddPlayer(from, ticket?.DisplayName ?? hello.Name);
+            PlayerState player = AddPlayer(from, ticket?.DisplayName ?? hello.Name, ticket?.AccountId ?? default);
             if (ticket != null)
             {
                 player.AccountId = ticket.AccountId;
@@ -292,9 +292,9 @@ namespace RWBR.Shared.Server
             SendWelcome(player);
         }
 
-        private PlayerState AddPlayer(IPEndPoint from, string name)
+        private PlayerState AddPlayer(IPEndPoint from, string name, Guid account = default)
         {
-            var player = new PlayerState(_nextId++, name, from, _historyLength) { LastHeardTick = Tick };
+            var player = new PlayerState(_nextId++, name, from, _historyLength) { LastHeardTick = Tick, Team = TeamFor(account) };
             player.Motor = MotorState.StandingAt(_cfg.Map.SpawnPoint(_players.Count, _cfg.MaxPlayers));
             player.Combat.Balance = _cfg.WeaponDef;
             player.Combat.Reset(_cfg.Weapon, _cfg.StartWithWeapon, _cfg.StartingReserveAmmo, _cfg.StartingWeaponIndex);
@@ -376,6 +376,7 @@ namespace RWBR.Shared.Server
                 PlayerId = p.Id,
                 SessionToken = p.SessionToken,
                 TickRate = (ushort)_cfg.TickRate,
+                TeamSize = (byte)Math.Clamp(_cfg.TeamSize, 1, 255),
                 WeaponBalanceVersion = (ushort)WeaponCatalog.BalanceVersion,
                 MaxPlayers = (byte)_cfg.MaxPlayers,
                 MapVersion = _cfg.Map.Version,
@@ -458,10 +459,17 @@ namespace RWBR.Shared.Server
             WithdrawDisabledLoot();
             ClearItems();
             SpawnVehicles();
+            int teams = _players.Select(x => x.Team).Distinct().Count();
+            var teamIndex = _players.Select(x => x.Team).Distinct().OrderBy(t => t).Select((t, i) => (t, i)).ToDictionary(x => x.t, x => x.i);
+            var memberIndex = new Dictionary<int, int>();
             for (int i = 0; i < _players.Count; i++)
             {
                 PlayerState p = _players[i];
-                p.Motor = MotorState.StandingAt(_cfg.Map.SpawnPoint(i, _players.Count));
+                // Teammates start together: their team's spawn point, a couple of metres apart.
+                int member = memberIndex.TryGetValue(p.Team, out int m) ? m : 0;
+                memberIndex[p.Team] = member + 1;
+                Vector3 spawn = _cfg.Map.SpawnPoint(teamIndex[p.Team], teams) + new Vector3(member * 1.5f, 0, member % 2 * 1.5f);
+                p.Motor = MotorState.StandingAt(Simulation.ResolveCollisions(spawn, _cfg.Map));
                 p.Combat.Reset(_cfg.Weapon, _cfg.StartWithWeapon, _cfg.StartingReserveAmmo, _cfg.StartingWeaponIndex);
                 p.Alive = true;
                 p.Vehicle = null;
@@ -582,7 +590,7 @@ namespace RWBR.Shared.Server
             _targetPlayers.Clear();
             foreach (PlayerState target in _players)
             {
-                if (target == shooter || !target.Alive) continue;
+                if (target == shooter || !target.Alive || SameTeam(shooter, target)) continue; // shots pass through teammates
                 MotorState then = MotorAt(target, rewindTick);
                 _targets.Add(new TargetCapsule { Feet = then.Position, Height = then.Height });
                 _targetPlayers.Add(target);
@@ -697,7 +705,14 @@ namespace RWBR.Shared.Server
             victim.Alive = false;
             victim.Health = 0;
             victim.EliminatedAtTick = Tick;
-            victim.Placement = AliveCount() + 1;
+            // A team places when its last member is out; everyone in it shares that placement.
+            bool teamOut = !_players.Any(p => p.Alive && p.Team == victim.Team);
+            if (teamOut)
+            {
+                int place = AliveTeams() + 1;
+                foreach (PlayerState p in _players)
+                    if (p.Team == victim.Team) p.Placement = place;
+            }
             if (victim.Vehicle != null) Exit(victim, hurt: false); // out of the car first, so the loot lands beside it
             victim.Combat.DropAll(); // everything they carried is left where they fell
             PlaceDrops(victim);
@@ -706,26 +721,57 @@ namespace RWBR.Shared.Server
             {
                 VictimId = victim.Id,
                 KillerId = killer?.Id ?? ProtocolInfo.NoPlayer,
-                Placement = (byte)victim.Placement,
+                Placement = (byte)(teamOut ? victim.Placement : 0),
             }));
+        }
+
+        private int AliveTeams() => _players.Where(p => p.Alive).Select(p => p.Team).Distinct().Count();
+
+        /// <summary>Whether two players are on the same team (never true in Solo, where every team has one player).</summary>
+        public bool SameTeam(PlayerState a, PlayerState b) => a != b && a.Team == b.Team;
+
+        /// <summary>
+        /// The team for a new player: the platform's choice for a party member, else the first team with room in join
+        /// order (so a bot fills the empty seat next to a lone player in Duo or Squad).
+        /// </summary>
+        private int TeamFor(Guid account)
+        {
+            if (account != Guid.Empty && _cfg.Teams != null && _cfg.Teams.TryGetValue(account, out int fixedTeam)) return fixedTeam;
+            int size = Math.Max(1, _cfg.TeamSize);
+            var counts = new Dictionary<int, int>();
+            foreach (PlayerState p in _players) counts[p.Team] = counts.TryGetValue(p.Team, out int c) ? c + 1 : 1;
+            // Teams the platform reserved for parties are kept for them.
+            var reserved = _cfg.Teams != null ? new HashSet<int>(_cfg.Teams.Values) : new HashSet<int>();
+            for (int t = 0; ; t++)
+            {
+                if (reserved.Contains(t)) continue;
+                if (!counts.TryGetValue(t, out int n) || n < size) return t;
+            }
         }
 
         private void CheckForEnd()
         {
-            int alive = AliveCount();
-            if (alive <= 1)
+            if (AliveTeams() <= 1)
             {
-                // With one survivor they win; if the last players died on the same tick, the last eliminated
-                // already holds placement 1.
+                // With one team standing it wins; if the last players died on the same tick, the last team out already
+                // holds placement 1.
                 PlayerState? winner = _players.FirstOrDefault(p => p.Alive) ?? _players.FirstOrDefault(p => p.Placement == 1);
-                if (winner != null) winner.Placement = 1;
+                if (winner != null)
+                    foreach (PlayerState p in _players)
+                        if (p.Team == winner.Team) p.Placement = 1;
                 Complete(winner != null ? CompletionReason.Winner : CompletionReason.Cancelled, winner);
                 return;
             }
             if (Tick - _activeStartTick >= _cfg.Ticks(_cfg.MaxMatchSeconds))
             {
+                // Time's up: teams still standing are ranked by their remaining health.
                 int place = 1;
-                foreach (PlayerState p in _players.Where(p => p.Alive).OrderByDescending(p => p.Health)) p.Placement = place++;
+                foreach (var team in _players.Where(p => p.Alive).GroupBy(p => p.Team).OrderByDescending(g => g.Sum(p => p.Health)))
+                {
+                    foreach (PlayerState p in _players)
+                        if (p.Team == team.Key) p.Placement = place;
+                    place++;
+                }
                 Complete(CompletionReason.Timeout, null);
             }
         }

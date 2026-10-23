@@ -62,7 +62,7 @@ namespace RWBR.Shared.Protocol
 
     public static class ProtocolInfo
     {
-        public const ushort Version = 9;
+        public const ushort Version = 10;
         /// <summary>Ground items (dropped or left by eliminated players) start at this id; lower ids are map loot spots.</summary>
         public const ushort FirstGroundItemId = 0x8000;
         public const ushort NoPlayer = ushort.MaxValue;
@@ -91,6 +91,8 @@ namespace RWBR.Shared.Protocol
         public ushort WeaponBalanceVersion;
         /// <summary>The match's loot weights: with the map version, they decide what every loot spot holds.</summary>
         public LootTableConfig LootTable = LootTableConfig.Default;
+        /// <summary>Players per team (1 Solo, 2 Duo, 4 Squad).</summary>
+        public byte TeamSize = 1;
     }
 
     public struct SnapshotEntry
@@ -150,6 +152,10 @@ namespace RWBR.Shared.Protocol
         public byte[] SelfSlotAttach = { 0, 0 };
         /// <summary>Backpack contents: units per item kind (zero counts are left out).</summary>
         public List<ItemCount> SelfItems = new List<ItemCount>();
+        /// <summary>The recipient's teammates (empty in Solo).</summary>
+        public List<ushort> SelfTeammates = new List<ushort>();
+
+        public bool IsTeammate(ushort id) => SelfTeammates.Contains(id);
 
         public bool IsLootTaken(int id) => id / 8 < LootTaken.Length && (LootTaken[id / 8] & (1 << (id % 8))) != 0;
 
@@ -312,6 +318,7 @@ namespace RWBR.Shared.Protocol
             w.Str(p.MapVersion, 64);
             w.U16(p.WeaponBalanceVersion);
             p.LootTable.Write(w);
+            w.U8(p.TeamSize);
             return w.ToArray();
         }
 
@@ -324,6 +331,7 @@ namespace RWBR.Shared.Protocol
             MapVersion = r.Str(64),
             WeaponBalanceVersion = r.U16(),
             LootTable = LootTableConfig.Read(r),
+            TeamSize = r.U8(),
         };
 
         public static byte[] EncodeReject(RejectReason reason)

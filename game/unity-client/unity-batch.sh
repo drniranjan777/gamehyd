@@ -19,6 +19,8 @@ case "${1:-}" in
     ;;
   test)
     platform="${2:-EditMode}"
+    # A run that never starts (e.g. compile errors) must not report the previous run's results.
+    rm -f "$LOGS/results-$platform.xml"
     "$UNITY_EXE" -batchmode -nographics -projectPath "$HERE" -runTests -testPlatform "$platform" \
       -testResults "$LOGS/results-$platform.xml" -logFile "$LOGS/test-$platform.log" || true
     grep -o '<test-run [^>]*' "$LOGS/results-$platform.xml" | grep -oE '(result|total|passed|failed)="[^"]*"' | tr '\n' ' '

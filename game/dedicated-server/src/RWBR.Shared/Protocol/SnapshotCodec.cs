@@ -63,7 +63,7 @@ namespace RWBR.Shared.Protocol
     }
 
     /// <summary>
-    /// Snapshot wire format (protocol v9: v8 plus cars). Entries are delta-encoded against a baseline snapshot the receiver
+    /// Snapshot wire format (protocol v10: v9 plus the recipient's teammates). Entries are delta-encoded against a baseline snapshot the receiver
     /// acknowledged (the AckTick in its inputs); unchanged players cost 3 bytes, moving players about 12.
     /// The recipient's backpack and equipment follow the header. Ground items near the recipient are sent only when they
     /// differ from the baseline (one byte otherwise); grenades and smoke near the recipient are sent while there are any.
@@ -131,6 +131,9 @@ namespace RWBR.Shared.Protocol
                 w.U8((byte)p.SelfItems[i].Kind);
                 w.U16(p.SelfItems[i].Count);
             }
+            int mates = Math.Min(p.SelfTeammates.Count, 7);
+            w.U8((byte)mates);
+            for (int i = 0; i < mates; i++) w.U16(p.SelfTeammates[i]);
 
             Dictionary<ushort, SnapshotEntry>? baseById = Index(baseline);
             w.U8((byte)p.Players.Count);
@@ -348,6 +351,9 @@ namespace RWBR.Shared.Protocol
             p.SelfHealKind = (ItemKind)r.U8();
             int items = r.U8();
             for (int i = 0; i < items; i++) p.SelfItems.Add(new ItemCount { Kind = (ItemKind)r.U8(), Count = r.U16() });
+            int mates = r.U8();
+            if (mates > 7) throw new PacketFormatException("teammates");
+            for (int i = 0; i < mates; i++) p.SelfTeammates.Add(r.U16());
 
             Dictionary<ushort, SnapshotEntry>? baseById = Index(baseline);
             int n = r.U8();

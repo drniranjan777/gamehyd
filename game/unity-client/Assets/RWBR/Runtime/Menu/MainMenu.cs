@@ -299,10 +299,13 @@ namespace RWBR.Client.Menu
             if (GUI.Button(new Rect(40, y, 250, 52), TutorialDirector.Done ? "Training ground" : "Training ground (tutorial)", _button)) PlayTrainingGround();
             if (GUI.Button(new Rect(296, y, 184, 52), "Firing range", _button)) PlayTrainingRange();
             if (Button(y += 56, "City practice: Hyderabad-inspired map")) PlayCityPractice();
-            if (GUI.Button(new Rect(40, y += 56, 330, 52), $"Bot match: Solo vs {OnlineGame.DefaultBots} bots", _button)) PlayBotMatch();
-            // Difficulty: tap to cycle Easy → Normal → Hard.
+            if (GUI.Button(new Rect(40, y += 56, 230, 52), "Bot practice (offline)", _button)) PlayBotMatch();
+            // Mode: tap to cycle Solo → Duo → Squad (bots fill your team); difficulty: Easy → Normal → Hard.
+            int size = OnlineGame.BotTeamSizeSetting;
+            if (GUI.Button(new Rect(276, y, 96, 52), OnlineGame.ModeName(size), _button))
+                OnlineGame.BotTeamSizeSetting = size == 1 ? 2 : size == 2 ? 4 : 1;
             RWBR.Shared.Bots.BotDifficulty d = OnlineGame.BotDifficultySetting;
-            if (GUI.Button(new Rect(376, y, 104, 52), d.ToString(), _button))
+            if (GUI.Button(new Rect(378, y, 102, 52), d.ToString(), _button))
                 OnlineGame.BotDifficultySetting = (RWBR.Shared.Bots.BotDifficulty)(((int)d + 1) % 3);
             if (Button(y += 56, "Play online")) PlayOnline();
             if (Button(y += 66, "Profile & match history")) OpenPlatformScreen(Screen.Profile);

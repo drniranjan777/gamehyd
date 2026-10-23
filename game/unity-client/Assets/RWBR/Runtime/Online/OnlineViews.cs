@@ -20,6 +20,8 @@ namespace RWBR.Client.Online
     {
         private static readonly Color SelfColor = new Color(0.2f, 0.5f, 0.95f);
         private static readonly Color OtherColor = new Color(0.85f, 0.2f, 0.2f);
+        private static readonly Color TeammateColor = new Color(0.2f, 0.8f, 0.45f);
+        private readonly HashSet<ushort> _coloredMates = new HashSet<ushort>();
         private const int RingSegments = 96;
 
         private readonly Transform _root;
@@ -236,6 +238,8 @@ namespace RWBR.Client.Online
                 {
                     _seen.Add(e.PlayerId);
                     GameObject root = Body(e.PlayerId, e.PlayerId == selfId);
+                    // Teammates in their own colour (set once, when they're first known to be on your team).
+                    if (latest.IsTeammate(e.PlayerId) && _coloredMates.Add(e.PlayerId)) _characters[e.PlayerId].SetColor(TeammateColor);
 
                     if (e.PlayerId == selfId)
                     {
@@ -366,6 +370,7 @@ namespace RWBR.Client.Online
             _characters.Clear();
             _remoteAim.Clear();
             _reloads.Clear();
+            _coloredMates.Clear();
             _loot.Clear();
             _tracers.Clear();
             SelfTransform = null;

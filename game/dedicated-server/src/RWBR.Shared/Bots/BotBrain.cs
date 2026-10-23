@@ -78,7 +78,7 @@ namespace RWBR.Shared.Bots
             float best = float.MaxValue;
             foreach (SnapshotEntry p in snap.Players)
             {
-                if (p.PlayerId == selfId || (p.Flags & PlayerFlags.Alive) == 0) continue;
+                if (p.PlayerId == selfId || (p.Flags & PlayerFlags.Alive) == 0 || snap.IsTeammate(p.PlayerId)) continue;
                 var pos = new Vector3(p.X, p.Y, p.Z);
                 float d = Vector3.Distance(me, pos);
                 if (d >= best) continue;
@@ -221,6 +221,15 @@ namespace RWBR.Shared.Bots
             return true;
         }
 
+        /// <summary>Where the nearest living teammate is, if any.</summary>
+        private static Vector3? Teammate(SnapshotPacket snap, ushort selfId)
+        {
+            foreach (SnapshotEntry e in snap.Players)
+                if (e.PlayerId != selfId && snap.IsTeammate(e.PlayerId) && (e.Flags & PlayerFlags.Alive) != 0)
+                    return new Vector3(e.X, e.Y, e.Z);
+            return null;
+        }
+
         private ushort PickUpTarget() =>
             InputCommand.PickUpTarget((ushort)(_goalGround >= 0 ? _goalGround : _goalLoot));
 
@@ -284,7 +293,13 @@ namespace RWBR.Shared.Bots
             }
             else
             {
-                if (time > _roamUntil || OutsideZoneTarget(snap))
+                if (Teammate(snap, self.PlayerId) is { } mate && Vector3.Distance(me, mate) > 25 && !OutsideZone(snap, mate, 0.9f))
+                {
+                    // Stay with the team: roam to a spot near a teammate who is safely in the zone.
+                    _roamTarget = mate + new Vector3((float)(_rng.NextDouble() * 10 - 5), 0, (float)(_rng.NextDouble() * 10 - 5));
+                    _roamUntil = time + 8;
+                }
+                else if (time > _roamUntil || OutsideZoneTarget(snap))
                 {
                     double angle = _rng.NextDouble() * Math.PI * 2, r = Math.Sqrt(_rng.NextDouble()) * zr * 0.6;
                     _roamTarget = new Vector3(zx + (float)(Math.Sin(angle) * r), 0, zz + (float)(Math.Cos(angle) * r));

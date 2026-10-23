@@ -446,6 +446,56 @@ and is remembered.
 | Unity EditMode | 65/65. New: the bot difficulty is remembered, and garbage is clamped                                                                                                                                                                          |
 | Unity PlayMode | 23/23, including both full-platform tests                                                                                                                                                                                                     |
 
+## Part C6a (23 October 2026): teams (Duo and Squad)
+
+C6 is built in three slices: **C6a teams**, C6b the plane and parachute drop, C6c parties, team queues and the lobby.
+
+**Teams in the shared match:**
+
+- **Team size:** `MatchConfig.TeamSize` is 1 for Solo, 2 for Duo, 4 for Squad. Solo is exactly as before: every
+  player is a team of one, and all the earlier tests pass unchanged.
+- **Who joins which team:** players join teams in order, filling the incomplete team first. A lone player in Duo or
+  Squad bot practice, or with fill bots online, gets bot teammates. `MatchConfig.Teams` (account → team) lets the
+  platform keep a party together (used in C6c). Those teams are reserved and never filled with strangers.
+- **Spawning:** teammates start side by side at their team's spawn point.
+- **No friendly fire:** shots pass through teammates (they aren't even targets), frags spare the thrower's team (the
+  thrower can still hurt themselves), and a car never hurts its driver's teammates.
+- **Placements:** a team places when its last member is out, and every member shares that placement. The kill
+  feed's placement is 0 for a player whose team is still in.
+- **Winning:** the match ends when one team is left, and its members share 1st. At the time limit, teams still
+  standing are ranked by their combined health.
+- **Protocol 10:** Welcome carries the team size, and each snapshot lists the recipient's teammates.
+
+**Bots:** they never aim at teammates, and when roaming they stay within about 25 m of a living teammate who is safely
+in the zone.
+
+**In the game:**
+
+- **Teammates:** drawn in green, shown as green dots on the minimap, and listed down the left with health bars (or
+  "out").
+- **Results:** the results screen says "YOUR TEAM WINS" or "Team #3".
+- **Bot practice:** the offline bot match is now "Bot practice", with a Solo / Duo / Squad button next to the
+  difficulty. Both settings are remembered, and in Duo or Squad bots fill your team.
+
+**Not built in C6a:**
+
+- **Downed and revive:** players are eliminated outright, with no knocked-down state that a teammate can revive. That
+  needs a down state in the shared rules, a crawl, a revive action and a bleed-out timer. Left for after the platform
+  side (C6c) so it can be judged in real team play.
+- **Teams online:** online matches stay Solo until C6c brings parties, team queues and team results to the API.
+  `ManagedServer.BuildResult` still reports Solo placements.
+
+**Also fixed:** `unity-batch.sh test` could report the previous run's results when a run never started (a compile
+error). It now deletes the old results file first, so a failed run fails.
+
+### Tests (C6a)
+
+| Suite          | Result                                                                                                                                                                                                                                                            |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| .NET           | 134/134. New: teams fill in order and teammates start together; shots pass through a teammate and hit the enemy behind; a team places only when its last member is out, members share it, and the last team standing shares 1st; frags spare the team; fill bots complete a lone player's Squad, and Welcome and snapshots carry the team; bots never fire at a teammate; a whole Duo bot match gives every team one shared, distinct placement |
+| Unity EditMode | 66/66. New: the bot practice mode is remembered and only Solo, Duo or Squad                                                                                                                                                                                       |
+| Unity PlayMode | 24/24, including both full-platform tests. New: Squad bot practice gives you three bot teammates on your team                                                                                                                                                     |
+
 ### Not done in C1
 
 - Bots are the Phase 8 bots: no difficulty levels or weapon choice by range yet (C5).

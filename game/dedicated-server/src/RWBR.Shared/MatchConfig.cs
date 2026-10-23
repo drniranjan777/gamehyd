@@ -43,6 +43,13 @@ namespace RWBR.Shared
         /// same packets as everyone else and are left out of the platform result except as a count.
         /// </summary>
         public int FillBotsTo { get; set; }
+        /// <summary>Players per team: 1 Solo, 2 Duo, 4 Squad. Teammates can't hurt each other and win or place together.</summary>
+        public int TeamSize { get; set; } = 1;
+        /// <summary>
+        /// Teams fixed by the platform (account → team number) for parties; anyone not listed, and every player without
+        /// a ticket, is placed in order, filling incomplete teams first.
+        /// </summary>
+        public Dictionary<System.Guid, int>? Teams { get; set; }
         public Bots.BotDifficulty BotDifficulty { get; set; } = Bots.BotDifficulty.Normal;
         /// <summary>Cars at the map's vehicle spawns (<see cref="VehicleSpawns"/>; the small maps have none).</summary>
         public bool Vehicles { get; set; } = true;

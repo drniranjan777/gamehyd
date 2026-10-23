@@ -243,6 +243,24 @@ namespace RWBR.Client.Online
 
         private static string Level(int level) => level > 0 ? $"L{level}" : "—";
 
+        /// <summary>Teammates down the left side: name, health, and whether they're still in.</summary>
+        private void DrawTeam(SnapshotPacket s)
+        {
+            if (s.SelfTeammates.Count == 0) return;
+            float x = 24, y = VirtualHeight * 0.42f;
+            GUI.Label(new Rect(x, y - 24, 200, 22), "Team", _small);
+            foreach (ushort id in s.SelfTeammates)
+            {
+                SnapshotEntry? mate = null;
+                foreach (SnapshotEntry e in s.Players)
+                    if (e.PlayerId == id) mate = e;
+                bool alive = mate is { } m && (m.Flags & PlayerFlags.Alive) != 0;
+                GUI.Label(new Rect(x, y, 200, 20), alive ? $"Player {id}" : $"Player {id} — out", _small);
+                Bar(new Rect(x, y + 20, 180, 8), alive ? mate.Value.Health / GameRules.MaxHealth : 0, new Color(0.3f, 0.85f, 0.45f));
+                y += 34;
+            }
+        }
+
         /// <summary>In a car: speed, the car's health, and how to get out.</summary>
         private void DrawCar()
         {
@@ -276,7 +294,11 @@ namespace RWBR.Client.Online
             bool touch = _game.Touch.Visible && _game.InputOverride == null;
             const float size = 200;
             float right = touch ? _w - 0.09f * _w : _w - 16;
-            _mapHud.DrawMinimap(new Rect(right - size, 16, size, size), _game.Map, me, _game.ViewYaw, zone, _game.Marker);
+            var mates = new System.Collections.Generic.List<Vector2>();
+            foreach (SnapshotEntry e in s.Players)
+                if (s.IsTeammate(e.PlayerId) && (e.Flags & PlayerFlags.Alive) != 0) mates.Add(new Vector2(e.X, e.Z));
+            _mapHud.DrawMinimap(new Rect(right - size, 16, size, size), _game.Map, me, _game.ViewYaw, zone, _game.Marker, mates);
+            DrawTeam(s);
             GUI.Label(new Rect(right - size, 16 + size + 2, size, 20), _game.Map.DistrictAt(self.X, self.Z), new GUIStyle(_small) { alignment = TextAnchor.UpperCenter });
         }
 
@@ -519,8 +541,9 @@ namespace RWBR.Client.Online
             int place = 0;
             foreach (PlacementEntry p in res.Placements)
                 if (p.PlayerId == net.PlayerId) place = p.Placement;
-            bool won = res.WinnerId == net.PlayerId;
-            Rect r = Panel(520, 280, won ? "WINNER" : $"#{place}");
+            bool team = _game.Net.Welcome != null && _game.Net.Welcome.TeamSize > 1;
+            bool won = place == 1 && res.Reason == CompletionReason.Winner;
+            Rect r = Panel(520, 280, won ? (team ? "YOUR TEAM WINS" : "WINNER") : team ? $"Team #{place}" : $"#{place}");
             string winner = res.WinnerId == ProtocolInfo.NoPlayer ? "No winner" : $"Winner: Player {res.WinnerId}";
             GUI.Label(new Rect(r.x, r.y + 80, r.width, 30), $"{winner}   ·   {res.Reason}", _center);
             if (_game.Platform != null)

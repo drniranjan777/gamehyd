@@ -53,6 +53,7 @@ namespace RWBR.Shared.Server
         private readonly List<GroundItemEntry> _groundScratch = new();
         private readonly List<ProjectileEntry> _projectileScratch = new();
         private readonly List<ItemCount> _itemsScratch = new();
+        private readonly List<ushort> _matesScratch = new();
 
         public int GroundItemCount => _ground.Count;
 
@@ -243,7 +244,7 @@ namespace RWBR.Shared.Server
             DamageVehiclesFromBlast(blast, pr.Owner);
             foreach (PlayerState victim in _players)
             {
-                if (!victim.Alive) continue;
+                if (!victim.Alive || (pr.Owner != null && SameTeam(pr.Owner, victim))) continue; // spares the thrower's team
                 Vector3 chest = victim.Position + new Vector3(0, victim.Motor.Height * 0.55f, 0);
                 Vector3 to = chest - blast;
                 float d = to.Length();
@@ -290,6 +291,10 @@ namespace RWBR.Shared.Server
                 if (n > 0 && Items.Stored(kind)) _itemsScratch.Add(new ItemCount { Kind = kind, Count = (ushort)Math.Min(n, ushort.MaxValue) });
             }
             snapshot.SelfItems = _itemsScratch;
+            _matesScratch.Clear();
+            foreach (PlayerState other in _players)
+                if (SameTeam(p, other)) _matesScratch.Add(other.Id);
+            snapshot.SelfTeammates = _matesScratch;
 
             _groundScratch.Clear();
             foreach (GroundItem g in _ground)

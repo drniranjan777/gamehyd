@@ -96,7 +96,8 @@ namespace RWBR.Client.Online
         /// The minimap at <paramref name="r"/>, north-up and centred on you, with the zone and next circle, your heading
         /// and your marker.
         /// </summary>
-        public void DrawMinimap(Rect r, MapLayout map, Vector2 me, float yawDegrees, ZoneView zone, Vector2? marker)
+        public void DrawMinimap(Rect r, MapLayout map, Vector2 me, float yawDegrees, ZoneView zone, Vector2? marker,
+            IReadOnlyList<Vector2> teammates = null)
         {
             Texture2D pic = Picture(map);
             float size = map.HalfSize * 2;
@@ -112,6 +113,12 @@ namespace RWBR.Client.Online
             Circle(local, Local(zone.Center), zone.Radius / half * r.width / 2, new Color(0.3f, 0.6f, 1f, 0.9f), 2f);
             if (zone.Closing) Circle(local, Local(zone.NextCenter), zone.NextRadius / half * r.width / 2, Color.white, 1.5f);
             if (marker.HasValue) Dot(Local(marker.Value), 7, new Color(1f, 0.85f, 0.1f));
+            if (teammates != null)
+                foreach (Vector2 t in teammates)
+                {
+                    Vector2 q = Local(t);
+                    if (local.Contains(q)) Dot(q, 7, new Color(0.2f, 0.85f, 0.45f));
+                }
             GUI.EndGroup();
             Arrow(r.center, yawDegrees, 9, new Color(1f, 1f, 1f));
         }

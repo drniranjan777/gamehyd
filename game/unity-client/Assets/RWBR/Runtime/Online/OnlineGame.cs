@@ -271,13 +271,49 @@ namespace RWBR.Client.Online
             _localConfig = config;
             int seed = Environment.TickCount & 0xFFFF;
             MatchConfig cfg = config ?? LocalMatch.BotMatchConfig(CityMap.BuildV2(), bots);
-            if (config == null) cfg.ZoneSeed = seed | 1; // a different zone every match
+            if (config == null)
+            {
+                cfg.ZoneSeed = seed | 1; // a different zone every match
+                cfg.TeamSize = BotTeamSizeSetting; // Duo and Squad: bots fill your team
+            }
             Local = new LocalMatch(cfg, bots, seed, BotDifficultySetting);
             Net.ConnectLocal(Local, PlayerName);
             ResetMatchView();
         }
 
         private const string BotDifficultyKey = "rwbr.botDifficulty";
+        private const string BotTeamSizeKey = "rwbr.botTeamSize";
+
+        /// <summary>Bot practice team size (1 Solo, 2 Duo, 4 Squad), remembered between sessions.</summary>
+        public static int BotTeamSizeSetting
+        {
+            get
+            {
+                try
+                {
+                    int v = PlayerPrefs.GetInt(BotTeamSizeKey, 1);
+                    return v == 2 || v == 4 ? v : 1;
+                }
+                catch (Exception)
+                {
+                    return 1;
+                }
+            }
+            set
+            {
+                try
+                {
+                    PlayerPrefs.SetInt(BotTeamSizeKey, value == 2 || value == 4 ? value : 1);
+                    PlayerPrefs.Save();
+                }
+                catch (Exception)
+                {
+                    // Storage unavailable: this session only.
+                }
+            }
+        }
+
+        public static string ModeName(int teamSize) => teamSize == 4 ? "Squad" : teamSize == 2 ? "Duo" : "Solo";
 
         /// <summary>The offline bot match's difficulty, remembered between sessions.</summary>
         public static RWBR.Shared.Bots.BotDifficulty BotDifficultySetting
