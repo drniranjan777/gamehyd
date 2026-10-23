@@ -15,6 +15,18 @@ namespace RWBR.Shared
         /// <summary>Highest ledge a character walks up without jumping (stairs, kerbs).</summary>
         public const float StepHeight = 0.45f;
 
+        // Plane drop
+        public const float PlaneAltitude = 160f;
+        public const float PlaneSpeed = 60f;
+        /// <summary>Falling: steerable this fast across the ground, and down at terminal speed.</summary>
+        public const float FreefallSpeed = 14f;
+        public const float FreefallFallSpeed = 40f;
+        /// <summary>The parachute opens on its own at this height above whatever is below, or earlier with Jump (above the minimum).</summary>
+        public const float ParachuteAutoHeight = 45f;
+        public const float ParachuteMinHeight = 60f;
+        public const float ParachuteSpeed = 7f;
+        public const float ParachuteFallSpeed = 6f;
+
         // Body
         public const float PlayerRadius = 0.4f;
         public const float PlayerHeight = 1.8f;

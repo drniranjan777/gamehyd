@@ -103,6 +103,7 @@ public sealed class ManagedServer
         cfg.TicketSecret = _o.TicketSecret;
         cfg.MatchId = a.MatchId;
         cfg.ZoneSeed = a.MatchId.GetHashCode() | 1; // the circles move, differently every match
+        cfg.PlaneDrop = !_o.Fast && map.Version.StartsWith("hyd-city", StringComparison.Ordinal); // city matches start with the drop
         cfg.LootTable = a.LootTable?.Clamped() ?? LootTableConfig.Default; // live-ops loot weights
         if (a.FillBots)
         {

@@ -496,6 +496,81 @@ error). It now deletes the old results file first, so a failed run fails.
 | Unity EditMode | 66/66. New: the bot practice mode is remembered and only Solo, Duo or Squad                                                                                                                                                                                       |
 | Unity PlayMode | 24/24, including both full-platform tests. New: Squad bot practice gives you three bot teammates on your team                                                                                                                                                     |
 
+## Part C6b (23 October 2026): the plane and parachute drop
+
+**In the shared rules:**
+
+- **Drop phases:** `MotorState.Drop` is Plane, Freefall, Parachute or None.
+- **Free fall:** falls at 40 m/s and steers across the ground at 14 m/s.
+- **Parachute:** opens on its own 45 m above whatever is below, or earlier with Jump from 60 m up. Under it you fall
+  at 6 m/s and steer at 7 m/s.
+- **Landing:** on the ground or a roof, ready to walk. Someone who comes down in the lake or river is set on the
+  nearest dry ground.
+- **Prediction:** falling is ordinary movement (`Simulation.Step`), so clients predict it like walking.
+- **The full fall:** from 160 m it takes about 10 s.
+
+**In the match** (`Server/MatchDrop.cs`, when `MatchConfig.PlaneDrop` is on):
+
+- **Boarding:** when play starts, everyone boards a plane crossing the map in a straight line at 160 m and 60 m/s.
+- **Flight path:** different every match (from the zone seed), wholly over the map, and passing between the map
+  centre and the first circle.
+- **Jumping:** Jump leaves the plane. Anyone still aboard at the end of the line is dropped.
+- **Restrictions:** aboard or falling, there are no weapons, items or cars.
+- **Where it's on:** offline city bot practice and online city matches. The small maps keep their spawn points.
+
+**Protocol 11:**
+
+- **Player flags:** now 16 bits (InPlane, Freefall, Parachute), so everyone sees who is falling or under a parachute.
+- **Plane:** snapshots carry its position while it flies.
+
+**Bots:**
+
+- **Landing spot:** a bot picks a ground-level, walkable loot spot within 35 % of the coming circle's radius of its
+  centre, so roofs can't strand it and bots land close enough to meet.
+- **Jumping:** a bot jumps when the plane is right over that spot or has just passed its closest point, then steers
+  to it while falling.
+
+**In the game:**
+
+- **Plane:** a placeholder airframe (fuselage, wings, tail) with a low engine drone.
+- **Riding:** you're hidden aboard, and the camera rides above the plane.
+- **Parachutes:** an orange canopy appears over anyone under a parachute.
+- **HUD:** "[Space] / JUMP Jump out of the plane", then the height and when the parachute opens.
+
+**What the drop did to matches** (simulator, 20 bots, loot-first, 6 matches each):
+
+| Map | Start | Active play | Player kills | Zone eliminations |
+| --- | --- | --- | --- | --- |
+| v1 | spawn points | 7.4 min | 8.0 | 11.2 |
+| v1 | drop | 6.7 min | 14.3 | 4.7 |
+| v2 | spawn points | 7.3 min | 7.2 | 11.8 |
+| v2 | drop | 7.3 min | 12.8 | 6.2 |
+
+The drop fixes the problem C3 and C5 kept running into: most bots dying in the zone instead of fighting. Two earlier
+tries at the bots' landing choice did worse:
+
+- **Any loot spot within 70 % of the circle:** 5.0 kills on v2. Roofs stranded bots, and they spread too thin to meet.
+- **Ground-only spots within 70 %:** 5.8 kills.
+- **Clustering within 35 %:** 12.8 kills, the version above.
+
+### Changed files (C6b)
+
+- Shared: `MotorState.cs` (`DropPhase`), `GameRules.cs` (drop constants), `Simulation.cs` (falling, parachute,
+  landing, `NearestDry`), `Server/MatchDrop.cs` (new: plane, jump, eject), `Server/Match.cs`, `MatchConfig.cs`
+  (`PlaneDrop`), `Protocol/Packets.cs` and `Protocol/SnapshotCodec.cs` (16-bit flags, plane), `Bots/BotBrain.cs`
+  (drop), `Server/LocalMatch.cs`.
+- Server: `Platform/ManagedServer.cs` (drop on city maps), `Program.cs` (`--no-drop`).
+- Unity: `OnlineGame.cs`, `OnlineViews.cs` (plane, parachutes), `OnlineHud.cs`, `ClientPrediction.cs`,
+  `RemoteInterpolator.cs` (plane sampling).
+
+### Tests (C6b)
+
+| Suite          | Result                                                                                                                                                                                                                                                                               |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| .NET           | 139/139. New: free fall opens the parachute at 45 m and lands ready to walk in the expected time; Jump opens it early only above 60 m; free fall steers faster than the parachute; a landing in the lake ends on dry ground; everyone starts aboard a plane flying over the map, rides with it, can't shoot after jumping, is seen falling in snapshots, is dropped at the end of the line, and lands; bots all jump, land, and none is stranded on a roof; the full player entry is now 25 bytes |
+| Unity EditMode | 66/66                                                                                                                                                                                                                                                                                |
+| Unity PlayMode | 25/25, including both full-platform tests. New: an offline city match starts in the plane, which is drawn and ridden; Jump leaves it, a parachute opens on the way down, and you land                                                                                              |
+
 ### Not done in C1
 
 - Bots are the Phase 8 bots: no difficulty levels or weapon choice by range yet (C5).

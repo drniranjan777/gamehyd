@@ -63,7 +63,7 @@ namespace RWBR.Shared.Protocol
     }
 
     /// <summary>
-    /// Snapshot wire format (protocol v10: v9 plus the recipient's teammates). Entries are delta-encoded against a baseline snapshot the receiver
+    /// Snapshot wire format (protocol v11: v10 with 16-bit player flags for the drop, and the drop plane). Entries are delta-encoded against a baseline snapshot the receiver
     /// acknowledged (the AckTick in its inputs); unchanged players cost 3 bytes, moving players about 12.
     /// The recipient's backpack and equipment follow the header. Ground items near the recipient are sent only when they
     /// differ from the baseline (one byte otherwise); grenades and smoke near the recipient are sent while there are any.
@@ -104,6 +104,13 @@ namespace RWBR.Shared.Protocol
             w.F32(p.NextZoneX);
             w.F32(p.NextZoneZ);
             w.F32(p.NextZoneRadius);
+            w.U8(p.PlaneFlying ? (byte)1 : (byte)0);
+            if (p.PlaneFlying)
+            {
+                w.F32(p.PlaneX);
+                w.F32(p.PlaneZ);
+                w.U16(Quantize.Yaw(p.PlaneYaw));
+            }
             w.U32(p.AckSequence);
             w.U8(p.AliveCount);
             w.U16(p.SelfReserveAmmo);
@@ -329,6 +336,13 @@ namespace RWBR.Shared.Protocol
             p.NextZoneX = r.F32();
             p.NextZoneZ = r.F32();
             p.NextZoneRadius = r.F32();
+            p.PlaneFlying = r.U8() != 0;
+            if (p.PlaneFlying)
+            {
+                p.PlaneX = r.F32();
+                p.PlaneZ = r.F32();
+                p.PlaneYaw = Quantize.Yaw(r.U16());
+            }
             p.AckSequence = r.U32();
             p.AliveCount = r.U8();
             p.SelfReserveAmmo = r.U16();
@@ -450,7 +464,7 @@ namespace RWBR.Shared.Protocol
             if ((mask & Field.Health) != 0) w.U8(e.Health);
             if ((mask & Field.Armor) != 0) w.U8(e.Armor);
             if ((mask & Field.Ammo) != 0) w.U8(e.Ammo);
-            if ((mask & Field.Flags) != 0) w.U8((byte)e.Flags);
+            if ((mask & Field.Flags) != 0) w.U16((ushort)e.Flags);
             if ((mask & Field.Weapon) != 0)
             {
                 w.U8(e.Weapon);
@@ -494,7 +508,7 @@ namespace RWBR.Shared.Protocol
             if ((mask & Field.Health) != 0) e.Health = r.U8();
             if ((mask & Field.Armor) != 0) e.Armor = r.U8();
             if ((mask & Field.Ammo) != 0) e.Ammo = r.U8();
-            if ((mask & Field.Flags) != 0) e.Flags = (PlayerFlags)r.U8();
+            if ((mask & Field.Flags) != 0) e.Flags = (PlayerFlags)r.U16();
             if ((mask & Field.Weapon) != 0)
             {
                 e.Weapon = r.U8();

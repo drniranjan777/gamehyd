@@ -73,6 +73,7 @@ namespace RWBR.Client.Online
             SoundCues.Draw(_w, VirtualHeight, Camera.main);
                 DrawVitals(s, self.Value);
                 DrawCar();
+                DrawDrop(self.Value);
                 DrawNavigation(s, self.Value);
                 DrawQuickBar();
                 DrawPrompt();
@@ -259,6 +260,22 @@ namespace RWBR.Client.Online
                 Bar(new Rect(x, y + 20, 180, 8), alive ? mate.Value.Health / GameRules.MaxHealth : 0, new Color(0.3f, 0.85f, 0.45f));
                 y += 34;
             }
+        }
+
+        /// <summary>The drop: how to jump, the height, and when the parachute opens.</summary>
+        private void DrawDrop(SnapshotEntry self)
+        {
+            if (_game.MenusOpen) return;
+            string key = _game.Touch.Visible ? "JUMP" : "[Space]";
+            string text = null;
+            if ((self.Flags & PlayerFlags.InPlane) != 0) text = $"{key}  Jump out of the plane";
+            else if ((self.Flags & PlayerFlags.Freefall) != 0)
+                text = $"Falling · {self.Y:0} m · the parachute opens at {GameRules.ParachuteAutoHeight:0} m ({key} to open now)";
+            else if ((self.Flags & PlayerFlags.Parachute) != 0) text = $"Parachute · {self.Y:0} m · steer with the stick";
+            if (text == null) return;
+            var r = new Rect(_w / 2 - 260, VirtualHeight * 0.66f, 520, 34);
+            Fill(r, new Color(0, 0, 0, 0.5f));
+            GUI.Label(r, text, _center);
         }
 
         /// <summary>In a car: speed, the car's health, and how to get out.</summary>

@@ -117,6 +117,7 @@ namespace RWBR.Shared.Server
             StartWithWeapon = false,
             ResultBroadcastSeconds = 1f,
             ZoneSeed = 1, // moving circles (the game picks a new seed per match)
+            PlaneDrop = map.Version.StartsWith("hyd-city", StringComparison.Ordinal), // the city starts with the drop
         };
 
         public void SendFromPlayer(byte[] data)

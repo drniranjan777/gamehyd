@@ -125,6 +125,68 @@ namespace RWBR.Client.Online
 
         private LineRenderer _nextRing;
         private GameObject _beacon;
+        private readonly Dictionary<ushort, GameObject> _chutes = new Dictionary<ushort, GameObject>();
+        private Transform _plane;
+        private AudioSource _planeEngine;
+
+        public bool PlaneShown => _plane != null && _plane.gameObject.activeSelf;
+        public int ParachutesShown
+        {
+            get
+            {
+                int n = 0;
+                foreach (GameObject c in _chutes.Values) n += c.activeSelf ? 1 : 0;
+                return n;
+            }
+        }
+
+        /// <summary>A canopy over someone under a parachute (placeholder shape until the art exists).</summary>
+        private void ShowParachute(ushort id, Transform body, bool open)
+        {
+            _chutes.TryGetValue(id, out GameObject chute);
+            if (open && chute == null)
+            {
+                chute = PracticeViews.CreatePrimitive(PrimitiveType.Sphere, body, "Parachute", new Color(0.95f, 0.55f, 0.15f));
+                chute.transform.localPosition = new Vector3(0, 5.2f, 0);
+                chute.transform.localScale = new Vector3(5f, 1.2f, 4f);
+                chute.GetComponent<Renderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                _chutes[id] = chute;
+            }
+            if (chute != null && chute.activeSelf != open) chute.SetActive(open);
+        }
+
+        /// <summary>The drop plane while it flies: a placeholder airframe with an engine drone.</summary>
+        private void SyncPlane(RemoteInterpolator interp)
+        {
+            bool flying = interp.TrySamplePlane(out SVector3 at, out float yaw);
+            if (flying && _plane == null)
+            {
+                _plane = new GameObject("DropPlane").transform;
+                _plane.SetParent(_root, false);
+                var grey = new Color(0.55f, 0.58f, 0.6f);
+                GameObject body = PracticeViews.CreatePrimitive(PrimitiveType.Cube, _plane, "Fuselage", grey);
+                body.transform.localScale = new Vector3(4f, 4f, 26f);
+                GameObject wings = PracticeViews.CreatePrimitive(PrimitiveType.Cube, _plane, "Wings", grey);
+                wings.transform.localScale = new Vector3(30f, 0.5f, 5f);
+                GameObject tail = PracticeViews.CreatePrimitive(PrimitiveType.Cube, _plane, "Tail", grey);
+                tail.transform.localPosition = new Vector3(0, 3f, -11f);
+                tail.transform.localScale = new Vector3(0.5f, 5f, 4f);
+                _planeEngine = _plane.gameObject.AddComponent<AudioSource>();
+                _planeEngine.clip = GameAudio.EngineClip();
+                _planeEngine.loop = true;
+                _planeEngine.pitch = 0.45f;
+                _planeEngine.spatialBlend = 1f;
+                _planeEngine.minDistance = 30f;
+                _planeEngine.maxDistance = 600f;
+                _planeEngine.dopplerLevel = 0;
+            }
+            if (_plane == null) return;
+            if (_plane.gameObject.activeSelf != flying) _plane.gameObject.SetActive(flying);
+            if (!flying) return;
+            _plane.SetPositionAndRotation(ToUnity(at) + Vector3.up * 2f, Quaternion.Euler(0, yaw * Mathf.Rad2Deg, 0));
+            _planeEngine.volume = 0.6f * GameSettings.SfxVolume;
+            if (!_planeEngine.isPlaying) _planeEngine.Play();
+        }
         private readonly Dictionary<byte, CarView> _cars = new Dictionary<byte, CarView>();
 
         public int CarsShown => _cars.Count;
@@ -245,7 +307,8 @@ namespace RWBR.Client.Online
                     {
                         root.transform.SetPositionAndRotation(ToUnity(selfPosition), Quaternion.Euler(0, selfYawDegrees, 0));
                         SelfTransform = root.transform;
-                        _characters[e.PlayerId].SetHidden(_selfHidden);
+                        _characters[e.PlayerId].SetHidden(_selfHidden || (e.Flags & PlayerFlags.InPlane) != 0);
+                        ShowParachute(e.PlayerId, root.transform, (e.Flags & PlayerFlags.Parachute) != 0);
                         float selfReload = ReloadProgress(e, time);
                         Pose(e, selfMotor.Height, selfYawDegrees, _selfPitch, _selfAim, selfReload, selfMotor.Grounded, selfMotor.Crouched);
                         UpdateWeapon(e, selfMotor.EyeHeight, _selfPitch, _selfAim, selfReload, _selfHidden, time);
@@ -254,6 +317,8 @@ namespace RWBR.Client.Online
 
                     if (!interp.TrySample(e.PlayerId, out SVector3 p, out float yaw, out SnapshotEntry sampled)) continue;
                     root.transform.SetPositionAndRotation(ToUnity(p), Quaternion.Euler(0, yaw * Mathf.Rad2Deg, 0));
+                    _characters[e.PlayerId].SetHidden((sampled.Flags & PlayerFlags.InPlane) != 0);
+                    ShowParachute(e.PlayerId, root.transform, (sampled.Flags & PlayerFlags.Parachute) != 0);
                     bool crouched = (sampled.Flags & PlayerFlags.Crouched) != 0;
                     float h = crouched ? GameRules.CrouchHeight : GameRules.PlayerHeight;
                     float pitch = RemotePitchDegrees(sampled);
@@ -296,6 +361,7 @@ namespace RWBR.Client.Online
                 SyncGround(latest, time);
                 SyncProjectiles(latest, time);
                 SyncCars(interp, latest, Time.deltaTime);
+                SyncPlane(interp);
             }
             UpdateBlasts(time);
 
@@ -363,6 +429,9 @@ namespace RWBR.Client.Online
             _beacon = null;
             foreach (CarView c in _cars.Values) Object.Destroy(c.Root.gameObject);
             _cars.Clear();
+            _chutes.Clear(); // children of the bodies, destroyed with them
+            if (_plane != null) Object.Destroy(_plane.gameObject);
+            _plane = null;
             if (Effects != null) Effects.Destroy();
             Effects = null;
             _bodies.Clear();

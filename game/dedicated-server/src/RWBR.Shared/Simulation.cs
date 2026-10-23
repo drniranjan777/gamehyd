@@ -63,6 +63,12 @@ namespace RWBR.Shared
                 mx /= len;
                 mz /= len;
             }
+            if (s.Drop == DropPhase.Plane) return; // the match carries everyone aboard
+            if (s.Drop != DropPhase.None)
+            {
+                StepDrop(ref s, input, mx, mz, dt, map);
+                return;
+            }
 
             if (input.Has(InputButtons.Crouch)) s.Crouched = true;
             else if (s.Crouched && HasHeadroom(s.Position, GameRules.PlayerHeight, map)) s.Crouched = false;
@@ -114,6 +120,61 @@ namespace RWBR.Shared
             }
 
             s.Position = p;
+        }
+
+        /// <summary>
+        /// Falling from the plane: steer across the ground with the stick (faster in free fall), fall at a steady speed,
+        /// open the parachute with Jump high enough up or automatically near the ground, and land on whatever is below
+        /// (ground or roof), ready to walk.
+        /// </summary>
+        private static void StepDrop(ref MotorState s, InputCommand input, float mx, float mz, float dt, MapLayout map)
+        {
+            float yaw = WrapYaw(input.Yaw);
+            float ground = GroundHeight(s.Position, s.Position.Y, map);
+            float height = s.Position.Y - ground;
+            if (s.Drop == DropPhase.Freefall &&
+                (height <= GameRules.ParachuteAutoHeight || (input.Has(InputButtons.Jump) && height >= GameRules.ParachuteMinHeight)))
+                s.Drop = DropPhase.Parachute;
+
+            bool chute = s.Drop == DropPhase.Parachute;
+            float speed = chute ? GameRules.ParachuteSpeed : GameRules.FreefallSpeed;
+            Vector3 p = s.Position + (Right(yaw) * mx + Forward(yaw) * mz) * speed * dt;
+            float limit = map.HalfSize - GameRules.PlayerRadius;
+            p.X = Math.Max(-limit, Math.Min(limit, p.X));
+            p.Z = Math.Max(-limit, Math.Min(limit, p.Z));
+            p = ResolveHorizontal(p, s.Position.Y, GameRules.PlayerHeight, map);
+            s.VerticalVelocity = -(chute ? GameRules.ParachuteFallSpeed : GameRules.FreefallFallSpeed);
+            p.Y = s.Position.Y + s.VerticalVelocity * dt;
+            float below = GroundHeight(p, s.Position.Y, map);
+            if (p.Y <= below)
+            {
+                p.Y = below;
+                if (ResolveHorizontal(p, p.Y, GameRules.PlayerHeight, map) != p) p = NearestDry(p, map); // came down in water
+                s.Drop = DropPhase.None;
+                s.Grounded = true;
+                s.VerticalVelocity = 0;
+                s.Crouched = false;
+            }
+            else s.Grounded = false;
+            s.Position = p;
+        }
+
+        /// <summary>The nearest spot (2 m steps, up to 120 m out) where someone can stand: for landings in water.</summary>
+        public static Vector3 NearestDry(Vector3 p, MapLayout map)
+        {
+            for (float r = 2; r <= 120; r += 2)
+            {
+                int steps = (int)Math.Max(8, r * 1.5f);
+                for (int i = 0; i < steps; i++)
+                {
+                    double a = i * Math.PI * 2 / steps;
+                    var q = new Vector3(p.X + (float)Math.Sin(a) * r, 0, p.Z + (float)Math.Cos(a) * r);
+                    if (Math.Abs(q.X) > map.HalfSize - 1 || Math.Abs(q.Z) > map.HalfSize - 1) continue;
+                    q.Y = GroundHeight(q, GameRules.StepHeight, map);
+                    if (q.Y <= GameRules.StepHeight && ResolveHorizontal(q, q.Y, GameRules.PlayerHeight, map) == q) return q;
+                }
+            }
+            return p;
         }
 
         /// <summary>One grounded step without jump/crouch state. Kept for simple callers and tests.</summary>

@@ -69,6 +69,9 @@ namespace RWBR.Client.Online
                 VerticalVelocity = s.SelfVerticalVelocity,
                 Grounded = (me.Flags & PlayerFlags.Grounded) != 0,
                 Crouched = (me.Flags & PlayerFlags.Crouched) != 0,
+                Drop = (me.Flags & PlayerFlags.InPlane) != 0 ? DropPhase.Plane
+                    : (me.Flags & PlayerFlags.Freefall) != 0 ? DropPhase.Freefall
+                    : (me.Flags & PlayerFlags.Parachute) != 0 ? DropPhase.Parachute : DropPhase.None,
             };
 
             _pending.RemoveAll(c => c.Sequence <= s.AckSequence);

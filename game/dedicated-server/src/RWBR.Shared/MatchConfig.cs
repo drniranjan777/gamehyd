@@ -43,6 +43,8 @@ namespace RWBR.Shared
         /// same packets as everyone else and are left out of the platform result except as a count.
         /// </summary>
         public int FillBotsTo { get; set; }
+        /// <summary>Start from a plane flying across the map (jump, fall, parachute) instead of the map's spawn points.</summary>
+        public bool PlaneDrop { get; set; }
         /// <summary>Players per team: 1 Solo, 2 Duo, 4 Squad. Teammates can't hurt each other and win or place together.</summary>
         public int TeamSize { get; set; } = 1;
         /// <summary>

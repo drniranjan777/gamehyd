@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using RWBR.Shared;
 using RWBR.Shared.Protocol;
 using SVector3 = System.Numerics.Vector3;
 
@@ -111,6 +112,33 @@ namespace RWBR.Client.Online
             yaw = LerpAngle(ea.Yaw, eb.Yaw, t);
             entry = t < 0.5f ? ea : eb;
             entry.Speed = ea.Speed + (eb.Speed - ea.Speed) * t;
+            return true;
+        }
+
+        /// <summary>The drop plane at the render time, while it flies.</summary>
+        public bool TrySamplePlane(out SVector3 position, out float yaw)
+        {
+            position = default;
+            yaw = 0;
+            SnapshotPacket a = null, b = null;
+            foreach (SnapshotPacket s in _buffer)
+            {
+                if (s.Tick <= _renderTick) a = s;
+                else
+                {
+                    b = s;
+                    break;
+                }
+            }
+            if (a == null) a = b;
+            if (b == null) b = a;
+            if (a == null || !a.PlaneFlying && !b.PlaneFlying) return false;
+            if (!a.PlaneFlying) a = b;
+            if (!b.PlaneFlying) b = a;
+            float t = b.Tick == a.Tick ? 1f : (float)((_renderTick - a.Tick) / (b.Tick - a.Tick));
+            t = Math.Max(0f, Math.Min(1f, t));
+            position = new SVector3(a.PlaneX + (b.PlaneX - a.PlaneX) * t, GameRules.PlaneAltitude, a.PlaneZ + (b.PlaneZ - a.PlaneZ) * t);
+            yaw = a.PlaneYaw;
             return true;
         }
 

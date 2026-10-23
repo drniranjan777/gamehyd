@@ -175,6 +175,7 @@ namespace RWBR.Shared.Server
                     else if (Tick >= _phaseEndTick) StartActive();
                     break;
                 case MatchPhase.Active:
+                    StepPlane();
                     SimulatePlayers(allowFire: true);
                     StepVehicles();
                     StepProjectiles();
@@ -455,6 +456,7 @@ namespace RWBR.Shared.Server
             _activeStartTick = Tick;
             _zoneStartRadius = _cfg.Map.HalfSize * 1.4143f; // covers the map corners
             _zoneCenters = PlanZoneCenters();
+            if (_cfg.PlaneDrop) PlanFlight();
             Array.Clear(_lootTaken, 0, _lootTaken.Length);
             WithdrawDisabledLoot();
             ClearItems();
@@ -470,6 +472,7 @@ namespace RWBR.Shared.Server
                 memberIndex[p.Team] = member + 1;
                 Vector3 spawn = _cfg.Map.SpawnPoint(teamIndex[p.Team], teams) + new Vector3(member * 1.5f, 0, member % 2 * 1.5f);
                 p.Motor = MotorState.StandingAt(Simulation.ResolveCollisions(spawn, _cfg.Map));
+                if (_cfg.PlaneDrop) Board(p);
                 p.Combat.Reset(_cfg.Weapon, _cfg.StartWithWeapon, _cfg.StartingReserveAmmo, _cfg.StartingWeaponIndex);
                 p.Alive = true;
                 p.Vehicle = null;
@@ -510,7 +513,13 @@ namespace RWBR.Shared.Server
                     InCar(p, cmd, allowFire);
                     continue;
                 }
+                if (p.Motor.Drop == DropPhase.Plane)
+                {
+                    if (allowFire && cmd.Has(InputButtons.Jump)) JumpOut(p);
+                    continue;
+                }
                 Simulation.Step(ref p.Motor, cmd, _dt, _cfg.Map);
+                if (p.Motor.Dropping) continue; // falling: no weapons, items or cars until landed
                 p.Combat.Update(Tick, ActiveWeapon(p));
                 if (!allowFire) continue;
 
@@ -810,6 +819,10 @@ namespace RWBR.Shared.Server
                 NextZoneX = zone.NextCenter.X,
                 NextZoneZ = zone.NextCenter.Y,
                 NextZoneRadius = zone.NextRadius,
+                PlaneFlying = PlaneFlying,
+                PlaneX = PlanePosition.X,
+                PlaneZ = PlanePosition.Z,
+                PlaneYaw = _planeYaw,
                 AliveCount = (byte)AliveCount(),
                 LootTaken = PackLootTaken(),
             };
@@ -824,6 +837,9 @@ namespace RWBR.Shared.Server
                 if (p.Motor.Crouched) flags |= PlayerFlags.Crouched;
                 if (p.Motor.Grounded) flags |= PlayerFlags.Grounded;
                 if (p.Aiming) flags |= PlayerFlags.Aiming;
+                if (p.Motor.Drop == DropPhase.Plane) flags |= PlayerFlags.InPlane;
+                else if (p.Motor.Drop == DropPhase.Freefall) flags |= PlayerFlags.Freefall;
+                else if (p.Motor.Drop == DropPhase.Parachute) flags |= PlayerFlags.Parachute;
                 snapshot.Players.Add(Quantize.Normalize(new SnapshotEntry
                 {
                     PlayerId = p.Id,

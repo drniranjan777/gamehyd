@@ -44,6 +44,11 @@ namespace RWBR.Shared.Bots
         private Vector3 _lastSeenAt;
         private double _lastSeenTime = -100;
         private double _nextThrow, _nextSwitch;
+        // The plane drop: where this bot means to land, and how far the plane was from it last time.
+        private Vector3? _dropTarget;
+        private float _lastPlaneDistance = float.MaxValue;
+        /// <summary>Bots land within this share of the coming circle's radius of its centre: clustered enough to meet.</summary>
+        private const float DropSpread = 0.35f;
 
         public BotBrain(int seed, MapLayout? map = null, BotSkill? skill = null)
         {
@@ -72,6 +77,7 @@ namespace RWBR.Shared.Bots
             if (!found || (self.Flags & PlayerFlags.Alive) == 0) return default;
 
             var me = new Vector3(self.X, self.Y, self.Z);
+            if ((self.Flags & (PlayerFlags.InPlane | PlayerFlags.Freefall | PlayerFlags.Parachute)) != 0) return Drop(snap, self, me);
             var eye = me + new Vector3(0, GameRules.EyeHeight, 0);
             SnapshotEntry target = default;
             bool hasTarget = false;
@@ -202,6 +208,45 @@ namespace RWBR.Shared.Bots
                 Target = pickUp,
                 Item = item,
             };
+        }
+
+        /// <summary>
+        /// The plane drop: pick a landing spot (a loot spot inside the coming circle), jump when the plane is closest to
+        /// it, and steer towards it while falling. The parachute opens by itself.
+        /// </summary>
+        private InputCommand Drop(SnapshotPacket snap, SnapshotEntry self, Vector3 me)
+        {
+            if (_dropTarget == null)
+            {
+                var (zx, zz, zr) = Target(snap);
+                IReadOnlyList<LootSpawn>? loot = Loot ?? _map?.Loot;
+                Vector3 pick = new Vector3(zx, 0, zz);
+                if (loot != null && loot.Count > 0)
+                    for (int tries = 0; tries < 40; tries++)
+                    {
+                        LootSpawn l = loot[_rng.Next(loot.Count)];
+                        // Ground level only: bots navigate on the ground, and a roof could strand them.
+                        if (l.Position.Y < 0.5f && (_nav == null || _nav.IsWalkable(l.Position)) &&
+                            new Vector2(l.Position.X - zx, l.Position.Z - zz).Length() < zr * DropSpread)
+                        {
+                            pick = l.Position;
+                            break;
+                        }
+                    }
+                _dropTarget = pick;
+            }
+            Vector3 target = _dropTarget.Value;
+            var flat = new Vector2(target.X - me.X, target.Z - me.Z);
+            float yaw = (float)Math.Atan2(flat.X, flat.Y);
+            if ((self.Flags & PlayerFlags.InPlane) != 0)
+            {
+                // Jump when the plane is right over the spot or has just passed its closest point.
+                float d = flat.Length();
+                bool jump = d < 40 || d > _lastPlaneDistance + 0.5f;
+                _lastPlaneDistance = d;
+                return new InputCommand { Yaw = yaw, Buttons = jump ? InputButtons.Jump : InputButtons.None };
+            }
+            return new InputCommand { Yaw = yaw, MoveZ = flat.Length() > 3 ? 1 : 0 };
         }
 
         /// <summary>Whether the other slot's weapon suits this range clearly better (and has rounds), at most once a second.</summary>

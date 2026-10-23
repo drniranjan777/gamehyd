@@ -46,7 +46,7 @@ namespace RWBR.Shared.Protocol
     }
 
     [Flags]
-    public enum PlayerFlags : byte
+    public enum PlayerFlags : ushort
     {
         None = 0,
         Alive = 1,
@@ -58,11 +58,15 @@ namespace RWBR.Shared.Protocol
         Grounded = 64,
         /// <summary>Aiming down sights (others see the raised weapon and the tighter aim).</summary>
         Aiming = 128,
+        /// <summary>Aboard the drop plane (not drawn; the camera rides the plane).</summary>
+        InPlane = 256,
+        Freefall = 512,
+        Parachute = 1024,
     }
 
     public static class ProtocolInfo
     {
-        public const ushort Version = 10;
+        public const ushort Version = 11;
         /// <summary>Ground items (dropped or left by eliminated players) start at this id; lower ids are map loot spots.</summary>
         public const ushort FirstGroundItemId = 0x8000;
         public const ushort NoPlayer = ushort.MaxValue;
@@ -152,6 +156,10 @@ namespace RWBR.Shared.Protocol
         public byte[] SelfSlotAttach = { 0, 0 };
         /// <summary>Backpack contents: units per item kind (zero counts are left out).</summary>
         public List<ItemCount> SelfItems = new List<ItemCount>();
+        /// <summary>The drop plane while it flies (start of a match): position at its altitude and heading.</summary>
+        public bool PlaneFlying;
+        public float PlaneX, PlaneZ, PlaneYaw;
+
         /// <summary>The recipient's teammates (empty in Solo).</summary>
         public List<ushort> SelfTeammates = new List<ushort>();
 

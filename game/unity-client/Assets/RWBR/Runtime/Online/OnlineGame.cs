@@ -146,6 +146,17 @@ namespace RWBR.Client.Online
         }
 
         public bool InVehicle => SelfVehicle.HasValue;
+
+        /// <summary>Aboard the drop plane, or falling from it (no weapons or items until landed).</summary>
+        public bool InPlane => Net.Latest != null && SelfFlags(Net.Latest, PlayerFlags.InPlane);
+        public bool Dropping => Net.Latest != null && SelfFlags(Net.Latest, PlayerFlags.InPlane | PlayerFlags.Freefall | PlayerFlags.Parachute);
+
+        private bool SelfFlags(SnapshotPacket s, PlayerFlags flags)
+        {
+            foreach (SnapshotEntry e in s.Players)
+                if (e.PlayerId == Net.PlayerId) return (e.Flags & flags) != 0;
+            return false;
+        }
         public bool Driving => SelfVehicle is { } v && v.Driver == Net.PlayerId;
 
         /// <summary>A car you could get into right now (in reach, not wrecked, a seat free), or null.</summary>
@@ -208,6 +219,7 @@ namespace RWBR.Client.Online
                 Transform t = _views?.SelfTransform;
                 Vector3 feet = t != null ? t.position : Vector3.zero;
                 bool crouched = Prediction != null && Prediction.Predicted.Crouched;
+                if (InPlane) return feet + Vector3.up * 7f; // above the plane's back, not inside it
                 return feet + Vector3.up * (crouched ? 1.15f : 1.7f);
             }
         }
@@ -509,7 +521,7 @@ namespace RWBR.Client.Online
             foreach (SnapshotPacket s in Net.NewSnapshots)
             {
                 Interp.Add(s);
-                if (Prediction != null) Prediction.Frozen = InCar(s);
+                if (Prediction != null) Prediction.Frozen = InCar(s) || SelfFlags(s, PlayerFlags.InPlane);
                 Prediction?.Reconcile(s, Net.PlayerId);
                 TrackHealth(s);
                 RemoteShots(s);
@@ -759,6 +771,7 @@ namespace RWBR.Client.Online
         /// <summary>Where to draw yourself: on your seat in the (interpolated) car, else your predicted position.</summary>
         private SVector3 SelfRenderPosition()
         {
+            if (InPlane && Interp.TrySamplePlane(out SVector3 plane, out _)) return plane;
             if (SelfVehicle is { } car && Interp.TrySampleVehicle(car.Id, out SVector3 at, out float yaw, out _))
             {
                 var state = new VehicleState { Position = at, Yaw = yaw };
