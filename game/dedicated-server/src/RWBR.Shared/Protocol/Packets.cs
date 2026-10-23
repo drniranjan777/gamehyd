@@ -56,11 +56,13 @@ namespace RWBR.Shared.Protocol
         Healing = 16,
         HasWeapon = 32,
         Grounded = 64,
+        /// <summary>Aiming down sights (others see the raised weapon and the tighter aim).</summary>
+        Aiming = 128,
     }
 
     public static class ProtocolInfo
     {
-        public const ushort Version = 5;
+        public const ushort Version = 6;
         public const ushort NoPlayer = ushort.MaxValue;
         public const int MaxInputsPerPacket = 3;
         public const int MaxNameBytes = 24;
@@ -91,6 +93,8 @@ namespace RWBR.Shared.Protocol
     {
         public ushort PlayerId;
         public float X, Y, Z, Yaw;
+        /// <summary>View pitch in radians, positive up (1 degree on the wire), for other players' aim and tracers.</summary>
+        public float Pitch;
         public byte Health;
         public byte Armor;
         public byte Ammo;

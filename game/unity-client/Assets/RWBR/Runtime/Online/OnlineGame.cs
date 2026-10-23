@@ -618,7 +618,10 @@ namespace RWBR.Client.Online
                     }
                     for (int i = 0; i < shots; i++)
                     {
-                        SVector3 dir = Simulation.SpreadDirection(yaw, 0, w.SpreadDegrees + 1f, (uint)(e.ShotCounter * 31 + i));
+                        // Their aim as the server last sent it (pitch and whether they aim); the exact pellets are server-side.
+                        float spread = w.SpreadFor(false, (seen.Flags & PlayerFlags.Crouched) != 0, (seen.Flags & PlayerFlags.Grounded) == 0,
+                            (seen.Flags & PlayerFlags.Aiming) != 0) + 0.5f;
+                        SVector3 dir = Simulation.SpreadDirection(yaw, seen.Pitch, spread, (uint)(e.ShotCounter * 31 + i));
                         float range = Simulation.WallDistance(origin, dir, Math.Min(w.Range, 150f), Map);
                         _views.AddTracer(origin, origin + dir * range, Time.time, muzzle);
                         RemoteShotsSeen++;
@@ -639,12 +642,17 @@ namespace RWBR.Client.Online
                 if (_lastHealth.TryGetValue(e.PlayerId, out byte before) && e.Health < before)
                 {
                     _views?.CharacterOf(e.PlayerId)?.Hit();
-                    if (e.PlayerId == Net.PlayerId) LastDamagedTime = Time.time;
+                    if (e.PlayerId == Net.PlayerId)
+                    {
+                        LastDamagedTime = Time.time;
+                        Haptics.Damaged();
+                    }
                     else if (Time.time - _lastShotTime < 0.4f)
                     {
                         LastHitTime = Time.time;
                         LastHitWasKill = false;
                         GameAudio.Instance.PlayUi(Sfx.HitMarker);
+                        Haptics.Hit();
                     }
                 }
                 _lastHealth[e.PlayerId] = e.Health;
@@ -663,6 +671,7 @@ namespace RWBR.Client.Online
             {
                 LastHitTime = Time.time;
                 LastHitWasKill = true;
+                Haptics.Kill();
                 GameAudio.Instance.PlayUi(Sfx.Kill);
             }
             Feed.Add(new FeedEntry { Text = text, Time = Time.time });

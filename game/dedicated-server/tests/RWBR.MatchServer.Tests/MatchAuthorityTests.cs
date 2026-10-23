@@ -137,6 +137,25 @@ public class MatchAuthorityTests
     }
 
     [Fact]
+    public void Server_tracks_aim_and_pitch_for_other_players_and_keeps_aim_through_input_loss()
+    {
+        var (match, clients) = StartedMatch(2);
+        FakeClient aimer = clients[0];
+        aimer.Input(new InputCommand { Pitch = 0.4f, Buttons = InputButtons.Aim });
+        Step(match);
+        Assert.True(aimer.State.Aiming);
+        Assert.Equal(0.4f, aimer.State.Pitch, 4);
+
+        Step(match, 3); // no inputs arrive: the player keeps aiming and looking the same way
+        Assert.True(aimer.State.Aiming);
+        Assert.Equal(0.4f, aimer.State.Pitch, 4);
+
+        aimer.Input(new InputCommand { Pitch = 0.4f });
+        Step(match);
+        Assert.False(aimer.State.Aiming);
+    }
+
+    [Fact]
     public void Holding_fire_cannot_exceed_weapon_cadence()
     {
         var (match, clients) = StartedMatch(2);

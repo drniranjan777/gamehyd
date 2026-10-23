@@ -331,6 +331,7 @@ namespace RWBR.Client.Practice
                         {
                             LastHitTime = Time.time;
                             LastHitWasKill = false;
+                            if (!playerHit) Haptics.Hit(); // once per trigger pull, not per pellet
                             playerHit = true;
                             LastHitDistance = Sim.TargetDistance(FighterOf(e.Target));
                             DamageNumbers.Add(new DamageNumber { Position = e.To.ToUnity(), Amount = e.Damage, Headshot = e.Headshot, Time = Time.time });
@@ -340,12 +341,14 @@ namespace RWBR.Client.Practice
                         else if (e.Target == PracticeSimulation.PlayerId)
                         {
                             LastDamagedTime = Time.time;
+                            Haptics.Damaged();
                         }
                         break;
                     case SimEventType.Kill:
                         if (byPlayer)
                         {
                             LastHitWasKill = true;
+                            Haptics.Kill();
                             Kills++;
                             audio.PlayUi(Sfx.Kill);
                             Feed.Add(new FeedEntry { Text = Sim.IsRange

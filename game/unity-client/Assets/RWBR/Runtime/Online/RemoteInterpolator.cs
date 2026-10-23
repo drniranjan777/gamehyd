@@ -79,6 +79,7 @@ namespace RWBR.Client.Online
             position = SVector3.Lerp(new SVector3(ea.X, ea.Y, ea.Z), new SVector3(eb.X, eb.Y, eb.Z), t);
             yaw = LerpAngle(ea.Yaw, eb.Yaw, t);
             entry = t < 0.5f ? ea : eb;
+            entry.Pitch = ea.Pitch + (eb.Pitch - ea.Pitch) * t; // smooth weapon pitch between snapshots
             return true;
         }
 

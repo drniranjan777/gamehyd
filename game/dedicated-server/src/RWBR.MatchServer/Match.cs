@@ -415,12 +415,13 @@ public sealed class Match
                     Yaw = p.Yaw,
                     Pitch = p.Pitch,
                     AckTick = (uint)Tick,
-                    Buttons = p.Motor.Crouched ? InputButtons.Crouch : InputButtons.None,
+                    Buttons = (p.Motor.Crouched ? InputButtons.Crouch : InputButtons.None) | (p.Aiming ? InputButtons.Aim : InputButtons.None),
                 };
             }
 
             p.Yaw = Simulation.WrapYaw(cmd.Yaw);
             p.Pitch = Simulation.SanitizeAngle(cmd.Pitch, GameRules.MaxPitchRadians);
+            p.Aiming = cmd.Has(InputButtons.Aim) && p.Combat.HasWeapon && p.Alive;
             if (!p.Alive) continue;
 
             Simulation.Step(ref p.Motor, cmd, _dt, _cfg.Map);
@@ -631,6 +632,7 @@ public sealed class Match
             if (p.Combat.HasWeapon) flags |= PlayerFlags.HasWeapon;
             if (p.Motor.Crouched) flags |= PlayerFlags.Crouched;
             if (p.Motor.Grounded) flags |= PlayerFlags.Grounded;
+            if (p.Aiming) flags |= PlayerFlags.Aiming;
             snapshot.Players.Add(Quantize.Normalize(new SnapshotEntry
             {
                 PlayerId = p.Id,
@@ -638,6 +640,7 @@ public sealed class Match
                 Y = p.Position.Y,
                 Z = p.Position.Z,
                 Yaw = p.Yaw,
+                Pitch = p.Pitch,
                 Health = (byte)Math.Clamp(Math.Ceiling(p.Health), 0, 255),
                 Armor = (byte)Math.Clamp(Math.Ceiling(p.Combat.Armor), 0, 255),
                 Ammo = (byte)Math.Clamp(p.Ammo, 0, 255),

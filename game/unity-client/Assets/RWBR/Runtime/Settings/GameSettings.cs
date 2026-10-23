@@ -22,6 +22,7 @@ namespace RWBR.Client.Settings
         private const string UiScaleKey = "rwbr.a11y.uiScale";
         private const string SoundCuesKey = "rwbr.a11y.soundCues";
         private const string ReduceFlashKey = "rwbr.a11y.reduceFlashing";
+        private const string VibrationKey = "rwbr.vibration";
         public const float MinUiScale = 0.8f;
         public const float MaxUiScale = 1.5f;
 
@@ -46,6 +47,8 @@ namespace RWBR.Client.Settings
         public static bool VisualSoundCues { get; private set; }
         /// <summary>Turns off full-screen damage flashes.</summary>
         public static bool ReduceFlashing { get; private set; }
+        /// <summary>Short vibrations on hits, eliminations and damage (phones).</summary>
+        public static bool Vibration { get; private set; } = true;
 
         public static void Load()
         {
@@ -61,6 +64,7 @@ namespace RWBR.Client.Settings
                 UiScale = Mathf.Clamp(PlayerPrefs.GetFloat(UiScaleKey, 1f), MinUiScale, MaxUiScale);
                 VisualSoundCues = PlayerPrefs.GetInt(SoundCuesKey, 0) == 1;
                 ReduceFlashing = PlayerPrefs.GetInt(ReduceFlashKey, 0) == 1;
+                Vibration = PlayerPrefs.GetInt(VibrationKey, 1) == 1;
             }
             catch (System.Exception)
             {
@@ -101,6 +105,12 @@ namespace RWBR.Client.Settings
             UiScale = Mathf.Clamp(uiScale, MinUiScale, MaxUiScale);
             VisualSoundCues = visualSoundCues;
             ReduceFlashing = reduceFlashing;
+            Save();
+        }
+
+        public static void SetVibration(bool on)
+        {
+            Vibration = on;
             Save();
         }
 
@@ -168,6 +178,7 @@ namespace RWBR.Client.Settings
                 PlayerPrefs.SetFloat(UiScaleKey, UiScale);
                 PlayerPrefs.SetInt(SoundCuesKey, VisualSoundCues ? 1 : 0);
                 PlayerPrefs.SetInt(ReduceFlashKey, ReduceFlashing ? 1 : 0);
+                PlayerPrefs.SetInt(VibrationKey, Vibration ? 1 : 0);
                 PlayerPrefs.Save();
             }
             catch (System.Exception)

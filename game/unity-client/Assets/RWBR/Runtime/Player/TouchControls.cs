@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.EnhancedTouch;
@@ -22,7 +24,8 @@ namespace RWBR.Client.Player
 
     /// <summary>
     /// Mobile controls: floating move stick on the left, drag-to-look on the right (also while holding Fire),
-    /// AIM toggles aiming down sights, and on-screen buttons. Layout is in screen fractions so it scales with resolution. Drawn by the HUD.
+    /// AIM toggles aiming down sights, and on-screen buttons. Players can move and resize the buttons (Settings > Touch
+    /// layout); the layout is kept in PlayerPrefs. Layout is in screen fractions so it scales with resolution. Drawn by the HUD.
     /// </summary>
     public sealed class TouchControls : IPlayerInputSource
     {
@@ -54,7 +57,8 @@ namespace RWBR.Client.Player
         public const float StickRadiusFraction = 0.11f;
         private const float LookDegreesPerPixel = 0.12f;
 
-        public static readonly ButtonLayout[] Layout =
+        /// <summary>The shipped layout. Players can move buttons and change their size (see <see cref="Layout"/>).</summary>
+        public static readonly ButtonLayout[] Defaults =
         {
             new ButtonLayout { Button = TouchButton.Fire, Label = "FIRE", Center = new Vector2(0.86f, 0.32f), Radius = 0.10f },
             new ButtonLayout { Button = TouchButton.Jump, Label = "JUMP", Center = new Vector2(0.94f, 0.13f), Radius = 0.065f },
@@ -67,6 +71,125 @@ namespace RWBR.Client.Player
             new ButtonLayout { Button = TouchButton.Switch, Label = "SWAP", Center = new Vector2(0.80f, 0.55f), Radius = 0.05f },
             new ButtonLayout { Button = TouchButton.Aim, Label = "AIM", Center = new Vector2(0.73f, 0.27f), Radius = 0.06f },
         };
+
+        public const float MinButtonScale = 0.7f;
+        public const float MaxButtonScale = 1.4f;
+        private const string LayoutKey = "rwbr.touchLayout";
+        private static ButtonLayout[] _layout;
+        private static float _buttonScale = 1f;
+
+        /// <summary>The layout in use: the defaults with the player's moved positions and button size applied.</summary>
+        public static ButtonLayout[] Layout => _layout ??= LoadLayout();
+        public static float ButtonScale
+        {
+            get
+            {
+                _ = Layout;
+                return _buttonScale;
+            }
+        }
+
+        /// <summary>Moves one button (centre in screen fractions, bottom-left origin), kept on screen. Call SaveLayout after.</summary>
+        public static void MoveButton(TouchButton button, Vector2 center)
+        {
+            ButtonLayout[] layout = Layout;
+            for (int i = 0; i < layout.Length; i++)
+            {
+                if (layout[i].Button != button) continue;
+                layout[i].Center = new Vector2(Mathf.Clamp(center.x, 0.03f, 0.97f), Mathf.Clamp(center.y, 0.04f, 0.96f));
+            }
+        }
+
+        /// <summary>Scales every button's touch radius (and drawn size).</summary>
+        public static void SetButtonScale(float scale)
+        {
+            ButtonLayout[] layout = Layout;
+            _buttonScale = Mathf.Clamp(scale, MinButtonScale, MaxButtonScale);
+            for (int i = 0; i < layout.Length; i++) layout[i].Radius = DefaultFor(layout[i].Button).Radius * _buttonScale;
+        }
+
+        public static void ResetLayout()
+        {
+            _buttonScale = 1f;
+            _layout = (ButtonLayout[])Defaults.Clone();
+            SaveLayout();
+        }
+
+        /// <summary>Pairs of buttons whose touch areas overlap on a screen of this aspect (width / height).</summary>
+        public static List<(ButtonLayout A, ButtonLayout B)> Overlaps(float aspect)
+        {
+            var result = new List<(ButtonLayout, ButtonLayout)>();
+            ButtonLayout[] layout = Layout;
+            for (int i = 0; i < layout.Length; i++)
+            for (int j = i + 1; j < layout.Length; j++)
+            {
+                var a = new Vector2(layout[i].Center.x * aspect, layout[i].Center.y);
+                var b = new Vector2(layout[j].Center.x * aspect, layout[j].Center.y);
+                if (Vector2.Distance(a, b) < layout[i].Radius + layout[j].Radius) result.Add((layout[i], layout[j]));
+            }
+            return result;
+        }
+
+        /// <summary>Stored as "v1;scale;Button:x,y;..." in PlayerPrefs. Unknown or broken entries fall back to the defaults.</summary>
+        public static void SaveLayout()
+        {
+            var sb = new StringBuilder("v1;").Append(_buttonScale.ToString("0.###", CultureInfo.InvariantCulture));
+            foreach (ButtonLayout b in Layout)
+                sb.Append(';').Append(b.Button).Append(':')
+                    .Append(b.Center.x.ToString("0.####", CultureInfo.InvariantCulture)).Append(',')
+                    .Append(b.Center.y.ToString("0.####", CultureInfo.InvariantCulture));
+            try
+            {
+                PlayerPrefs.SetString(LayoutKey, sb.ToString());
+                PlayerPrefs.Save();
+            }
+            catch (System.Exception)
+            {
+                // Storage unavailable: the layout lasts for this session only.
+            }
+        }
+
+        /// <summary>Forget the cached layout so the next use reads storage again (tests).</summary>
+        public static void ReloadLayout() => _layout = null;
+
+        private static ButtonLayout[] LoadLayout()
+        {
+            var layout = (ButtonLayout[])Defaults.Clone();
+            _buttonScale = 1f;
+            string saved = null;
+            try
+            {
+                saved = PlayerPrefs.GetString(LayoutKey, null);
+            }
+            catch (System.Exception)
+            {
+                // Storage unavailable: defaults.
+            }
+            string[] parts = string.IsNullOrEmpty(saved) ? System.Array.Empty<string>() : saved.Split(';');
+            if (parts.Length >= 2 && parts[0] == "v1" && float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float scale))
+            {
+                _buttonScale = Mathf.Clamp(scale, MinButtonScale, MaxButtonScale);
+                for (int k = 2; k < parts.Length; k++)
+                {
+                    string[] kv = parts[k].Split(':');
+                    if (kv.Length != 2 || !System.Enum.TryParse(kv[0], out TouchButton button)) continue;
+                    string[] xy = kv[1].Split(',');
+                    if (xy.Length != 2 || !float.TryParse(xy[0], NumberStyles.Float, CultureInfo.InvariantCulture, out float x) ||
+                        !float.TryParse(xy[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float y)) continue;
+                    for (int i = 0; i < layout.Length; i++)
+                        if (layout[i].Button == button) layout[i].Center = new Vector2(Mathf.Clamp(x, 0.03f, 0.97f), Mathf.Clamp(y, 0.04f, 0.96f));
+                }
+            }
+            for (int i = 0; i < layout.Length; i++) layout[i].Radius = DefaultFor(layout[i].Button).Radius * _buttonScale;
+            return layout;
+        }
+
+        private static ButtonLayout DefaultFor(TouchButton button)
+        {
+            foreach (ButtonLayout b in Defaults)
+                if (b.Button == button) return b;
+            return Defaults[0];
+        }
 
         private readonly Dictionary<int, Tracked> _touches = new Dictionary<int, Tracked>();
         private readonly HashSet<TouchButton> _held = new HashSet<TouchButton>();

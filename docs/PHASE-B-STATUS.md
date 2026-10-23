@@ -129,9 +129,30 @@ Part 2 tests (all passing):
 | Unity EditMode | 44/44. New: Mixamo file names to slots (rifle and pistol), missing-clip report, controller parameters, layers, IK pass, upper-body mask and states, mirrored strafe, committed controller present, body-frame velocity, turn in place                                                                                                                                                                                                      |
 | Unity PlayMode | 15/15, including the full-stack Quick-play, store and online match tests. New: on a **procedurally built humanoid skeleton** driving the real controller, both hands land on the weapon grips (0.00 m), the feet are planted on the ground, the hands let go during reload, run and strafe reach the blend parameters, crouch and death states play, the body turns in place after a 100° look, and without the prefab the capsule is used |
 
+## Part 3 (23 October 2026): other players' aim, touch layout editor, haptics
+
+- **Other players' aim and view.** Snapshots now carry each player's view pitch (1° on the wire, sent together with yaw
+  only when either changes) and an **Aiming** flag. This is **protocol 6**. A full player entry grows from 23 to 24
+  bytes; unchanged and moving-only players cost the same as before. Other players' weapons now tilt with their view and
+  rise when they aim (eased like your own), and the pitch is interpolated between snapshots. Their tracers use their
+  real pitch and aimed spread, and their jumps and landings play from the existing Grounded flag. (An earlier note said
+  grounded state was not sent; it already was.) The server keeps a player aiming through brief input loss, like crouch.
+- **Touch layout editor**: Settings → Touch layout. Drag any button to move it, set a button size from 0.7× to 1.4×,
+  or reset. Overlapping buttons turn red and are named. The layout is saved in PlayerPrefs, and broken or unknown saved
+  entries fall back to the defaults.
+- **Haptics** (Settings → Accessibility → Vibration, on by default): a short tick for each trigger pull that hits, a
+  stronger pulse for an elimination, and one when you take damage, in practice, on the range and online. Android uses
+  the system vibrator with one-shot effects of 12, 40 and 28 ms. iOS has no short vibration without a native plugin, so
+  there only eliminations vibrate.
+
+Part 3 tests (all passing): .NET 82/82 (pitch and aim through full and delta snapshots, pitch clamp and precision,
+server tracks aim and keeps it through input loss, updated byte budget), Unity EditMode 48/48 (layout save and restore,
+on-screen clamping, overlap report, broken saved layouts, vibration off), Unity PlayMode 16/16 (another player's weapon
+follows their pitch and their aim blend from snapshots; the online match runs against the protocol 6 server).
+
 ## Before players get this build
 
-The production server at game.tallygen.com runs protocol 4 and schema 0009. An APK from this code (protocol 5) **cannot
+The production server at game.tallygen.com runs protocol 4 and schema 0009. An APK from this code (protocol 6) **cannot
 join production matches** until the server side is deployed:
 
 1. Apply migration `0010_weapon_balance_v4.sql` to the production database.
@@ -147,9 +168,10 @@ The firing range and practice work offline either way.
   each speed can only be tuned once they are in.
 - Outfit, helmet and backpack variants, and customisation (which needs the platform to store the choice), are not
   built.
-- Remote players' aim, pitch and grounded state are not sent to other clients. Their weapons stay level, they don't
-  aim, and jumps don't play for them.
-- Touch layout editor and haptics were not built.
+- Other players' reload progress is not sent (only "reloading"), so their reload animation loops at the weapon's reload
+  length rather than matching their exact progress.
+- The touch layout editor is in the main menu only (not in the in-match pause menu).
+- Gamepad rumble is not used.
 - The weapon models are simple original shapes; a licensed weapon pack would look better.
 - Character LODs: the Mixamo characters have a single detail level; LODs need a pack that includes them, or decimated
   copies.

@@ -22,6 +22,7 @@ namespace RWBR.Client.Online
         private readonly Transform _root;
         private readonly Dictionary<ushort, GameObject> _bodies = new Dictionary<ushort, GameObject>();
         private readonly Dictionary<ushort, CharacterBody> _characters = new Dictionary<ushort, CharacterBody>();
+        private readonly Dictionary<ushort, float> _remoteAim = new Dictionary<ushort, float>();
         private readonly List<GameObject> _loot = new List<GameObject>();
         private readonly List<(LineRenderer Line, float Until)> _tracers = new List<(LineRenderer, float)>();
         private readonly HashSet<ushort> _seen = new HashSet<ushort>();
@@ -107,9 +108,10 @@ namespace RWBR.Client.Online
                     root.transform.SetPositionAndRotation(ToUnity(p), Quaternion.Euler(0, yaw * Mathf.Rad2Deg, 0));
                     bool crouched = (sampled.Flags & PlayerFlags.Crouched) != 0;
                     float h = crouched ? GameRules.CrouchHeight : GameRules.PlayerHeight;
-                    // Remote grounded state is not sent; treat players at street or floor level as grounded.
-                    Pose(e, h, yaw * Mathf.Rad2Deg, 0, 0, grounded: true, crouched);
-                    UpdateWeapon(sampled, (sampled.Flags & PlayerFlags.Crouched) != 0 ? GameRules.CrouchEyeHeight : GameRules.EyeHeight, 0, 0, false, time);
+                    float pitch = RemotePitchDegrees(sampled);
+                    float aim = RemoteAim(e.PlayerId, sampled);
+                    Pose(e, h, yaw * Mathf.Rad2Deg, pitch, aim, (sampled.Flags & PlayerFlags.Grounded) != 0, crouched);
+                    UpdateWeapon(sampled, crouched ? GameRules.CrouchEyeHeight : GameRules.EyeHeight, pitch, aim, false, time);
                 }
             }
 
@@ -123,6 +125,7 @@ namespace RWBR.Client.Online
                 _bodies.Remove(id);
                 _weapons.Remove(id);
                 _characters.Remove(id);
+                _remoteAim.Remove(id);
             }
 
             if (_map != null)
@@ -192,6 +195,7 @@ namespace RWBR.Client.Online
             _bodies.Clear();
             _weapons.Clear();
             _characters.Clear();
+            _remoteAim.Clear();
             _loot.Clear();
             _tracers.Clear();
             SelfTransform = null;
@@ -210,6 +214,22 @@ namespace RWBR.Client.Online
             _characters[id] = body;
             return root;
         }
+
+        /// <summary>Another player's view pitch for display: degrees, positive down (the wire is radians, positive up).</summary>
+        public static float RemotePitchDegrees(SnapshotEntry e) => -e.Pitch * Mathf.Rad2Deg;
+
+        /// <summary>Another player's aim blend, eased like your own (the wire only says aiming or not).</summary>
+        private float RemoteAim(ushort id, SnapshotEntry e)
+        {
+            _remoteAim.TryGetValue(id, out float aim);
+            float target = (e.Flags & PlayerFlags.Aiming) != 0 ? 1f : 0f;
+            aim = Mathf.MoveTowards(aim, target, Time.deltaTime / RWBR.Client.Player.AimState.BlendSeconds);
+            _remoteAim[id] = aim;
+            return aim;
+        }
+
+        /// <summary>Eased aim blend last shown for a player (tests and diagnostics).</summary>
+        public float AimShownFor(ushort id) => _remoteAim.TryGetValue(id, out float a) ? a : 0f;
 
         private void Pose(SnapshotEntry e, float height, float yawDegrees, float pitch, float aim, bool grounded, bool crouched)
         {

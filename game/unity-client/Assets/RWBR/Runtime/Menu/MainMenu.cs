@@ -32,9 +32,11 @@ namespace RWBR.Client.Menu
             Account,
             Settings,
             Accessibility,
+            TouchLayout,
         }
 
         private Screen _screen;
+        private readonly RWBR.Client.Player.TouchLayoutEditor _touchEditor = new RWBR.Client.Player.TouchLayoutEditor();
         private GUIStyle _title, _label, _small, _button, _field;
         private float _scale, _w;
         private PlatformApi _api;
@@ -275,6 +277,9 @@ namespace RWBR.Client.Menu
                 case Screen.Account: DrawAccount(); break;
                 case Screen.Settings: DrawSettings(); break;
                 case Screen.Accessibility: DrawAccessibility(); break;
+                case Screen.TouchLayout:
+                    if (_touchEditor.Draw(_w, VirtualHeight, _label, _small, _button)) _screen = Screen.Settings;
+                    break;
             }
             if (_status != null) GUI.Label(new Rect(40, VirtualHeight - 60, 460, 50), _status, _small);
         }
@@ -466,6 +471,9 @@ namespace RWBR.Client.Menu
             GUI.Label(new Rect(64, y += 30, 420, 50), "Turns off the red screen flash when you take damage.", _small);
             if (!Mathf.Approximately(scale, GameSettings.UiScale) || cues != GameSettings.VisualSoundCues || calm != GameSettings.ReduceFlashing)
                 GameSettings.SetAccessibility(scale, cues, calm);
+            bool buzz = GUI.Toggle(new Rect(40, y += 56, 440, 30), GameSettings.Vibration, " Vibration", _label);
+            GUI.Label(new Rect(64, y += 30, 420, 50), "Short vibrations when your shots hit, on eliminations and when you take damage (phones).", _small);
+            if (buzz != GameSettings.Vibration) GameSettings.SetVibration(buzz);
             if (GUI.Button(new Rect(40, VirtualHeight - 120, 200, 46), "Back", _button)) _screen = Screen.Settings;
         }
 
@@ -559,7 +567,8 @@ namespace RWBR.Client.Menu
             float ui = GUI.HorizontalSlider(new Rect(340, y, 140, 20), GameSettings.UiVolume, 0, 1);
             if (!Mathf.Approximately(m, GameSettings.MasterVolume) || !Mathf.Approximately(fx, GameSettings.SfxVolume) || !Mathf.Approximately(ui, GameSettings.UiVolume))
                 GameSettings.SetVolumes(m, fx, ui);
-            if (GUI.Button(new Rect(40, y + 40, 440, 46), "Accessibility", _button)) _screen = Screen.Accessibility;
+            if (GUI.Button(new Rect(40, y + 40, 216, 46), "Accessibility", _button)) _screen = Screen.Accessibility;
+            if (GUI.Button(new Rect(264, y + 40, 216, 46), "Touch layout", _button)) _screen = Screen.TouchLayout;
             if (GUI.Button(new Rect(260, VirtualHeight - 120, 220, 46), "Account & data", _button))
             {
                 Save("rwbr.name", _name);

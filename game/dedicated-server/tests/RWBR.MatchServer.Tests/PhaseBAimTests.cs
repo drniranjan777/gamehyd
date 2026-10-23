@@ -22,7 +22,41 @@ public class AimTests
         InputCommand got = PacketCodec.DecodeInput(r)[0];
         Assert.Equal(sent.Buttons, got.Buttons);
         Assert.True(got.Has(InputButtons.Aim));
-        Assert.Equal((ushort)5, ProtocolInfo.Version);
+        Assert.True(ProtocolInfo.Version >= 5, "aim needs protocol v5 or later");
+    }
+
+    [Fact]
+    public void Pitch_and_aiming_reach_other_players_through_delta_snapshots()
+    {
+        Assert.Equal((ushort)6, ProtocolInfo.Version);
+        var history = new SnapshotHistory();
+        SnapshotEntry Entry(float pitch, PlayerFlags flags) => Quantize.Normalize(new SnapshotEntry
+        {
+            PlayerId = 3, X = 5, Z = 5, Yaw = 1f, Pitch = pitch, Health = 100, Flags = PlayerFlags.Alive | flags,
+        });
+        SnapshotPacket RoundTrip(uint tick, SnapshotEntry e, SnapshotPacket? baseline)
+        {
+            var p = new SnapshotPacket { Tick = tick, Phase = MatchPhase.Active };
+            p.Players.Add(e);
+            byte[] bytes = SnapshotCodec.Encode(p, baseline);
+            SnapshotPacket got = SnapshotCodec.Decode(new PacketReader(bytes, bytes.Length), history);
+            history.Add(got);
+            return got;
+        }
+
+        SnapshotPacket full = RoundTrip(1, Entry(-0.3f, PlayerFlags.None), null);
+        Assert.InRange(full.Players[0].Pitch, -0.31f, -0.29f); // within half a degree
+        Assert.Equal(0, (int)(full.Players[0].Flags & PlayerFlags.Aiming));
+
+        // Only the view and the flags change: the delta carries both.
+        SnapshotPacket delta = RoundTrip(2, Entry(0.5f, PlayerFlags.Aiming), full);
+        Assert.InRange(delta.Players[0].Pitch, 0.49f, 0.51f);
+        Assert.True((delta.Players[0].Flags & PlayerFlags.Aiming) != 0);
+        Assert.Equal(full.Players[0].Yaw, delta.Players[0].Yaw);
+
+        // Pitch is clamped to the wire range and kept to one degree.
+        Assert.Equal(90f * MathF.PI / 180f, Quantize.Pitch(Quantize.Pitch(3f)), 4);
+        Assert.Equal(MathF.Round(0.4f * 180f / MathF.PI) * MathF.PI / 180f, Quantize.Pitch(Quantize.Pitch(0.4f)), 4);
     }
 
     [Fact]

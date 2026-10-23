@@ -42,6 +42,8 @@ public sealed class PlayerState
     public int Ammo => Combat.Ammo;
     public float Yaw { get; set; }
     public float Pitch { get; set; }
+    /// <summary>Aiming down sights on the last processed input (armed players only).</summary>
+    public bool Aiming { get; set; }
     /// <summary>In the match (not eliminated). Separate from Combat.Alive so disconnect forfeits are explicit.</summary>
     public bool Alive { get; set; } = true;
     public bool Connected { get; set; } = true;

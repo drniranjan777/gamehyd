@@ -12,7 +12,7 @@ namespace RWBR.Shared.Protocol
         public uint Tick { get; }
     }
 
-    /// <summary>Wire quantisation: positions in centimetres, yaw in 1/65536 turns.</summary>
+    /// <summary>Wire quantisation: positions in centimetres, yaw in 1/65536 turns, pitch in whole degrees.</summary>
     public static class Quantize
     {
         public static int Position(float metres) => (int)Math.Round(metres * 100f);
@@ -27,6 +27,11 @@ namespace RWBR.Shared.Protocol
 
         public static float Yaw(ushort q) => (float)(q / 65536.0 * 2 * Math.PI - Math.PI);
 
+        public static byte Pitch(float radians) =>
+            (byte)(sbyte)Math.Clamp((int)Math.Round(radians * 180.0 / Math.PI), -90, 90);
+
+        public static float Pitch(byte q) => (float)((sbyte)q * Math.PI / 180.0);
+
         /// <summary>The entry as a receiver will see it. The server stores normalised entries as delta baselines.</summary>
         public static SnapshotEntry Normalize(SnapshotEntry e)
         {
@@ -34,6 +39,7 @@ namespace RWBR.Shared.Protocol
             e.Y = Position(Position(e.Y));
             e.Z = Position(Position(e.Z));
             e.Yaw = Yaw(Yaw(e.Yaw));
+            e.Pitch = Pitch(Pitch(e.Pitch));
             return e;
         }
     }
@@ -57,8 +63,8 @@ namespace RWBR.Shared.Protocol
     }
 
     /// <summary>
-    /// Snapshot wire format (protocol v3). Entries are delta-encoded against a baseline snapshot the receiver
-    /// acknowledged (the AckTick in its inputs); unchanged players cost 3 bytes, moving players about 11.
+    /// Snapshot wire format (protocol v6). Entries are delta-encoded against a baseline snapshot the receiver
+    /// acknowledged (the AckTick in its inputs); unchanged players cost 3 bytes, moving players about 12.
     /// </summary>
     public static class SnapshotCodec
     {
@@ -67,6 +73,7 @@ namespace RWBR.Shared.Protocol
         {
             PositionDelta = 1,
             PositionFull = 2,
+            /// <summary>Yaw and pitch (view direction).</summary>
             Yaw = 4,
             Health = 8,
             Armor = 16,
@@ -169,6 +176,7 @@ namespace RWBR.Shared.Protocol
         {
             int x = Quantize.Position(e.X), y = Quantize.Position(e.Y), z = Quantize.Position(e.Z);
             ushort yaw = Quantize.Yaw(e.Yaw);
+            byte pitch = Quantize.Pitch(e.Pitch);
             Field mask;
             int dx = 0, dy = 0, dz = 0;
             if (b is not { } bb)
@@ -183,7 +191,7 @@ namespace RWBR.Shared.Protocol
                 dz = z - Quantize.Position(bb.Z);
                 if (dx != 0 || dy != 0 || dz != 0)
                     mask |= FitsShort(dx) && FitsShort(dy) && FitsShort(dz) ? Field.PositionDelta : Field.PositionFull;
-                if (yaw != Quantize.Yaw(bb.Yaw)) mask |= Field.Yaw;
+                if (yaw != Quantize.Yaw(bb.Yaw) || pitch != Quantize.Pitch(bb.Pitch)) mask |= Field.Yaw;
                 if (e.Health != bb.Health) mask |= Field.Health;
                 if (e.Armor != bb.Armor) mask |= Field.Armor;
                 if (e.Ammo != bb.Ammo) mask |= Field.Ammo;
@@ -205,7 +213,11 @@ namespace RWBR.Shared.Protocol
                 w.I32(y);
                 w.I32(z);
             }
-            if ((mask & Field.Yaw) != 0) w.U16(yaw);
+            if ((mask & Field.Yaw) != 0)
+            {
+                w.U16(yaw);
+                w.U8(pitch);
+            }
             if ((mask & Field.Health) != 0) w.U8(e.Health);
             if ((mask & Field.Armor) != 0) w.U8(e.Armor);
             if ((mask & Field.Ammo) != 0) w.U8(e.Ammo);
@@ -227,6 +239,7 @@ namespace RWBR.Shared.Protocol
 
             int x = Quantize.Position(b.X), y = Quantize.Position(b.Y), z = Quantize.Position(b.Z);
             ushort yaw = Quantize.Yaw(b.Yaw);
+            byte pitch = Quantize.Pitch(b.Pitch);
             var e = new SnapshotEntry
             {
                 PlayerId = id, Health = b.Health, Armor = b.Armor, Ammo = b.Ammo, Flags = b.Flags, Weapon = b.Weapon, ShotCounter = b.ShotCounter,
@@ -244,7 +257,11 @@ namespace RWBR.Shared.Protocol
                 y = r.I32();
                 z = r.I32();
             }
-            if ((mask & Field.Yaw) != 0) yaw = r.U16();
+            if ((mask & Field.Yaw) != 0)
+            {
+                yaw = r.U16();
+                pitch = r.U8();
+            }
             if ((mask & Field.Health) != 0) e.Health = r.U8();
             if ((mask & Field.Armor) != 0) e.Armor = r.U8();
             if ((mask & Field.Ammo) != 0) e.Ammo = r.U8();
@@ -259,6 +276,7 @@ namespace RWBR.Shared.Protocol
             e.Y = Quantize.Position(y);
             e.Z = Quantize.Position(z);
             e.Yaw = Quantize.Yaw(yaw);
+            e.Pitch = Quantize.Pitch(pitch);
             return e;
         }
 
